@@ -1,0 +1,22 @@
+{
+  // Type-checking only (esbuild does the emitting). Covers the Node/Electron side:
+  // main process, preload script, shared types, and every *.test.ts (tests run under Node).
+  // The renderer has its own config.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "preserve",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "noEmit": true
+  },
+  "include": ["src/main", "src/preload", "src/shared", "src/renderer/**/*.test.ts"]
+}

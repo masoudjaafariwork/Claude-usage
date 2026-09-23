@@ -1,0 +1,72 @@
+// Bundles main, preload and renderer with esbuild and copies static renderer files.
+// Usage: node scripts/build.mjs [--watch]
+import * as esbuild from 'esbuild';
+import { cpSync, mkdirSync, rmSync, watch } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+const dist = join(root, 'dist');
+const watchMode = process.argv.includes('--watch');
+const STATIC_FILES = ['index.html', 'styles.css'];
+
+const shared = {
+  bundle: true,
+  sourcemap: 'linked',
+  logLevel: 'info',
+  legalComments: 'none',
+};
+
+const configs = [
+  {
+    ...shared,
+    entryPoints: [join(root, 'src/main/main.ts')],
+    outfile: join(dist, 'main/main.js'),
+    platform: 'node',
+    format: 'cjs',
+    target: 'node22',
+    external: ['electron'],
+  },
+  {
+    ...shared,
+    entryPoints: [join(root, 'src/preload/preload.ts')],
+    outfile: join(dist, 'preload/preload.js'),
+    platform: 'node',
+    format: 'cjs',
+    target: 'node22',
+    external: ['electron'],
+  },
+  {
+    ...shared,
+    entryPoints: [join(root, 'src/renderer/renderer.ts')],
+    outfile: join(dist, 'renderer/renderer.js'),
+    platform: 'browser',
+    format: 'iife',
+    target: 'chrome130',
+  },
+];
+
+function copyStatic() {
+  mkdirSync(join(dist, 'renderer'), { recursive: true });
+  for (const file of STATIC_FILES) {
+    cpSync(join(root, 'src/renderer', file), join(dist, 'renderer', file));
+  }
+}
+
+rmSync(dist, { recursive: true, force: true });
+
+if (watchMode) {
+  const contexts = await Promise.all(configs.map((c) => esbuild.context(c)));
+  await Promise.all(contexts.map((ctx) => ctx.watch()));
+  copyStatic();
+  watch(join(root, 'src/renderer'), (_event, file) => {
+    if (file && STATIC_FILES.includes(file)) {
+      copyStatic();
+      console.log(`[static] copied ${file}`);
+    }
+  });
+  console.log('Watching for changes… (restart Electron to pick up main/preload changes)');
+} else {
+  await Promise.all(configs.map((c) => esbuild.build(c)));
+  copyStatic();
+}

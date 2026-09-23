@@ -1,0 +1,641 @@
+/* Claude Usage Overlay — dark glass card that sits on top of any wallpaper or app. */
+
+:root {
+  color-scheme: dark;
+  --text: #f4f0eb;
+  --muted: #a39d97;
+  --faint: #6f6a65;
+  --line: rgba(255, 255, 255, 0.07);
+  --track: rgba(255, 255, 255, 0.08);
+  --card-top: rgba(41, 38, 36, 0.95);
+  --card-bottom: rgba(20, 19, 19, 0.95);
+
+  --brand: #d97757;
+  --brand-hi: #f0a488;
+  --brand-soft: rgba(217, 119, 87, 0.16);
+
+  /* Severity colors — keep in sync with SEVERITY_RGB in main/tray-icon.ts and the SVG gradients. */
+  --ok: #45d19e;
+  --ok-hi: #8bf0c8;
+  --warn: #f5b544;
+  --warn-hi: #ffd27a;
+  --crit: #f2555a;
+  --crit-hi: #ff9a86;
+
+  --font: 'Segoe UI Variable Text', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, Ubuntu,
+    Cantarell, 'Noto Sans', system-ui, sans-serif;
+  --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+}
+
+body {
+  font: 13px/1.35 var(--font);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+.defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+}
+
+/* Transparent padding around the card leaves room for its shadow. */
+#app {
+  width: max-content;
+  padding: 12px 16px 20px;
+}
+
+/* ---- Card ---------------------------------------------------------------------------------- */
+
+.card {
+  position: relative;
+  width: 312px;
+  padding: 12px 14px 10px;
+  border-radius: 18px;
+  background: linear-gradient(165deg, var(--card-top), var(--card-bottom));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 8px 14px -4px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  overflow: hidden;
+  -webkit-app-region: drag;
+  transition: opacity 0.2s;
+}
+
+/* Soft brand glow in the top-left corner. */
+.card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(160px 90px at 0% 0%, rgba(217, 119, 87, 0.13), transparent 70%);
+}
+
+.card > * {
+  position: relative;
+}
+
+/* ---- Header -------------------------------------------------------------------------------- */
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+}
+
+.logo {
+  width: 16px;
+  height: 16px;
+  flex: none;
+  color: var(--brand);
+}
+
+.title {
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.plan {
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid rgba(217, 119, 87, 0.28);
+  background: var(--brand-soft);
+  color: var(--brand-hi);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.actions {
+  display: flex;
+  gap: 2px;
+}
+
+.icon-btn {
+  -webkit-app-region: no-drag;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--faint);
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    color 0.15s;
+}
+
+.icon-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+
+.icon-btn:active {
+  background: rgba(255, 255, 255, 0.13);
+}
+
+.icon-btn:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+
+.icon-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.icon-btn.spinning svg {
+  animation: spin 0.9s linear infinite;
+}
+
+/* ---- Rings --------------------------------------------------------------------------------- */
+
+.ring {
+  position: relative;
+  flex: none;
+}
+
+.ring svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+  overflow: visible;
+}
+
+.ring .track {
+  fill: none;
+  stroke: var(--track);
+}
+
+.ring .progress {
+  fill: none;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.9s var(--ease);
+}
+
+.sev-critical .ring .progress {
+  filter: drop-shadow(0 0 4px rgba(242, 85, 90, 0.65));
+}
+
+.ring-value {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ring-value .num {
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.ring-value small {
+  margin-left: 1px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* ---- Session hero -------------------------------------------------------------------------- */
+
+.hero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.hero .ring {
+  width: 76px;
+  height: 76px;
+}
+
+.hero-text {
+  min-width: 0;
+}
+
+.eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.hero-main {
+  margin-top: 3px;
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.hero-sub {
+  margin-top: 1px;
+  font-size: 11.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sev-warning .hero-main {
+  color: var(--warn-hi);
+}
+
+.sev-critical .hero-main {
+  color: var(--crit-hi);
+}
+
+/* ---- Sections & bars ----------------------------------------------------------------------- */
+
+.section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.meter + .meter {
+  margin-top: 11px;
+}
+
+.meter-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.meter-label {
+  overflow: hidden;
+  font-size: 12.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.meter-value {
+  font-size: 13px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.meter-value .of {
+  margin-right: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.sev-warning .meter-value {
+  color: var(--warn-hi);
+}
+
+.sev-critical .meter-value {
+  color: var(--crit-hi);
+}
+
+.bar {
+  position: relative;
+  height: 6px;
+  margin-top: 6px;
+  overflow: hidden;
+  border-radius: 99px;
+  background: var(--track);
+}
+
+.bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--c-lo), var(--c-hi));
+  transition: width 0.9s var(--ease);
+}
+
+.sev-normal {
+  --c-lo: var(--ok);
+  --c-hi: var(--ok-hi);
+}
+
+.sev-warning {
+  --c-lo: var(--warn);
+  --c-hi: var(--warn-hi);
+}
+
+.sev-critical {
+  --c-lo: var(--crit);
+  --c-hi: var(--crit-hi);
+}
+
+.sev-critical .bar-fill {
+  box-shadow: 0 0 8px rgba(242, 85, 90, 0.6);
+}
+
+.meter-sub {
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.is-reset .meter-value,
+.is-reset .bar-fill,
+.hero.is-reset .ring,
+.hero.is-reset .hero-main {
+  opacity: 0.45;
+}
+
+/* ---- Weekly split by surface --------------------------------------------------------------- */
+
+.stack {
+  display: flex;
+  gap: 2px;
+  height: 6px;
+  margin-top: 8px;
+  overflow: hidden;
+  border-radius: 99px;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 7px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.legend-item i {
+  width: 7px;
+  height: 7px;
+  margin-right: 5px;
+  border-radius: 2px;
+}
+
+.legend-item b {
+  margin-left: 4px;
+  font-weight: 600;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---- Status banner ------------------------------------------------------------------------- */
+
+.banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 12px;
+  padding: 9px 10px;
+  border-radius: 11px;
+  border: 1px solid rgba(245, 181, 68, 0.24);
+  background: rgba(245, 181, 68, 0.09);
+}
+
+.banner > svg {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  margin-top: 1px;
+  color: var(--warn);
+}
+
+.banner.crit {
+  border-color: rgba(242, 85, 90, 0.28);
+  background: rgba(242, 85, 90, 0.09);
+}
+
+.banner.crit > svg {
+  color: var(--crit);
+}
+
+.banner-title {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.banner-body {
+  margin-top: 2px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--muted);
+}
+
+.banner-body code {
+  padding: 0 3px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, Menlo, monospace;
+  font-size: 10.5px;
+}
+
+/* ---- Footer -------------------------------------------------------------------------------- */
+
+.foot {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--faint);
+}
+
+.dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ok);
+  box-shadow: 0 0 0 3px rgba(69, 209, 158, 0.15);
+}
+
+.dot.stale {
+  background: var(--warn);
+  box-shadow: 0 0 0 3px rgba(245, 181, 68, 0.15);
+}
+
+.dot.error {
+  background: var(--crit);
+  box-shadow: 0 0 0 3px rgba(242, 85, 90, 0.15);
+}
+
+.dot.busy {
+  animation: pulse 1.1s ease-in-out infinite;
+}
+
+/* ---- Stale data ---------------------------------------------------------------------------- */
+
+.card.stale .hero,
+.card.stale .meters,
+.card.stale .breakdown,
+.card.stale .chip {
+  filter: saturate(0.3);
+  opacity: 0.7;
+}
+
+/* ---- Loading skeleton ---------------------------------------------------------------------- */
+
+.skeleton {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.skel {
+  border-radius: 6px;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 25%, rgba(255, 255, 255, 0.11) 50%, rgba(255, 255, 255, 0.05) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+
+.skel.circle {
+  width: 76px;
+  height: 76px;
+  border-radius: 50%;
+}
+
+.skel-lines {
+  display: grid;
+  flex: 1;
+  gap: 8px;
+}
+
+.skel.line {
+  height: 9px;
+}
+
+/* ---- Compact pill -------------------------------------------------------------------------- */
+
+.card.compact {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: auto;
+  padding: 7px 7px 7px 9px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.card.compact::before {
+  background: radial-gradient(90px 40px at 0% 50%, rgba(217, 119, 87, 0.12), transparent 70%);
+}
+
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.chip .ring {
+  width: 26px;
+  height: 26px;
+}
+
+.chip-value {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+}
+
+.chip-value small {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.chip-label {
+  font-size: 9px;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.vsep {
+  align-self: stretch;
+  width: 1px;
+  margin: 4px 0;
+  background: var(--line);
+}
+
+.compact-msg {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.compact .tail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 1px;
+}
+
+/* ---- Animations ---------------------------------------------------------------------------- */
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
+}
+
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before {
+    animation-duration: 0.001s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001s !important;
+  }
+}

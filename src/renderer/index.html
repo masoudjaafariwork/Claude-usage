@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:"
+    />
+    <title>Claude Usage</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <!-- Shared gradients for the progress rings (referenced as url(#grad-<severity>)). -->
+    <svg class="defs" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id="grad-normal" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#8bf0c8" />
+          <stop offset="1" stop-color="#2fb386" />
+        </linearGradient>
+        <linearGradient id="grad-warning" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#ffdc8a" />
+          <stop offset="1" stop-color="#ee9a2e" />
+        </linearGradient>
+        <linearGradient id="grad-critical" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#ff9a86" />
+          <stop offset="1" stop-color="#e23b4a" />
+        </linearGradient>
+      </defs>
+    </svg>
+    <div id="app"></div>
+    <script src="renderer.js"></script>
+  </body>
+</html>

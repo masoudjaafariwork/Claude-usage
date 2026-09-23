@@ -1,0 +1,26 @@
+{
+  "name": "claude-usage-overlay",
+  "productName": "Claude Usage Overlay",
+  "version": "0.1.0",
+  "description": "Always-on-top desktop overlay that shows your Claude plan usage limits.",
+  "main": "dist/main/main.js",
+  "author": "Masoud Jaafari",
+  "license": "GPL-3.0-only",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.renderer.json",
+    "test": "node scripts/test.mjs",
+    "start": "npm run build && node scripts/start.mjs",
+    "start:mock": "npm run build && node scripts/start.mjs --mock",
+    "screenshot": "node scripts/screenshots.mjs",
+    "check": "npm run typecheck && npm test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "electron": "^44.4.5",
+    "esbuild": "^0.28.2",
+    "typescript": "^7.0.2"
+  }
+}

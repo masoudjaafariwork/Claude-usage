@@ -1,0 +1,10 @@
+{
+  // Type-checking for the sandboxed renderer (browser environment, no Node types).
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": []
+  },
+  "include": ["src/renderer", "src/shared"],
+  "exclude": ["src/**/*.test.ts"]
+}
