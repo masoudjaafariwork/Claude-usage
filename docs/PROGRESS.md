@@ -66,6 +66,7 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D21 | Package author / deb maintainer: Masoud Jaafari <masoudjaafariwork@gmail.com> | User's choice (2026-09-24). |
 | D22 | Windows file description = product name (`build.extraMetadata.description`); the long text only in `build.linux.description` | Task Manager → Startup apps shows the exe's description as the app name. |
 | D23 | The first `fitToContent` after start keeps a restored position's top-left; edge anchoring only for live resizes and the default corner | Anchoring the first fit moved the overlay (content height − 280) px on every start in the lower half of a display. |
+| D24 | Keep a Persian, teacher-style Electron book at `D:\Clade usage\electron-book.html` (outside the repo) and update it after every phase; private artifact copy on claude.ai | The owner is learning Electron through this project and wants a complete book by the end. Outside the repo because it is personal learning material, not project documentation (which stays English). |
 
 ## Usage API notes (observed 2026-09-24)
 
@@ -129,3 +130,11 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
   bug with spaces in paths (D18). Found and fixed the Phase 1 position drift (D23).
 - The test install was removed again and the user's `settings.json` restored.
 - Next: Phase 3 — `docs/phases/phase-3-fallback-source.md`.
+
+### 2026-09-24 — Session 3: Electron learning book
+
+- Wrote edition 1.0 of the Electron book (D24): 38 chapters in 10 parts covering everything built
+  in Phases 1–2, with real code, diagrams, quizzes and exercises; published a private artifact copy.
+- New standing rules in `CLAUDE.md`: update the book after every phase; always hand the user a
+  ready-to-paste commit message when work is left to commit.
+- No app code changed.

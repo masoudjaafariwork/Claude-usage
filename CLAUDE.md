@@ -10,13 +10,28 @@ same numbers as Claude → Settings → Usage, refreshed automatically.
    `docs/BACKLOG.md` (phase index, general prompts, ideas). When working on a phase, read its plan
    in `docs/phases/phase-N-*.md`. Don't re-decide what is recorded there without telling the user why.
 2. **Language:** talk to the user in **Persian (Farsi)**. Code, comments, commit messages and
-   everything in `docs/` stay in English.
+   everything in `docs/` stay in English. (Only exception: the Electron book below is Persian.)
 3. **Finish:** run `npm run check`; for UI changes also run `npm run screenshot` and *look* at the
    PNGs. Then update `docs/PROGRESS.md` (status, session-log entry, new decisions as D-numbers,
    known issues), the phase file (tick Scope items, set Status, fill in **Result**) and the phase
-   table in `docs/BACKLOG.md`. Commit only when the user asks.
+   table in `docs/BACKLOG.md`, and update the **Electron book** (next section). Commit only when the
+   user asks — but whenever work is left for the user to commit, give them a ready-to-paste commit
+   message (Conventional Commits, English).
 4. **New larger features** get their own plan file created from `docs/phases/_TEMPLATE.md` and a
    row in `docs/BACKLOG.md` before implementation starts.
+
+## Electron book (the owner is learning Electron with this project)
+
+`D:\Clade usage\electron-book.html` — outside the repo, one self-contained HTML file, **Persian (RTL)**,
+teacher-style for someone who knows no Electron. After every phase (and any notable change), add or
+extend chapters so nothing that was built goes unexplained: why → Electron concept → real code from
+the repo → pitfalls/OS differences → recap → quiz → exercise. Then update its changelog chapter
+(`c-changelog`), the phase list and `data-version`/`data-updated` on `#home`. Authoring conventions are
+in the comment at the top of the file (code in `<pre><code>` must be HTML-escaped).
+
+A private copy is published at <https://claude.ai/artifact/98foJ32py3eUtiGpQCsNVc> — republish it with the
+Artifact tool (`url` = that link) from a copy of the file without the `<!doctype html>`, `<html …>`,
+`<head>`, `</head>`, `<body>`, `</body>`, `</html>` lines (the artifact wraps its own skeleton).
 
 ## Commands
 
