@@ -78,5 +78,5 @@ jobs:
             gh release upload "$GITHUB_REF_NAME" artifacts/* --clobber
           else
             gh release create "$GITHUB_REF_NAME" artifacts/* --draft --generate-notes \
-              --title "Claude Usage Overlay ${GITHUB_REF_NAME#v}"
+              --title "Claude Usage ${GITHUB_REF_NAME#v}"
           fi

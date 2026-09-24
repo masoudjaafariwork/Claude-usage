@@ -85,7 +85,7 @@ anywhere outside Electron's partition.
 Paste into a new Claude Code session opened in this repository:
 
 ```text
-Implement Phase 3 of Claude Usage Overlay as specified in docs/phases/phase-3-fallback-source.md
+Implement Phase 3 of Claude Usage as specified in docs/phases/phase-3-fallback-source.md
 (claude.ai sign-in as a fallback data source, source selection, redacted logs).
 Read CLAUDE.md, docs/PROGRESS.md and that phase file first. Decision D3 still holds: never refresh,
 rotate or write Claude Code's credentials. Start with the research step and show me what you found

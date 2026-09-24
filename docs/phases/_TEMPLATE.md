@@ -42,7 +42,7 @@ Research hints, APIs to use, platform caveats, risks and how to handle them.
 Paste into a new Claude Code session opened in this repository:
 
 ```text
-Implement Phase N of Claude Usage Overlay as specified in docs/phases/phase-N-<slug>.md.
+Implement Phase N of Claude Usage as specified in docs/phases/phase-N-<slug>.md.
 Read CLAUDE.md, docs/PROGRESS.md and that phase file first. Follow its Scope, Out of scope,
 Technical notes and Acceptance criteria. If something in the plan turns out to be wrong or
 risky, stop and ask me before deviating. When done: fill in the phase file's Result section,

@@ -1,4 +1,4 @@
-# Claude Usage Overlay
+# Claude Usage
 
 A small always-on-top desktop overlay that shows your **Claude plan usage limits**: current
 session, weekly limits, per-model weekly limits and this week's split by app. It shows the same
@@ -53,41 +53,45 @@ Download the file for your system from the
 [Releases page](https://github.com/masoudjaafariwork/Claude-usage/releases). The builds are not
 code-signed, so every OS shows a warning the first time.
 
+> **Coming from 0.1.0?** That prerelease was called *Claude Usage Overlay*. From 0.2.0 the app is
+> called *Claude Usage* and installs as a separate app: uninstall *Claude Usage Overlay* first
+> (Settings → Apps; this also removes its launch-at-login entry). Settings are not carried over.
+
 ### Windows 10 / 11
 
-- **Installer** — `Claude Usage Overlay Setup <version>.exe`. Installs for your user only (no admin
+- **Installer** — `Claude Usage Setup <version>.exe`. Installs for your user only (no admin
   rights), adds a Start menu shortcut and starts the overlay. Uninstall from *Settings → Apps*.
-- **Portable** — `Claude Usage Overlay <version> Portable.exe`. One file, no installation; keep it
+- **Portable** — `Claude Usage <version> Portable.exe`. One file, no installation; keep it
   anywhere (e.g. Desktop). It starts a little slower because it unpacks itself on every start.
 - SmartScreen may say *"Windows protected your PC"*: click **More info → Run anyway**.
 
-Both versions keep their settings in `%APPDATA%\Claude Usage Overlay` (menu → *Open settings
+Both versions keep their settings in `%APPDATA%\Claude Usage` (menu → *Open settings
 folder*), so they share them. Only one copy runs at a time.
 
 ### macOS (Apple Silicon and Intel)
 
-- `Claude Usage Overlay-<version>-arm64.dmg` for Apple Silicon (M1 and later),
+- `Claude Usage-<version>-arm64.dmg` for Apple Silicon (M1 and later),
   `…-x64.dmg` for Intel Macs. Open it and drag the app to *Applications*.
 - The app is ad-hoc signed but not notarized by Apple. On first launch macOS blocks it: open
   **System Settings → Privacy & Security** and click **Open Anyway** (macOS 14 and older: right-click
   the app → *Open*). Or run once in Terminal:
-  `xattr -dr com.apple.quarantine "/Applications/Claude Usage Overlay.app"`
+  `xattr -dr com.apple.quarantine "/Applications/Claude Usage.app"`
 - The app lives in the menu bar (no Dock icon). When macOS asks for Keychain access, choose
   **Always Allow**.
 
 ### Linux (x64)
 
-- **AppImage** — `chmod +x claude-usage-overlay-<version>-x86_64.AppImage`, then run it. It needs
+- **AppImage** — `chmod +x claude-usage-<version>-x86_64.AppImage`, then run it. It needs
   FUSE 2 (`sudo apt install libfuse2t64` on Ubuntu 24.04+, `libfuse2` on older releases). If it
   exits with a sandbox error (Ubuntu 24.04+), start it with `--no-sandbox`.
-- **deb** (Debian / Ubuntu) — `sudo apt install ./claude-usage-overlay_<version>_amd64.deb`.
+- **deb** (Debian / Ubuntu) — `sudo apt install ./claude-usage_<version>_amd64.deb`.
 - On GNOME the tray icon needs the AppIndicator extension.
 
 ### Launch at login
 
 Tick **Launch at login** in the menu. You can also see or switch it off in the OS: *Task Manager →
 Startup apps* (Windows), *System Settings → General → Login Items* (macOS), or
-`~/.config/autostart/claude-usage-overlay.desktop` (Linux). The overlay respects it when you switch
+`~/.config/autostart/claude-usage.desktop` (Linux). The overlay respects it when you switch
 it off there. The option only works in the installed app, not with `npm start`.
 
 ## Run from source

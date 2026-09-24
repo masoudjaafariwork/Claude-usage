@@ -100,6 +100,9 @@ status, update docs/PROGRESS.md and docs/BACKLOG.md, and give me the manual test
 
 ## Result
 
+> Released as prerelease **v0.1.0** under the name *Claude Usage Overlay*. Right after that the app
+> was renamed to **Claude Usage** (v0.2.0, decision D25); the names below are the v0.1.0 originals.
+
 Delivered in session 2 (2026-09-24): everything in Scope.
 
 - **Icon:** `scripts/make-icon.mjs` (reuses `encodePng` from `tray-icon.ts`, bundled on the fly with

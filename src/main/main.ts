@@ -64,7 +64,7 @@ function parseArgs(argv: string[]): CliOptions {
 const cli = parseArgs(process.argv.slice(1));
 
 /** Windows AppUserModelId; must equal build.appId in package.json (installer shortcuts use it). */
-const APP_ID = 'com.masoudjaafari.claude-usage-overlay';
+const APP_ID = 'com.masoudjaafari.claude-usage';
 
 // Mock runs get their own settings/cache so they never touch real data (and can run side by side).
 if (cli.mock) app.setPath('userData', join(app.getPath('userData'), 'mock-data'));
@@ -101,7 +101,7 @@ function start(): void {
 
   const snapshotFile = join(userData, 'last-usage.json');
   const intervalSec = () => settings.get().refreshIntervalSec;
-  const userAgent = `ClaudeUsageOverlay/${app.getVersion()} (${process.platform}; Electron ${process.versions.electron})`;
+  const userAgent = `ClaudeUsage/${app.getVersion()} (${process.platform}; Electron ${process.versions.electron})`;
   const source = cli.mock
     ? createMockSource(cli.mock, intervalSec)
     : {
@@ -282,8 +282,8 @@ function start(): void {
 async function showAbout(): Promise<void> {
   await dialog.showMessageBox({
     type: 'none',
-    title: 'About Claude Usage Overlay',
-    message: `Claude Usage Overlay ${app.getVersion()}`,
+    title: 'About Claude Usage',
+    message: `Claude Usage ${app.getVersion()}`,
     detail: [
       'Always-on-top overlay for your Claude plan usage limits.',
       `Electron ${process.versions.electron} · Chromium ${process.versions.chrome} · Node ${process.versions.node}`,

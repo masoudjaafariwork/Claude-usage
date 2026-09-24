@@ -26,7 +26,7 @@ test('reconcileLoginItem: a missing or stale item is re-registered only when wan
 test('isStartupApprovedDisabled reads the Task Manager on/off flag', () => {
   const out = (hex: string) =>
     `\r\nHKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run\r\n` +
-    `    com.masoudjaafari.claude-usage-overlay    REG_BINARY    ${hex}\r\n\r\n`;
+    `    com.masoudjaafari.claude-usage    REG_BINARY    ${hex}\r\n\r\n`;
   assert.equal(isStartupApprovedDisabled(out('03000000D02E1ACDB84BDD01')), true);
   assert.equal(isStartupApprovedDisabled(out('070000000000000000000000')), true);
   assert.equal(isStartupApprovedDisabled(out('020000000000000000000000')), false);
@@ -36,13 +36,13 @@ test('isStartupApprovedDisabled reads the Task Manager on/off flag', () => {
 
 test('linuxAutostartFile honours an absolute XDG_CONFIG_HOME only', () => {
   const file = (p: string) => p.replace(/\\/g, '/');
-  assert.equal(file(linuxAutostartFile({}, '/home/u')), '/home/u/.config/autostart/claude-usage-overlay.desktop');
-  assert.equal(file(linuxAutostartFile({ XDG_CONFIG_HOME: '/cfg' }, '/home/u')), '/cfg/autostart/claude-usage-overlay.desktop');
-  assert.equal(file(linuxAutostartFile({ XDG_CONFIG_HOME: 'rel' }, '/home/u')), '/home/u/.config/autostart/claude-usage-overlay.desktop');
+  assert.equal(file(linuxAutostartFile({}, '/home/u')), '/home/u/.config/autostart/claude-usage.desktop');
+  assert.equal(file(linuxAutostartFile({ XDG_CONFIG_HOME: '/cfg' }, '/home/u')), '/cfg/autostart/claude-usage.desktop');
+  assert.equal(file(linuxAutostartFile({ XDG_CONFIG_HOME: 'rel' }, '/home/u')), '/home/u/.config/autostart/claude-usage.desktop');
 });
 
 test('quoteExecArg follows the Desktop Entry quoting rules', () => {
-  assert.equal(quoteExecArg('/opt/Claude Usage Overlay/claude-usage-overlay'), '"/opt/Claude Usage Overlay/claude-usage-overlay"');
+  assert.equal(quoteExecArg('/opt/Claude Usage/claude-usage'), '"/opt/Claude Usage/claude-usage"');
   assert.equal(quoteExecArg('/a/100%/b'), '"/a/100%%/b"');
   // Reserved characters get a backslash, and every backslash is then escaped once more.
   assert.equal(quoteExecArg('/a/$x`"y'), '"/a/\\\\$x\\\\`\\\\"y"');
@@ -52,7 +52,7 @@ test('quoteExecArg follows the Desktop Entry quoting rules', () => {
 
 test('parseLinuxAutostart detects on / disabled / stale / missing entries', () => {
   const exec = execLine('/home/u/Apps/claude.AppImage');
-  const entry = linuxDesktopEntry('Claude Usage Overlay', exec);
+  const entry = linuxDesktopEntry('Claude Usage', exec);
   assert.equal(parseLinuxAutostart(entry, exec), 'on');
   assert.equal(parseLinuxAutostart(null, exec), 'off');
   assert.equal(parseLinuxAutostart(entry, execLine('/moved/claude.AppImage')), 'off');

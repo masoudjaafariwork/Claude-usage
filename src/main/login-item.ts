@@ -47,7 +47,7 @@ function windowsLoginItem(appId: string): LoginItem {
     available: true,
     state() {
       // Electron 44's launchItems / executableWillLaunchAtLogin never match a path with spaces
-      // ("Claude Usage Overlay.exe" always has them), so read Task Manager's on/off flag directly.
+      // ("Claude Usage.exe" always has them), so read Task Manager's on/off flag directly.
       if (!app.getLoginItemSettings(options).openAtLogin) return 'off';
       return windowsStartupDisabled(appId) ? 'disabled' : 'on';
     },

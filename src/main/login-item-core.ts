@@ -48,7 +48,7 @@ export function isStartupApprovedDisabled(regQueryOutput: string): boolean {
 export function linuxAutostartFile(env: Readonly<Record<string, string | undefined>>, home: string): string {
   const xdg = env.XDG_CONFIG_HOME;
   const configHome = xdg && isAbsolute(xdg) ? xdg : join(home, '.config');
-  return join(configHome, 'autostart', 'claude-usage-overlay.desktop');
+  return join(configHome, 'autostart', 'claude-usage.desktop');
 }
 
 /**
@@ -71,7 +71,7 @@ export function linuxDesktopEntry(name: string, exec: string): string {
     `Name=${name}`,
     'Comment=Shows your Claude plan usage limits',
     `Exec=${exec}`,
-    'Icon=claude-usage-overlay',
+    'Icon=claude-usage',
     'Terminal=false',
     'X-GNOME-Autostart-enabled=true',
     '',

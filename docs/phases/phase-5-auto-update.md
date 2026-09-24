@@ -63,7 +63,7 @@ Code-signing purchase/setup, delta updates, beta channels.
 Paste into a new Claude Code session opened in this repository:
 
 ```text
-Implement Phase 5 of Claude Usage Overlay as specified in docs/phases/phase-5-auto-update.md
+Implement Phase 5 of Claude Usage as specified in docs/phases/phase-5-auto-update.md
 (in-app auto-update from GitHub Releases). Read CLAUDE.md, docs/PROGRESS.md and that phase file
 first. Ask me before adding electron-updater, and ask whether the GitHub repository is public before
 designing the update source. Never push, tag or publish releases yourself — tell me exactly what to

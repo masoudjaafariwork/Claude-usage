@@ -77,7 +77,7 @@ Settings window (menus are enough for now), history charts (idea list), new data
 Paste into a new Claude Code session opened in this repository:
 
 ```text
-Implement Phase 4 of Claude Usage Overlay as specified in docs/phases/phase-4-ux.md
+Implement Phase 4 of Claude Usage as specified in docs/phases/phase-4-ux.md
 (threshold notifications, lock/click-through mode, global shortcut, size scale, pace forecast,
 optional light theme). Read CLAUDE.md, docs/PROGRESS.md and that phase file first. Do not add any
 API requests — everything must work from the existing polling. Follow the phase file's Scope,

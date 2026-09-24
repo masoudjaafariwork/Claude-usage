@@ -75,9 +75,9 @@ export function buildMenu(settings: Readonly<Settings>, context: MenuContext, ac
       click: (item) => actions.setLaunchAtLogin(item.checked),
     },
     { label: 'Open settings folder', click: () => actions.openSettingsFolder() },
-    { label: `About Claude Usage Overlay v${app.getVersion()}`, click: () => actions.showAbout() },
+    { label: `About Claude Usage v${app.getVersion()}`, click: () => actions.showAbout() },
     { type: 'separator' },
-    { label: 'Quit Claude Usage Overlay', click: () => actions.quit() },
+    { label: 'Quit Claude Usage', click: () => actions.quit() },
   );
 
   return Menu.buildFromTemplate(template);
