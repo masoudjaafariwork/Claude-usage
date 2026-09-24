@@ -5,11 +5,24 @@
 //   --mock[=scenario]      fake data (scenarios in mock.ts), separate userData directory
 //   --screenshot=<file>    render, save a PNG of the overlay to <file>, then quit
 //   --compact / --expanded override the view mode for this run
-import { app, BrowserWindow, ipcMain, powerMonitor, screen, type IpcMainEvent, type IpcMainInvokeEvent } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  nativeImage,
+  powerMonitor,
+  screen,
+  shell,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+} from 'electron';
 import { writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { AppState } from '../shared/types';
 import { readCredentials } from './credentials';
+import { createLoginItem } from './login-item';
+import { reconcileLoginItem } from './login-item-core';
 import { buildMenu, type MenuActions } from './menu';
 import { MOCK_SCENARIOS, createMockSource, isMockScenario, type MockScenario } from './mock';
 import { SettingsStore } from './settings';
@@ -17,7 +30,15 @@ import { loadSnapshot, saveSnapshot } from './snapshot-cache';
 import { TrayController } from './tray';
 import { fetchUsageJson } from './usage-api';
 import { UsageService } from './usage-service';
-import { applyAlwaysOnTop, createOverlayWindow, ensureOnScreen, fitToContent, moveToDisplay, resetPosition } from './window';
+import {
+  APP_ICON_PATH,
+  applyAlwaysOnTop,
+  createOverlayWindow,
+  ensureOnScreen,
+  fitToContent,
+  moveToDisplay,
+  resetPosition,
+} from './window';
 
 interface CliOptions {
   mock: MockScenario | null;
@@ -42,6 +63,9 @@ function parseArgs(argv: string[]): CliOptions {
 
 const cli = parseArgs(process.argv.slice(1));
 
+/** Windows AppUserModelId; must equal build.appId in package.json (installer shortcuts use it). */
+const APP_ID = 'com.masoudjaafari.claude-usage-overlay';
+
 // Mock runs get their own settings/cache so they never touch real data (and can run side by side).
 if (cli.mock) app.setPath('userData', join(app.getPath('userData'), 'mock-data'));
 
@@ -56,11 +80,24 @@ if (!app.requestSingleInstanceLock()) {
 
 function start(): void {
   if (process.platform === 'darwin') app.dock?.hide();
-  if (process.platform === 'win32') app.setAppUserModelId('com.masoudjaafari.claude-usage-overlay');
+  if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 
   const userData = app.getPath('userData');
   const settings = new SettingsStore(join(userData, 'settings.json'), !cli.screenshot);
   if (cli.compact !== null) settings.update({ compact: cli.compact });
+
+  // Dev, mock and screenshot runs never touch the OS login items.
+  const loginItem = createLoginItem(app.isPackaged && !cli.mock && !cli.screenshot, APP_ID);
+  if (loginItem.available) {
+    try {
+      const wanted = settings.get().launchAtLogin;
+      const { launchAtLogin, register } = reconcileLoginItem(wanted, loginItem.state());
+      if (register) loginItem.set(true);
+      if (launchAtLogin !== wanted) settings.update({ launchAtLogin });
+    } catch (err) {
+      console.error('Launch at login sync failed:', err);
+    }
+  }
 
   const snapshotFile = join(userData, 'last-usage.json');
   const intervalSec = () => settings.get().refreshIntervalSec;
@@ -73,7 +110,7 @@ function start(): void {
       };
   const service = new UsageService(source.deps, source.initialSnapshot);
 
-  const win = createOverlayWindow(settings.get());
+  const { win, restoredPosition } = createOverlayWindow(settings.get());
   let quitting = false;
   let shown = false;
 
@@ -118,10 +155,25 @@ function start(): void {
       resetPosition(win);
       if (!win.isVisible()) actions.toggleWindow();
     },
+    setLaunchAtLogin: (on) => {
+      let actual = on;
+      try {
+        loginItem.set(on);
+        actual = loginItem.state() === 'on';
+      } catch (err) {
+        console.error('Launch at login failed:', err);
+        actual = !on;
+      }
+      settings.update({ launchAtLogin: actual });
+      updateTray();
+    },
+    openSettingsFolder: () => void shell.openPath(userData),
+    showAbout: () => void showAbout(),
     quit: () => app.quit(),
   };
 
-  const menu = () => buildMenu(settings.get(), win.isVisible(), actions);
+  const menu = () =>
+    buildMenu(settings.get(), { windowVisible: win.isVisible(), loginItemAvailable: loginItem.available }, actions);
   const tray = new TrayController(() => actions.toggleWindow());
 
   function updateTray(): void {
@@ -158,7 +210,8 @@ function start(): void {
   });
   ipcMain.on('window:resize', (event, width: unknown, height: unknown) => {
     if (!fromOverlay(event) || typeof width !== 'number' || typeof height !== 'number') return;
-    fitToContent(win, width, height);
+    // Before the first show, a restored position keeps its top-left corner (see fitToContent).
+    fitToContent(win, width, height, shown || !restoredPosition);
     if (!shown) showFirstTime();
   });
 
@@ -224,6 +277,22 @@ function start(): void {
   });
 
   service.start();
+}
+
+async function showAbout(): Promise<void> {
+  await dialog.showMessageBox({
+    type: 'none',
+    title: 'About Claude Usage Overlay',
+    message: `Claude Usage Overlay ${app.getVersion()}`,
+    detail: [
+      'Always-on-top overlay for your Claude plan usage limits.',
+      `Electron ${process.versions.electron} · Chromium ${process.versions.chrome} · Node ${process.versions.node}`,
+      '',
+      'License: GPL-3.0. Not affiliated with Anthropic.',
+    ].join('\n'),
+    icon: nativeImage.createFromPath(APP_ICON_PATH).resize({ width: 64, height: 64, quality: 'best' }),
+    buttons: ['OK'],
+  });
 }
 
 async function captureAndQuit(win: BrowserWindow, file: string): Promise<void> {

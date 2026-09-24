@@ -1,0 +1,82 @@
+# Builds the installers on Windows, macOS and Linux when a version tag (v*) is pushed, and attaches
+# them to a DRAFT GitHub Release. Publishing the draft is a manual step on GitHub.
+#
+# Release: bump "version" in package.json, commit, `git tag v<version>`, push the tag.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            script: dist:win # NSIS installer + portable exe (x64)
+          - os: macos-latest
+            script: dist:mac # dmg for x64 and arm64, ad-hoc signed
+          - os: ubuntu-latest
+            script: dist:linux # AppImage + deb (x64)
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Tag must match package.json version
+        shell: bash
+        run: |
+          expected="v$(node -p "require('./package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "$expected" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version ($expected)"
+            exit 1
+          fi
+
+      - run: npm ci
+      - run: npm run check
+      - run: npm run ${{ matrix.script }}
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
+            release/*.exe
+            release/*.dmg
+            release/*.AppImage
+            release/*.deb
+
+  draft-release:
+    name: Draft GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create the draft (or add files to an existing one on re-runs)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          ls -la artifacts
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" artifacts/* --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" artifacts/* --draft --generate-notes \
+              --title "Claude Usage Overlay ${GITHUB_REF_NAME#v}"
+          fi

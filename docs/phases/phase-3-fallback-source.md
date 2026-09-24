@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| **Status** | Planned |
+| **Status** | ⏭️ Next |
 | **Depends on** | Phase 1 (Phase 2 recommended first) |
 | **Size** | One Claude Code session |
 

@@ -4,7 +4,11 @@
   "version": "0.1.0",
   "description": "Always-on-top desktop overlay that shows your Claude plan usage limits.",
   "main": "dist/main/main.js",
-  "author": "Masoud Jaafari",
+  "author": {
+    "name": "Masoud Jaafari",
+    "email": "masoudjaafariwork@gmail.com"
+  },
+  "homepage": "https://github.com/masoudjaafariwork/Claude-usage",
   "license": "GPL-3.0-only",
   "private": true,
   "scripts": {
@@ -15,11 +19,91 @@
     "start": "npm run build && node scripts/start.mjs",
     "start:mock": "npm run build && node scripts/start.mjs --mock",
     "screenshot": "node scripts/screenshots.mjs",
-    "check": "npm run typecheck && npm test"
+    "check": "npm run typecheck && npm test",
+    "make-icon": "node scripts/make-icon.mjs",
+    "dist": "npm run build && electron-builder --publish never",
+    "dist:win": "npm run build && electron-builder --win --publish never",
+    "dist:mac": "npm run build && electron-builder --mac --publish never",
+    "dist:linux": "npm run build && electron-builder --linux --publish never"
+  },
+  "build": {
+    "appId": "com.masoudjaafari.claude-usage-overlay",
+    "copyright": "Copyright © 2026 Masoud Jaafari",
+    "extraMetadata": {
+      "description": "Claude Usage Overlay"
+    },
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist/**/*",
+      "!dist/**/*.map",
+      "package.json"
+    ],
+    "publish": null,
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "include": "build/installer.nsh"
+    },
+    "portable": {
+      "artifactName": "${productName} ${version} Portable.${ext}"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.utilities",
+      "identity": "-",
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "LSUIElement": true
+      }
+    },
+    "dmg": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Utility",
+      "synopsis": "Always-on-top overlay for your Claude plan usage limits",
+      "maintainer": "Masoud Jaafari <masoudjaafariwork@gmail.com>",
+      "description": "Always-on-top desktop overlay that shows your Claude plan usage limits."
+    },
+    "appImage": {
+      "artifactName": "${name}-${version}-${arch}.${ext}"
+    }
   },
   "devDependencies": {
     "@types/node": "^22.20.4",
     "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
     "typescript": "^7.0.2"
   }

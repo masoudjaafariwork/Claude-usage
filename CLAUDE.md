@@ -27,6 +27,8 @@ same numbers as Claude → Settings → Usage, refreshed automatically.
 | `npm run screenshot -- [outDir] [scenario…]` | Render mock scenarios (expanded + compact) to PNGs (default `./screenshots/`) |
 | `npm run check` | Typecheck (main + renderer configs) and unit tests |
 | `npm run build` / `npm run watch` | esbuild bundle to `dist/` |
+| `npm run dist` / `dist:win` / `dist:mac` / `dist:linux` | Build + electron-builder installers into `release/` (never publishes) |
+| `npm run make-icon` | Regenerate `build/icon.png` (committed) |
 
 Mock scenarios: `normal`, `warning`, `critical`, `expired`, `no-credentials`, `rate-limited`,
 `offline`, `loading` (defined in `src/main/mock.ts`). Extra flags: `--compact`, `--expanded`,
@@ -45,6 +47,8 @@ src/
     usage-parse.ts       Raw JSON → UsageSnapshot (tolerant; limits[] first, legacy keys fallback) [pure]
     usage-service.ts     Polling, backoff, status state machine, emits 'change'                   [pure]
     settings.ts          settings.json in userData (sanitized, atomic writes)                     [pure]
+    login-item.ts        Launch at login per OS (Electron API on Win/macOS, XDG autostart on Linux)
+    login-item-core.ts   Reconcile setting ↔ OS, Task Manager flag parsing, Linux .desktop entry  [pure]
     snapshot-cache.ts    last-usage.json — last good snapshot, shown as stale on startup
     window.ts            Frameless transparent always-on-top window, fit-to-content, multi-monitor
     tray.ts / tray-icon.ts  Tray with a live progress ring drawn into a PNG at runtime  [tray-icon pure]
@@ -53,7 +57,9 @@ src/
     fixtures/            Real API responses used by tests
   preload/preload.ts     contextBridge → window.overlay (OverlayApi)
   renderer/              Sandboxed UI: index.html, styles.css, renderer.ts (DOM), format.ts [pure]
-scripts/                 build.mjs, test.mjs, start.mjs, screenshots.mjs
+scripts/                 build.mjs, test.mjs, start.mjs, screenshots.mjs, make-icon.mjs
+build/                   icon.png (generated, committed), installer.nsh (NSIS uninstall hook)
+.github/workflows/       release.yml — tag v* → build on 3 OSes → draft GitHub Release
 docs/                    PROGRESS.md, BACKLOG.md (phase index), phases/ (one plan per phase), images/
 ```
 
@@ -95,3 +101,14 @@ Data flow: `UsageService` (main) reads credentials → fetches → parses → em
 - Screenshots are in physical pixels (125 % scaling → 1.25× the CSS size).
 - TypeScript 7 (native `tsc`) is used only for type-checking; esbuild does the bundling.
 - To stop a test run of the app, kill its own PID tree — not every `electron.exe`.
+- The installed app and `npm start` share userData (`%APPDATA%\Claude Usage Overlay`) and therefore
+  the single-instance lock: `npm start` exits at once while the installed app runs. Quit it first.
+  Mock runs use their own userData and are not affected.
+- The packaged exe also runs as plain Node when `ELECTRON_RUN_AS_NODE=1` is inherited; start it via
+  `explorer.exe <exe or .lnk>` from these terminals.
+- `APP_ID` in `main.ts` = `build.appId` in `package.json` = the Run-key value name that
+  `build/installer.nsh` removes (`${APP_ID}`). Change all three together.
+- Windows login items: Electron 44's `launchItems` / `executableWillLaunchAtLogin` ignore paths
+  with spaces; `login-item.ts` uses `openAtLogin` + the StartupApproved flag instead (D18).
+- `npm run dist:win` builds Windows only; the dmg needs macOS and the Linux packages Linux — CI
+  (`release.yml`) builds all three.

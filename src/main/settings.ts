@@ -11,6 +11,8 @@ export interface Settings {
   /** Overlay opacity, 0.3–1. */
   opacity: number;
   refreshIntervalSec: number;
+  /** Start with the OS. Mirrors the OS login item; reconciled with it on startup (login-item-core.ts). */
+  launchAtLogin: boolean;
 }
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
@@ -19,6 +21,7 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   alwaysOnTop: true,
   opacity: 1,
   refreshIntervalSec: 180,
+  launchAtLogin: false,
 };
 
 export const REFRESH_INTERVAL_OPTIONS_SEC = [60, 120, 180, 300, 600] as const;
@@ -40,6 +43,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     refreshIntervalSec: isFiniteNumber(r.refreshIntervalSec)
       ? Math.min(MAX_REFRESH_SEC, Math.max(MIN_REFRESH_SEC, Math.round(r.refreshIntervalSec)))
       : DEFAULT_SETTINGS.refreshIntervalSec,
+    launchAtLogin: typeof r.launchAtLogin === 'boolean' ? r.launchAtLogin : DEFAULT_SETTINGS.launchAtLogin,
   };
 }
 

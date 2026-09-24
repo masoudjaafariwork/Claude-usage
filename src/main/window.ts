@@ -8,6 +8,8 @@ import type { Settings } from './settings';
 const INITIAL_SIZE = { width: 344, height: 280 };
 /** Gap from the screen edge when placing the overlay in a corner. */
 const EDGE_MARGIN = 16;
+/** App icon copied to dist/ by scripts/build.mjs (Windows/macOS take theirs from the packaged app). */
+export const APP_ICON_PATH = join(__dirname, '../icon.png');
 
 function intersect(a: Rectangle, b: Rectangle): { width: number; height: number } {
   const width = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
@@ -29,11 +31,17 @@ function topRightOf(display: Display, width: number): { x: number; y: number } {
   return { x: area.x + area.width - width - EDGE_MARGIN, y: area.y + EDGE_MARGIN };
 }
 
-export function createOverlayWindow(settings: Readonly<Settings>): BrowserWindow {
+export interface OverlayWindow {
+  win: BrowserWindow;
+  /** True when the window starts at the saved position (false: default corner). */
+  restoredPosition: boolean;
+}
+
+export function createOverlayWindow(settings: Readonly<Settings>): OverlayWindow {
   const { width, height } = INITIAL_SIZE;
   const saved = settings.position;
-  const position =
-    saved && isReachable({ ...saved, width, height }) ? saved : topRightOf(screen.getPrimaryDisplay(), width);
+  const restoredPosition = saved !== null && isReachable({ ...saved, width, height });
+  const position = restoredPosition ? saved : topRightOf(screen.getPrimaryDisplay(), width);
 
   const win = new BrowserWindow({
     ...position,
@@ -50,6 +58,7 @@ export function createOverlayWindow(settings: Readonly<Settings>): BrowserWindow
     fullscreenable: false,
     skipTaskbar: true,
     title: 'Claude Usage',
+    ...(process.platform === 'linux' ? { icon: APP_ICON_PATH } : {}),
     webPreferences: {
       preload: join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
@@ -67,7 +76,7 @@ export function createOverlayWindow(settings: Readonly<Settings>): BrowserWindow
   win.webContents.on('will-navigate', (event) => event.preventDefault());
 
   void win.loadFile(join(__dirname, '../renderer/index.html'));
-  return win;
+  return { win, restoredPosition };
 }
 
 export function applyAlwaysOnTop(win: BrowserWindow, on: boolean): void {
@@ -76,10 +85,12 @@ export function applyAlwaysOnTop(win: BrowserWindow, on: boolean): void {
 }
 
 /**
- * Resizes the window to the renderer's content. The edge nearest to the screen border stays put,
- * so an overlay parked in a right/bottom corner grows and shrinks away from that corner.
+ * Resizes the window to the renderer's content. With `keepNearestEdge` the edge nearest to the screen
+ * border stays put, so an overlay parked in a right/bottom corner grows and shrinks away from that
+ * corner. Without it the top-left corner stays put — used for the first fit at a restored position,
+ * which was saved at the real size (anchoring there would shift the overlay on every start).
  */
-export function fitToContent(win: BrowserWindow, contentWidth: number, contentHeight: number): void {
+export function fitToContent(win: BrowserWindow, contentWidth: number, contentHeight: number, keepNearestEdge = true): void {
   const width = Math.min(800, Math.max(80, Math.ceil(contentWidth)));
   const height = Math.min(1200, Math.max(40, Math.ceil(contentHeight)));
   const current = win.getBounds();
@@ -87,8 +98,8 @@ export function fitToContent(win: BrowserWindow, contentWidth: number, contentHe
 
   const area = screen.getDisplayMatching(current).workArea;
   let { x, y } = current;
-  if (current.x + current.width / 2 > area.x + area.width / 2) x = current.x + current.width - width;
-  if (current.y + current.height / 2 > area.y + area.height / 2) y = current.y + current.height - height;
+  if (keepNearestEdge && current.x + current.width / 2 > area.x + area.width / 2) x = current.x + current.width - width;
+  if (keepNearestEdge && current.y + current.height / 2 > area.y + area.height / 2) y = current.y + current.height - height;
   x = Math.min(Math.max(x, area.x), area.x + area.width - width);
   y = Math.min(Math.max(y, area.y), area.y + area.height - height);
   win.setBounds({ x, y, width, height });

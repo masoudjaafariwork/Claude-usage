@@ -9,8 +9,8 @@ technical notes, acceptance criteria, a manual test checklist, a ready-to-paste 
 | # | Phase | Status | Plan |
 | --- | --- | --- | --- |
 | 1 | MVP overlay | ✅ Done (2026-09-24) | [phase-1-mvp-overlay.md](phases/phase-1-mvp-overlay.md) |
-| 2 | Packaging, app icon, launch at login | ⏭️ Next | [phase-2-packaging.md](phases/phase-2-packaging.md) |
-| 3 | Fallback data source (claude.ai sign-in) & diagnostics | Planned | [phase-3-fallback-source.md](phases/phase-3-fallback-source.md) |
+| 2 | Packaging, app icon, launch at login | ✅ Done (2026-09-24) | [phase-2-packaging.md](phases/phase-2-packaging.md) |
+| 3 | Fallback data source (claude.ai sign-in) & diagnostics | ⏭️ Next | [phase-3-fallback-source.md](phases/phase-3-fallback-source.md) |
 | 4 | UX: notifications, click-through, shortcut, size, pace forecast | Planned | [phase-4-ux.md](phases/phase-4-ux.md) |
 | 5 | App auto-update | Planned | [phase-5-auto-update.md](phases/phase-5-auto-update.md) |
 
@@ -59,3 +59,9 @@ Move an idea into a phase file (with the "Plan a new phase" prompt) when it's ti
 - Tray-only / menu-bar-only mode (no overlay).
 - Extract the pure window-position math from `window.ts` and unit-test it.
 - Show which limit is binding (`is_active`) once its meaning is confirmed.
+- Code signing: a Windows certificate (no SmartScreen warning) and an Apple Developer ID with
+  notarization (no "Open Anyway" step).
+- arm64 builds for Windows and Linux.
+- A manual "build only" trigger (`workflow_dispatch`) for the release workflow, to test CI without a tag.
+- Report the Electron login-item bug (paths with spaces) upstream; drop the `reg.exe` workaround
+  once it is fixed (D18).

@@ -1,5 +1,5 @@
 // The context menu, shared by the tray icon, the overlay's ⋯ button and right-click.
-import { Menu, screen, type MenuItemConstructorOptions } from 'electron';
+import { Menu, app, screen, type MenuItemConstructorOptions } from 'electron';
 import { OPACITY_OPTIONS, REFRESH_INTERVAL_OPTIONS_SEC, type Settings } from './settings';
 
 export interface MenuActions {
@@ -11,10 +11,20 @@ export interface MenuActions {
   setRefreshInterval(seconds: number): void;
   moveToDisplay(displayId: number): void;
   resetPosition(): void;
+  setLaunchAtLogin(on: boolean): void;
+  openSettingsFolder(): void;
+  showAbout(): void;
   quit(): void;
 }
 
-export function buildMenu(settings: Readonly<Settings>, windowVisible: boolean, actions: MenuActions): Menu {
+export interface MenuContext {
+  windowVisible: boolean;
+  /** Launch at login works only in the packaged app. */
+  loginItemAvailable: boolean;
+}
+
+export function buildMenu(settings: Readonly<Settings>, context: MenuContext, actions: MenuActions): Menu {
+  const { windowVisible, loginItemAvailable } = context;
   const displays = screen.getAllDisplays();
   const primaryId = screen.getPrimaryDisplay().id;
 
@@ -56,6 +66,16 @@ export function buildMenu(settings: Readonly<Settings>, windowVisible: boolean, 
 
   template.push(
     { label: 'Reset position', click: () => actions.resetPosition() },
+    { type: 'separator' },
+    {
+      label: loginItemAvailable ? 'Launch at login' : 'Launch at login (installed app only)',
+      type: 'checkbox',
+      checked: settings.launchAtLogin,
+      enabled: loginItemAvailable,
+      click: (item) => actions.setLaunchAtLogin(item.checked),
+    },
+    { label: 'Open settings folder', click: () => actions.openSettingsFolder() },
+    { label: `About Claude Usage Overlay v${app.getVersion()}`, click: () => actions.showAbout() },
     { type: 'separator' },
     { label: 'Quit Claude Usage Overlay', click: () => actions.quit() },
   );
