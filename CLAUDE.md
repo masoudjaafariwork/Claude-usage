@@ -1,4 +1,4 @@
-# Claude Usage Overlay — project guide for Claude
+# Claude Usage — project guide for Claude
 
 Always-on-top desktop overlay (Electron + TypeScript, Windows/macOS/Linux) that shows the user's
 Claude plan usage limits — current session, weekly, per-model weekly, weekly split by app — i.e. the
@@ -116,7 +116,7 @@ Data flow: `UsageService` (main) reads credentials → fetches → parses → em
 - Screenshots are in physical pixels (125 % scaling → 1.25× the CSS size).
 - TypeScript 7 (native `tsc`) is used only for type-checking; esbuild does the bundling.
 - To stop a test run of the app, kill its own PID tree — not every `electron.exe`.
-- The installed app and `npm start` share userData (`%APPDATA%\Claude Usage Overlay`) and therefore
+- The installed app and `npm start` share userData (`%APPDATA%\Claude Usage`) and therefore
   the single-instance lock: `npm start` exits at once while the installed app runs. Quit it first.
   Mock runs use their own userData and are not affected.
 - The packaged exe also runs as plain Node when `ELECTRON_RUN_AS_NODE=1` is inherited; start it via

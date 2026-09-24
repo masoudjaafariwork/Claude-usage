@@ -48,7 +48,7 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D3 | **Never refresh or write Claude Code's credentials** | Refresh tokens are single-use and rotate; refreshing from this app would silently log Claude Code out (known bug in other tools, e.g. CodexBar #1161). Expired token ⇒ show a banner and re-read the file every 60 s. |
 | D4 | esbuild bundling + `tsc --noEmit` (TypeScript 7); zero runtime dependencies | Simple, fast, few moving parts for future sessions. |
 | D5 | Network via Electron `net.fetch` | Honours system proxy / VPN settings. |
-| D6 | Honest User-Agent `ClaudeUsageOverlay/<version> (…)` | Returned 200 on 2026-09-24. Reports elsewhere say non-`claude-code` UAs can hit stricter rate limits; revisit only if persistent 429s appear. |
+| D6 | Honest User-Agent `ClaudeUsage/<version> (…)` (`ClaudeUsageOverlay/…` until v0.1.0) | Returned 200 on 2026-09-24 (both). Reports elsewhere say non-`claude-code` UAs can hit stricter rate limits; revisit only if persistent 429s appear. |
 | D7 | Poll every 180 s by default (60–3600 s), poll again 5 s after the earliest reset, min gap 30 s, manual refresh throttled to 5 s | Fresh enough; polite to an unofficial, rate-limited endpoint shared with Claude Code. |
 | D8 | Parse the `limits[]` array first; fall back to legacy `five_hour` / `seven_day*` keys; ignore unknown codenamed keys | The response contains many codenamed, mostly-null keys that change over time. |
 | D9 | Severity = max(server `severity`, derived from %: ≥75 warning, ≥90 critical) | Server severity alone stayed "normal" at 52 %; thresholds give earlier colour cues without ever downgrading the server. |
@@ -62,11 +62,12 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D17 | `settings.launchAtLogin` mirrors the OS login item; on startup the OS wins when it is on or was switched off there, otherwise the setting is re-applied | Respects Task Manager / Login Items / GNOME toggles; re-registering repairs the path after a portable exe or AppImage moves. |
 | D18 | Windows login item state = `openAtLogin` + the Task Manager flag read from `StartupApproved\Run` via `reg.exe` | Electron 44's `launchItems` / `executableWillLaunchAtLogin` never match paths with spaces (verified 2026-09-24). |
 | D19 | NSIS `customUnInstall` (`build/installer.nsh`) deletes the Run + StartupApproved values unless `${isUpdated}` | Electron writes them at runtime, so the default uninstaller would leave a dead startup entry. |
-| D20 | Linux autostart = `~/.config/autostart/claude-usage-overlay.desktop`, `Exec` = `$APPIMAGE` or `execPath`, keeps `--no-sandbox` | XDG standard; AppImages on Ubuntu 24.04+ often need `--no-sandbox`. |
+| D20 | Linux autostart = `~/.config/autostart/claude-usage.desktop`, `Exec` = `$APPIMAGE` or `execPath`, keeps `--no-sandbox` | XDG standard; AppImages on Ubuntu 24.04+ often need `--no-sandbox`. |
 | D21 | Package author / deb maintainer: Masoud Jaafari <masoudjaafariwork@gmail.com> | User's choice (2026-09-24). |
 | D22 | Windows file description = product name (`build.extraMetadata.description`); the long text only in `build.linux.description` | Task Manager → Startup apps shows the exe's description as the app name. |
 | D23 | The first `fitToContent` after start keeps a restored position's top-left; edge anchoring only for live resizes and the default corner | Anchoring the first fit moved the overlay (content height − 280) px on every start in the lower half of a display. |
 | D24 | Keep a Persian, teacher-style Electron book at `D:\Clade usage\electron-book.html` (outside the repo) and update it after every phase; private artifact copy on claude.ai | The owner is learning Electron through this project and wants a complete book by the end. Outside the repo because it is personal learning material, not project documentation (which stays English). |
+| D25 | Product renamed **Claude Usage Overlay → Claude Usage** (package `claude-usage`, appId `com.masoudjaafari.claude-usage`, userData `%APPDATA%\Claude Usage`), version 0.2.0 | User's choice: shorter, matches the repo and the in-app title. Done right after the v0.1.0 prerelease (1 download, the owner's). A new appId makes it a separate app — uninstall 0.1.0 first; settings don't carry over (no migration code for a name that lived one day). |
 
 ## Usage API notes (observed 2026-09-24)
 
@@ -91,8 +92,9 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
   The macOS/Linux packages and their launch-at-login code are only built by CI, never run.
   The macOS login-item mapping (`status: requires-approval` → "switched off") is an assumption.
 - Builds are unsigned: SmartScreen warns on Windows; macOS isn't notarized (Open Anyway / `xattr`).
-- The release workflow hasn't run yet (needs a pushed tag).
-- Uninstalling keeps `%APPDATA%\Claude Usage Overlay` (settings incl. `launchAtLogin`), so a
+- v0.1.0 was published (prerelease) as *Claude Usage Overlay*. On Windows, 0.2.0 installs next to
+  it instead of replacing it; the README tells 0.1.0 users to uninstall it first.
+- Uninstalling keeps `%APPDATA%\Claude Usage` (settings incl. `launchAtLogin`), so a
   reinstall turns launch at login back on at its first start.
 - The installed app and the portable exe share settings and the login item name: the copy that
   started last owns the login item; uninstalling the installed app also removes a portable copy's
@@ -119,7 +121,7 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 
 ### 2026-09-24 — Session 2: Phase 2 (packaging, icon, launch at login, release workflow)
 
-- User decisions: maintainer email masoudjaafariwork@gmail.com (D21); macOS ad-hoc signing
+- User decisions: maintainer email `masoudjaafariwork@gmail.com` (D21); macOS ad-hoc signing
   instead of `identity: null` (D16); fix the position-drift bug now (D23).
 - Added electron-builder 26.15.3 (dev dependency), the app icon generator, launch at login
   (Windows, macOS, Linux), About / Open settings folder menu items, the NSIS uninstall hook, the
@@ -138,3 +140,18 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 - New standing rules in `CLAUDE.md`: update the book after every phase; always hand the user a
   ready-to-paste commit message when work is left to commit.
 - No app code changed.
+
+### 2026-09-24 — Session 4: rename to Claude Usage (v0.2.0)
+
+- Renamed the product to **Claude Usage** (D25): package `claude-usage`, appId
+  `com.masoudjaafari.claude-usage`, User-Agent `ClaudeUsage/<version>`, Linux autostart file
+  `claude-usage.desktop`; version bumped to 0.2.0 (the v0.1.0 prerelease keeps the old name).
+- Verified on Windows: `Claude Usage Setup 0.2.0.exe` installs next to the owner's v0.1.0 (both in
+  Settings → Apps), fetches real data with the new User-Agent, registers launch at login under the
+  new appId, and its uninstall removes only its own entry.
+- Copied the owner's `settings.json` + `last-usage.json` from `%APPDATA%\Claude Usage Overlay` to
+  `%APPDATA%\Claude Usage` (one-off; no migration code).
+- Electron book v1.1: names updated everywhere, new section "what an app's name controls" in the
+  electron-builder chapter; artifact republished.
+- Open: the v0.1.0 prerelease on GitHub (old name) — the owner decides whether to delete it; v0.2.0
+  is released by pushing tag `v0.2.0`.
