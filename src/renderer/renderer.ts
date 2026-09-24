@@ -248,7 +248,13 @@ function bannerSpec(st: AppState, now: Date): BannerSpec | null {
       tone: 'warn',
       icon: 'key',
       title: 'Not signed in to Claude Code',
-      body: ['Run ', code('claude'), ' and use ', code('/login'), '. The overlay picks it up automatically.'],
+      body: [
+        'Sign in from the Claude Code panel in VS Code, or run ',
+        code('claude'),
+        ' and use ',
+        code('/login'),
+        '. The overlay picks it up automatically.',
+      ],
     }),
     'rate-limited': () => ({ tone: 'warn', icon: 'clock', title: 'Usage API is rate-limiting', body: [retryText(st, now)] }),
     'network-error': () => ({

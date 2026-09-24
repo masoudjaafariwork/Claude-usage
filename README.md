@@ -30,6 +30,8 @@ Windows · macOS · Linux — Electron + TypeScript.
 
 The overlay reads the sign-in that **Claude Code** already stores on your computer. On Windows and
 Linux that's `~/.claude/.credentials.json`; on macOS it's the Keychain item `Claude Code-credentials`.
+The command-line `claude` and the Claude Code extension for VS Code (which ships its own copy of
+Claude Code) both keep their sign-in there, so either one is enough.
 It uses that token to ask Anthropic's servers for your usage, the same way the Settings → Usage page
 does.
 
@@ -43,8 +45,10 @@ does.
 
 ## Requirements
 
-- [Claude Code](https://docs.claude.com/en/docs/claude-code) installed and signed in (`claude`,
-  then `/login`) with a Claude Pro/Max/Team account.
+- [Claude Code](https://docs.claude.com/en/docs/claude-code) signed in with a Claude Pro/Max/Team
+  account — either the Claude Code extension for VS Code, or the `claude` command-line tool
+  (`claude`, then `/login`). The Claude desktop chat app alone is not enough: it keeps its sign-in
+  elsewhere.
 - Node.js 22+ only if you run from source.
 
 ## Install
@@ -129,7 +133,9 @@ Project guide for AI-assisted development: [CLAUDE.md](CLAUDE.md). Status and de
 
 ## Troubleshooting
 
-- **"Not signed in to Claude Code"**: run `claude` in a terminal and use `/login`.
+- **"Not signed in to Claude Code"**: sign in from the Claude Code panel in VS Code, or run
+  `claude` in a terminal and use `/login`. If you set `CLAUDE_CONFIG_DIR` only in the VS Code
+  extension's settings, the overlay can't see it; set it as a user environment variable instead.
 - **"Claude Code sign-in expired"**: open Claude Code (any session renews the token). The overlay
   picks up the new token within a minute.
 - **"Can't reach Anthropic"**: requests use your system proxy settings. Check your connection or VPN.

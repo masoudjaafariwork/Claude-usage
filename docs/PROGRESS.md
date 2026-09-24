@@ -8,7 +8,7 @@ Living record of where the project stands. Update it at the end of every session
 | --- | --- |
 | [1 — MVP overlay](phases/phase-1-mvp-overlay.md) | ✅ Done (2026-09-24) |
 | [2 — Packaging, app icon, launch at login](phases/phase-2-packaging.md) | ✅ Done (2026-09-24) |
-| [3 — Fallback data source (claude.ai sign-in) & diagnostics](phases/phase-3-fallback-source.md) | ⏭️ Next |
+| [3 — Fallback data sources (claude.ai sign-in, Claude Desktop) & diagnostics](phases/phase-3-fallback-source.md) | ⏭️ Next |
 | [4 — UX: notifications, click-through, shortcut, pace forecast](phases/phase-4-ux.md) | Planned |
 | [5 — App auto-update](phases/phase-5-auto-update.md) | Planned |
 
@@ -67,6 +67,7 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D22 | Windows file description = product name (`build.extraMetadata.description`); the long text only in `build.linux.description` | Task Manager → Startup apps shows the exe's description as the app name. |
 | D23 | The first `fitToContent` after start keeps a restored position's top-left; edge anchoring only for live resizes and the default corner | Anchoring the first fit moved the overlay (content height − 280) px on every start in the lower half of a display. |
 | D24 | Keep a Persian, teacher-style Electron book at `D:\Clade usage\electron-book.html` (outside the repo) and update it after every phase; private artifact copy on claude.ai | The owner is learning Electron through this project and wants a complete book by the end. Outside the repo because it is personal learning material, not project documentation (which stays English). |
+| D26 | Never read Claude Desktop's own sign-in (`config.json` → `oauth:tokenCache*`, encrypted with Electron safeStorage). Desktop-only users are served by Phase 3: its non-secret `plan-usage-history.json` and a claude.ai sign-in inside our app | Decrypting another app's protected token is what credential stealers do (antivirus flags, a macOS Keychain prompt for Claude's key), breaks whenever Desktop changes its storage, and carries the same rotation risk as D3. |
 | D25 | Product renamed **Claude Usage Overlay → Claude Usage** (package `claude-usage`, appId `com.masoudjaafari.claude-usage`, userData `%APPDATA%\Claude Usage`), version 0.2.0 | User's choice: shorter, matches the repo and the in-app title. Done right after the v0.1.0 prerelease (1 download, the owner's). A new appId makes it a separate app — uninstall 0.1.0 first; settings don't carry over (no migration code for a name that lived one day). |
 
 ## Usage API notes (observed 2026-09-24)
@@ -82,6 +83,19 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 - `percent` / `utilization` are 0–100 (not 0–1). `resets_at` is ISO-8601 UTC. Session `resets_at`
   may be null when no session is active.
 
+## Claude Desktop notes (observed 2026-09-24, Claude Desktop 2.110.1, MSIX install)
+
+- Data folder (MSIX): `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude`
+  (Squirrel installs: `%APPDATA%\Claude`; macOS: `~/Library/Application Support/Claude`).
+- It ships its own Claude Code (`claude-code\<version>\claude.exe`) for the Code tab and hands it
+  the token in memory (`CLAUDE_CODE_OAUTH_TOKEN`); it only *reads* `~/.claude/.credentials.json`
+  (to copy it into its sessions) and never writes it. So Desktop alone gives the overlay nothing.
+- It calls the same `api/oauth/usage` endpoint and stores samples every ~15 min (30 days) in
+  `plan-usage-history.json`: `{ version: 2, samples: [{ t, org, u: { fh, sd, so, oa, cw, xu, … } }] }`
+  (`fh` = five_hour, `sd` = seven_day, …). No reset times. Planned as a source in Phase 3.
+- Its own sign-in lives encrypted in `config.json` (`oauth:tokenCache`, `oauth:tokenCacheV2`) — off
+  limits (D26). A `planUsageLastTrayOpenAt` key suggests Desktop shows plan usage in its own tray.
+
 ## Known issues / limitations
 
 - **Sign-in expiry:** if Claude Code isn't used for ~8 h its token expires and the overlay shows
@@ -92,6 +106,10 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
   The macOS/Linux packages and their launch-at-login code are only built by CI, never run.
   The macOS login-item mapping (`status: requires-approval` → "switched off") is an assumption.
 - Builds are unsigned: SmartScreen warns on Windows; macOS isn't notarized (Open Anyway / `xattr`).
+- Sign-in source: the `claude` CLI and the Claude Code VS Code extension (which bundles its own
+  Claude Code binary) both write `~/.claude/.credentials.json` / the Keychain item, so either works.
+  The Claude desktop app alone does not (Phase 3 adds its usage history and a claude.ai sign-in). A
+  `CLAUDE_CONFIG_DIR` set only in the extension's settings is invisible to the overlay.
 - v0.1.0 was published (prerelease) as *Claude Usage Overlay*. On Windows, 0.2.0 installs next to
   it instead of replacing it; the README tells 0.1.0 users to uninstall it first.
 - Uninstalling keeps `%APPDATA%\Claude Usage` (settings incl. `launchAtLogin`), so a
@@ -153,5 +171,9 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
   `%APPDATA%\Claude Usage` (one-off; no migration code).
 - Electron book v1.1: names updated everywhere, new section "what an app's name controls" in the
   electron-builder chapter; artifact republished.
+- Checked that the VS Code extension alone is enough (it runs its own bundled Claude Code, which
+  uses `~/.claude`); README requirements and the "Not signed in" banner now mention it.
+- Checked Claude Desktop: no usable sign-in (D26), but its `plan-usage-history.json` is a clean
+  read-only source → added to the Phase 3 plan (now "Fallback data sources").
 - Open: the v0.1.0 prerelease on GitHub (old name) — the owner decides whether to delete it; v0.2.0
   is released by pushing tag `v0.2.0`.

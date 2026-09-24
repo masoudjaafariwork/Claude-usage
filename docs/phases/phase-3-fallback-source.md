@@ -1,4 +1,4 @@
-# Phase 3 — Fallback data source (claude.ai sign-in) & diagnostics
+# Phase 3 — Fallback data sources (claude.ai sign-in, Claude Desktop) & diagnostics
 
 | | |
 | --- | --- |
@@ -9,7 +9,8 @@
 ## Goal
 
 Keep the numbers fresh even when Claude Code's token has expired (e.g. the user only chatted in the
-Claude app for a day), without ever touching Claude Code's credentials. Add a log file that makes
+Claude app for a day), without ever touching Claude Code's credentials — and make the app usable for
+people who don't use Claude Code at all (Claude desktop app or web only). Add a log file that makes
 problems diagnosable.
 
 ## Background
@@ -21,6 +22,10 @@ problems diagnosable.
 - "Option B" from the original discussion: sign in to claude.ai inside the app and read usage the
   same way the Settings → Usage page does. It is an independent credential, so it can't interfere
   with Claude Code.
+- Claude Desktop alone gives us no usable sign-in (checked 2026-09-24, see "Claude Desktop" in
+  `docs/PROGRESS.md`): it never writes `~/.claude/.credentials.json`, and its own token is
+  encrypted app-private data we must not read (D26). But it records plan usage every ~15 min in
+  `plan-usage-history.json` — non-secret, read-only, no network. That is the third source.
 
 ## Scope
 
@@ -34,9 +39,16 @@ problems diagnosable.
       on `https://claude.ai/login` in a dedicated persistent partition (`persist:claude-web`);
       detect success (session cookie present and org resolved) and close it.
       "Sign out of claude.ai" clears that partition.
+- [ ] **Claude Desktop source (read-only, no sign-in)** — read the newest sample from Claude
+      Desktop's `plan-usage-history.json` (paths in Technical notes). Map `fh` → session, `sd` →
+      weekly, `so` → weekly Opus, `xu` → extra usage when present; ignore unknown keys. It has no
+      reset times: show "as of HH:MM" instead of countdowns. Newer than ~20 min = usable; older =
+      unavailable (Desktop is probably closed). Watch the file (`fs.watch` + debounce) instead of
+      polling. Never write to Claude Desktop's folder or read any other file there.
 - [ ] **Source selection** submenu: *Auto* (default — Claude Code token; if missing, expired or
-      401, use claude.ai when signed in), *Claude Code only*, *claude.ai only*. Show the active
-      source subtly in the footer ("via Claude Code" / "via claude.ai") and in the tray tooltip.
+      401, claude.ai when signed in; otherwise a recent Claude Desktop sample), *Claude Code
+      only*, *claude.ai only*, *Claude Desktop only*. Show the active source subtly in the footer
+      ("via Claude Code" / "via claude.ai" / "via Claude Desktop") and in the tray tooltip.
 - [ ] **`UsageSource` abstraction** (id, availability check, fetch) so both sources share the
       polling, backoff and status logic; `usage-service.ts` stays free of Electron imports.
 - [ ] **Diagnostics** — small rotating log in `userData/logs` (status changes, HTTP statuses,
@@ -48,7 +60,8 @@ problems diagnosable.
 ## Out of scope
 
 Multiple accounts, refreshing Claude Code's token (forbidden by D3), storing the claude.ai cookie
-anywhere outside Electron's partition.
+anywhere outside Electron's partition, reading Claude Desktop's own sign-in (`config.json` →
+`oauth:tokenCache*`, safeStorage-encrypted — forbidden by D26).
 
 ## Technical notes
 
@@ -63,11 +76,28 @@ anywhere outside Electron's partition.
 - Unit-test the fallback decisions: token expired → web; web signed out → banner; Claude Code
   token renewed → back to Claude Code; 401 on web → web session expired.
 - Log redaction must be unit-tested (Bearer tokens, `sk-ant-…`, `sessionKey=…`, cookies).
+- **Claude Desktop history** (observed in Claude Desktop 2.110.1, an internal file — parse
+  tolerantly, add a sanitized fixture with the org id replaced, and test v1 + v2):
+  - Paths: Windows (MSIX, Microsoft Store / new installer)
+    `%LOCALAPPDATA%\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\Claude\plan-usage-history.json`;
+    Windows (older Squirrel installer) `%APPDATA%\Claude\…`; macOS
+    `~/Library/Application Support/Claude/…`. No official Linux Desktop app.
+  - Shape v2: `{ version: 2, samples: [{ t: epochMs, org: uuid, u: { fh, sd, xu, … } }] }`; v1:
+    `{ version: 1, samples: [{ t, fh, sd }] }`. Values are 0–100 percentages.
+  - Key map from Desktop's code: `five_hour`→`fh`, `seven_day`→`sd`, `seven_day_opus`→`so`,
+    `seven_day_oauth_apps`→`oa`, `seven_day_cowork`→`cw`, plus codenamed keys (ignore them).
+  - Desktop samples roughly every 15 min while it runs (min gap ~4.5 min) and keeps 30 days — this
+    history could also feed the "weekly usage history sparkline" idea later.
+  - Several orgs can appear; prefer the org of the Claude Code / claude.ai account when known,
+    otherwise the org of the newest sample.
 
 ## Acceptance criteria
 
 - With an expired Claude Code token (mock scenario) and a claude.ai sign-in, the overlay shows
   fresh data "via claude.ai"; when Claude Code's token becomes valid again, Auto switches back.
+- With no Claude Code sign-in and no claude.ai sign-in but Claude Desktop running, the overlay
+  shows session and weekly "via Claude Desktop · as of HH:MM"; with Desktop closed for >20 min it
+  shows the "not signed in" banner with all three ways to fix it.
 - Tests cover source selection and log redaction; `npm run check` passes; screenshots reviewed.
 - `docs/PROGRESS.md` (API notes, decisions), `docs/BACKLOG.md` and this file's **Result** updated.
 
@@ -79,6 +109,8 @@ anywhere outside Electron's partition.
 - [ ] Menu → **Sign out of claude.ai**: in Auto mode nothing breaks; in claude.ai-only mode a
       banner asks to sign in.
 - [ ] Menu → **Open logs folder**: the log has no tokens or cookies in it.
+- [ ] Menu → Source → **Claude Desktop only** with Claude Desktop open: numbers match Claude
+      Desktop's own usage view, footer says "via Claude Desktop · as of …".
 
 ## Prompt
 
@@ -86,9 +118,10 @@ Paste into a new Claude Code session opened in this repository:
 
 ```text
 Implement Phase 3 of Claude Usage as specified in docs/phases/phase-3-fallback-source.md
-(claude.ai sign-in as a fallback data source, source selection, redacted logs).
+(claude.ai sign-in and Claude Desktop's usage history as fallback data sources, source
+selection, redacted logs).
 Read CLAUDE.md, docs/PROGRESS.md and that phase file first. Decision D3 still holds: never refresh,
-rotate or write Claude Code's credentials. Start with the research step and show me what you found
+rotate or write Claude Code's credentials; D26: never read Claude Desktop's own sign-in. Start with the research step and show me what you found
 (endpoints, response shape) before building on it. Follow the phase file's Scope, Out of scope,
 Technical notes and Acceptance criteria; if something turns out to be wrong or risky, stop and ask.
 When done: fill in the phase file's Result section, set its status, update docs/PROGRESS.md and
