@@ -587,5 +587,10 @@ Kept for the record in case Anthropic ever offers an official way.
   console checked with a hidden run. All 36 mock screenshots reviewed; the README images are
   unaffected (their scenarios render as before).
 - Version 1.1.0 (D55) — also the owner's first real updater test (1.0.0 → 1.1.0).
+- The first `v1.1.0` release run failed on the macOS runner in `npm run check` (Windows and Linux
+  passed; job logs need admin rights, so not read here; all tests pass locally, also with
+  `process.platform` faked as `darwin`). Likely cause: the `watchDesktopHistory` test waited a fixed
+  400 ms for an `fs.watch` event, and macOS (FSEvents) reports late or in batches — it now waits
+  for the call (up to 5 s) with a 300 ms debounce. The owner re-runs the failed job.
 - Electron book v2.2: a chapter on several accounts (single-instance `second-instance` argv,
   per-account state, the generation guard).

@@ -188,7 +188,10 @@ test('readDesktopHistory reads the first folder that has the file', async () => 
 test('watchDesktopHistory fires (debounced) when Desktop atomically replaces the file', async () => {
   const root = mkdtempSync(join(tmpdir(), 'claude-usage-watch-'));
   let calls = 0;
-  const stop = watchDesktopHistory([join(root, 'missing'), root], () => calls++, 50);
+  // macOS (FSEvents) reports changes late and sometimes in more than one batch, so the debounce is
+  // generous and the test waits for the call instead of a fixed time (it failed on a macOS runner).
+  const stop = watchDesktopHistory([join(root, 'missing'), root], () => calls++, 300);
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
   try {
     // Like Desktop's writeFileAtomic: write a temp file, then rename it over the history file.
     for (let i = 0; i < 3; i++) {
@@ -196,7 +199,8 @@ test('watchDesktopHistory fires (debounced) when Desktop atomically replaces the
       renameSync(join(root, 'tmp.json'), join(root, DESKTOP_HISTORY_FILE));
     }
     writeFileSync(join(root, 'unrelated.json'), '{}');
-    await new Promise((resolve) => setTimeout(resolve, 400));
+    for (let waited = 0; calls === 0 && waited < 5000; waited += 50) await sleep(50);
+    await sleep(600); // a second, late call would show up here
     assert.equal(calls, 1);
   } finally {
     stop();
