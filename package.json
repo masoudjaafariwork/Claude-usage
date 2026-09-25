@@ -19,6 +19,7 @@
     "start": "npm run build && node scripts/start.mjs",
     "start:mock": "npm run build && node scripts/start.mjs --mock",
     "screenshot": "node scripts/screenshots.mjs",
+    "screenshot:readme": "node scripts/screenshots.mjs --readme",
     "check": "npm run typecheck && npm test",
     "make-icon": "node scripts/make-icon.mjs",
     "dist": "npm run build && electron-builder --publish never",
@@ -41,7 +42,12 @@
       "!dist/**/*.map",
       "package.json"
     ],
-    "publish": null,
+    "publish": {
+      "provider": "github",
+      "owner": "masoudjaafariwork",
+      "repo": "Claude-usage",
+      "releaseType": "draft"
+    },
     "win": {
       "target": [
         {
@@ -61,10 +67,11 @@
     "nsis": {
       "oneClick": true,
       "perMachine": false,
-      "include": "build/installer.nsh"
+      "include": "build/installer.nsh",
+      "artifactName": "Claude-Usage-Setup-${version}.${ext}"
     },
     "portable": {
-      "artifactName": "${productName} ${version} Portable.${ext}"
+      "artifactName": "Claude-Usage-${version}-Portable.${ext}"
     },
     "mac": {
       "target": [
@@ -84,7 +91,7 @@
       }
     },
     "dmg": {
-      "artifactName": "${productName}-${version}-${arch}.${ext}"
+      "artifactName": "Claude-Usage-${version}-${arch}.${ext}"
     },
     "linux": {
       "target": [
@@ -106,5 +113,8 @@
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.2",
     "typescript": "^7.0.2"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.9"
   }
 }

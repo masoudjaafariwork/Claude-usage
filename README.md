@@ -7,10 +7,10 @@ numbers as *Claude → Settings → Usage* and refreshes them automatically. Put
 Windows · macOS · Linux — Electron + TypeScript.
 
 <p>
-  <img src="docs/images/overlay-expanded.png" alt="Expanded overlay" width="300">
-  <img src="docs/images/overlay-stale.png" alt="Overlay showing stale data with a sign-in banner" width="300">
+  <img src="docs/images/overlay-expanded.png" alt="Expanded overlay with a pace forecast" width="312">
+  <img src="docs/images/overlay-stale.png" alt="Overlay showing stale data with a sign-in banner" width="312">
 </p>
-<p><img src="docs/images/overlay-compact.png" alt="Compact overlay" width="355"></p>
+<p><img src="docs/images/overlay-compact.png" alt="Compact overlay" width="336"></p>
 
 <sub>Screenshots use mock data.</sub>
 
@@ -40,6 +40,10 @@ Windows · macOS · Linux — Electron + TypeScript.
   as a fallback (no extra sign-in). Menu → *Source* picks *Auto*, *Claude Code only* or
   *Claude Desktop only*; the footer and tray tooltip say where the numbers came from.
 - Optional **Launch at login**.
+- **Updates itself** from this repository's GitHub Releases: a new version downloads in the
+  background and installs when you quit, or right away with *Restart to update* (Windows installer,
+  Linux AppImage). The macOS app, the portable exe and the deb package tell you about a new version
+  and open its download page.
 - Keeps showing the last known data (clearly marked) when you're offline or the sign-in has expired.
 - A small diagnostic log with secrets removed (menu → *Open logs folder*).
 
@@ -53,7 +57,8 @@ It uses that token to ask Anthropic's servers for your usage, the same way the S
 does.
 
 - The token is **only read, never modified or refreshed**. Refreshing would log Claude Code out.
-- The token goes only to `api.anthropic.com`. There is no telemetry and no third-party server.
+- The token goes only to `api.anthropic.com`. There is no telemetry and no third-party server; the
+  only other requests are the update checks to github.com ([Updates](#updates)).
 - If Claude Code's sign-in expires (after ~8 h without use), the overlay says so and recovers
   automatically once Claude Code renews it.
 - The account it shows (e-mail, name, organization) comes from Claude Code's settings file
@@ -95,9 +100,9 @@ code-signed, so every OS shows a warning the first time.
 
 ### Windows 10 / 11
 
-- **Installer** — `Claude Usage Setup <version>.exe`. Installs for your user only (no admin
+- **Installer** — `Claude-Usage-Setup-<version>.exe`. Installs for your user only (no admin
   rights), adds a Start menu shortcut and starts the overlay. Uninstall from *Settings → Apps*.
-- **Portable** — `Claude Usage <version> Portable.exe`. One file, no installation; keep it
+- **Portable** — `Claude-Usage-<version>-Portable.exe`. One file, no installation; keep it
   anywhere (e.g. Desktop). It starts a little slower because it unpacks itself on every start.
 - SmartScreen may say *"Windows protected your PC"*: click **More info → Run anyway**.
 
@@ -106,7 +111,7 @@ folder*), so they share them. Only one copy runs at a time.
 
 ### macOS (Apple Silicon and Intel)
 
-- `Claude Usage-<version>-arm64.dmg` for Apple Silicon (M1 and later),
+- `Claude-Usage-<version>-arm64.dmg` for Apple Silicon (M1 and later),
   `…-x64.dmg` for Intel Macs. Open it and drag the app to *Applications*.
 - The app is ad-hoc signed but not notarized by Apple. On first launch macOS blocks it: open
   **System Settings → Privacy & Security** and click **Open Anyway** (macOS 14 and older: right-click
@@ -130,6 +135,24 @@ Startup apps* (Windows), *System Settings → General → Login Items* (macOS), 
 `~/.config/autostart/claude-usage.desktop` (Linux). The overlay respects it when you switch
 it off there. The option only works in the installed app, not with `npm start`.
 
+### Updates
+
+The app looks for a new version on the
+[Releases page](https://github.com/masoudjaafariwork/Claude-usage/releases) 30 seconds after it
+starts and then every 6 hours (a small file from github.com; nothing is sent about you).
+
+- **Windows installer and Linux AppImage:** the new version downloads in the background and is
+  checked against its SHA-512 hash. When it is ready you get one notification and the menu starts
+  with **Restart to update to v…**. Click it to update now, or just keep going — it installs
+  quietly the next time you quit. Settings and position stay as they are.
+- **macOS, the Windows portable exe and the deb package:** these can't replace themselves (the
+  macOS app isn't signed with an Apple Developer ID; the portable exe isn't installed; a deb belongs
+  to your package manager). You get a notification, and the menu starts with **Update available
+  (v…) — open download page**.
+- **Check for updates** (menu, next to *About*) checks right away and tells you the outcome in a
+  notification: up to date, downloading, or why the check failed.
+- Versions before 0.3.0 have no updater: install 0.3.0 once by hand.
+
 ## Run from source
 
 ```bash
@@ -141,7 +164,7 @@ npm start
 - **Menu:** the ⋯ button, right-click, or the tray icon. The menu has show/hide, lock, the data
   source, compact mode and which limits it shows, show account, always on top, size, opacity,
   theme, refresh interval, move to display, reset position, notifications, keyboard shortcuts, the
-  settings and logs folders, and quit.
+  settings and logs folders, check for updates, and quit.
 - **Keyboard:** `Ctrl+Alt+U` shows/hides the overlay and `Ctrl+Alt+Shift+U` locks/unlocks it from
   any app (`⌘⌥U` / `⌘⌥⇧U` on macOS). Menu → *Keyboard shortcuts* switches them off. To use other
   keys, edit `toggleShortcut` / `lockShortcut` in `settings.json` (menu → *Open settings folder*)
@@ -158,15 +181,35 @@ npm start
 | `npm run start:mock` | Run with fake data |
 | `node scripts/start.mjs --mock=critical` | Other scenarios: `normal`, `warning`, `critical`, `expired`, `no-credentials`, `rate-limited`, `offline`, `loading`, `via-desktop`, `desktop-unavailable`, `forecast`, `locked`; add `--theme=light` or `--scale=1.5` to try those |
 | `npm run screenshot` | Render every mock scenario (plus light-theme and size variants) to `screenshots/` |
+| `npm run screenshot:readme` | Re-render the screenshots at the top of this README (`docs/images/`) |
 | `npm run check` | Type-check and run unit tests |
 | `npm run dist` | Build installers for the current OS into `release/` (`dist:win`, `dist:mac`, `dist:linux` for one OS) |
 | `npm run make-icon` | Regenerate the app icon `build/icon.png` |
 
 Installers are built with [electron-builder](https://www.electron.build/). A dmg must be built on a
-Mac and the Linux packages on Linux; the release workflow does all three. To release: bump
-`version` in `package.json`, commit, tag `v<version>` and push the tag. GitHub Actions
-([release.yml](.github/workflows/release.yml)) builds everything and attaches it to a **draft**
-release, which you publish by hand.
+Mac and the Linux packages on Linux; the release workflow does all three.
+
+### Releasing a new version
+
+Installed copies update from the **latest published, non-pre-release** GitHub Release and find the
+installer through the `latest.yml`, `latest-mac.yml` and `latest-linux.yml` files attached to it.
+
+1. Bump the version (also updates `package-lock.json`) and commit:
+   `npm version 0.3.1 --no-git-tag-version`, then
+   `git commit -am "chore: release v0.3.1"`.
+2. Tag and push: `git push`, then `git tag v0.3.1` and `git push origin v0.3.1`.
+3. GitHub Actions ([release.yml](.github/workflows/release.yml)) checks that the tag matches
+   `package.json`, runs the tests, builds on Windows, macOS and Linux and attaches everything to a
+   **draft** release (10–15 minutes; *Actions* tab).
+4. On GitHub → *Releases*, open the draft and check the files: `Claude-Usage-Setup-<v>.exe`,
+   `Claude-Usage-<v>-Portable.exe`, two `.dmg`, the `.AppImage`, the `.deb` and **`latest.yml`,
+   `latest-mac.yml`, `latest-linux.yml`**. Edit the notes if you like, leave **Set as a
+   pre-release** unticked and keep **Set as the latest release** ticked, then **Publish release**.
+5. Installed copies find it within 6 hours, or at once via *Check for updates*.
+
+Never delete or replace files of a published release: running copies may be downloading them, and
+a changed installer no longer matches the hash in `latest.yml`. Fix a bad release with a new
+version instead.
 
 Project guide for AI-assisted development: [CLAUDE.md](CLAUDE.md). Status and decisions:
 [docs/PROGRESS.md](docs/PROGRESS.md). Roadmap: [docs/BACKLOG.md](docs/BACKLOG.md).
@@ -184,6 +227,10 @@ Project guide for AI-assisted development: [CLAUDE.md](CLAUDE.md). Status and de
 - **"No recent data from Claude Desktop"**: the desktop app isn't running, or the computer was idle
   (it doesn't sample then). Open it and use it for a moment; the overlay picks the new sample up
   within seconds.
+- **"Couldn't check for updates"**: *No connection to GitHub* — check your connection, VPN or proxy
+  (update checks use the system proxy settings too); *No update information on GitHub* — the latest
+  release has no `latest*.yml`, or only pre-releases exist. The app tries again after an hour, or
+  use *Check for updates*. Details are in the log.
 - **Anything else**: menu → *Open logs folder* → `claude-usage.log`. Tokens, cookies and e-mail
   addresses are removed before anything is written, so the log is safe to share.
 - **The overlay ignores clicks**: it is locked (a lock icon replaces its buttons). Unlock it from

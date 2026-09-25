@@ -30,7 +30,8 @@ Research hints, APIs to use, platform caveats, risks and how to handle them.
 ## Acceptance criteria
 
 - Observable, testable outcomes.
-- `npm run check` passes; `npm run screenshot` reviewed for UI changes.
+- `npm run check` passes; `npm run screenshot` reviewed for UI changes; README images re-rendered
+  with `npm run screenshot:readme` when the change shows in them.
 - `docs/PROGRESS.md`, `docs/BACKLOG.md` and this file's **Result** section updated.
 
 ## Manual test checklist (for the user)

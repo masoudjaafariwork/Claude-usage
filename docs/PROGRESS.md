@@ -10,15 +10,17 @@ Living record of where the project stands. Update it at the end of every session
 | [2 — Packaging, app icon, launch at login](phases/phase-2-packaging.md) | ✅ Done (2026-09-24) |
 | [3 — Fallback data source (Claude Desktop), source selection & diagnostics](phases/phase-3-fallback-source.md) | ✅ Done (2026-09-25) — claude.ai sign-in dropped (D28) |
 | [4 — UX: notifications, click-through, shortcut, size, pace forecast, theme](phases/phase-4-ux.md) | ✅ Done (2026-09-26) |
-| [5 — App auto-update](phases/phase-5-auto-update.md) | ⏭️ Next |
+| [5 — App auto-update](phases/phase-5-auto-update.md) | ✅ Done (2026-09-26) — first test with real releases (0.3.0 → 0.3.1) pending, by the owner |
 
 Each phase has its own plan file in [`phases/`](phases/) (scope, notes, acceptance criteria,
 ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLOG.md).
 
-## What works today (Phases 1–4)
+## What works today (Phases 1–5)
 
 - Frameless, transparent, always-on-top overlay; drag anywhere; position remembered; stays reachable
-  when monitors change; "Move to display" menu for multi-monitor setups.
+  when monitors change; "Move to display" menu for multi-monitor setups. The window is exactly the
+  card, so it can sit flush against any screen edge (D42). A drop stays under the cursor, also across
+  monitors with different scaling and across two monitors (D44).
 - Expanded card: session ring with reset countdown, weekly limits (all models + per-model) as bars,
   "this week, by app" split, extra-usage row when enabled, status banner, footer freshness.
 - Compact pill: session + every weekly limit (all models, per-model) as mini rings; menu →
@@ -31,7 +33,7 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 - Stale data handling: last snapshot cached to disk and shown (desaturated, with banner) on startup,
   offline, rate-limited or expired sign-in.
 - Dev tooling: mock scenarios, screenshot mode (plus light-theme and 90 % / 150 % variants),
-  `--theme=` / `--scale=` flags, 108 unit tests.
+  `--theme=` / `--scale=` flags, README images from `npm run screenshot:readme` (D43), 125 unit tests.
 - **Data sources (Phase 3):** menu → *Source*: *Auto* (Claude Code; when its sign-in is missing,
   expired or rejected, the newest Claude Desktop sample ≤ 20 min old), *Claude Code only*,
   *Claude Desktop only*. Claude Desktop's `plan-usage-history.json` is read-only, needs no sign-in
@@ -72,6 +74,12 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
   under the title (initials avatar + e-mail, a team org's name below), the compact pill a small
   second line with just the e-mail under the rings. From Claude Code's `.claude.json`; Claude
   Desktop data shows it only for Claude Code's own org. Menu → *Show account* (on by default) (D41).
+- **Updates (Phase 5):** the installed app checks GitHub Releases 30 s after start and every 6 h
+  (electron-updater). Windows installer and Linux AppImage download in the background and install
+  on quit or via menu → *Restart to update to vX* (top of the menu, one notification when ready);
+  macOS, the portable exe and the deb only notify and open the download page. Menu → *Check for
+  updates* reports the outcome in a notification. Releases need `latest*.yml` (CI attaches them) and
+  must be published as normal releases, not pre-releases (D45–D48).
 
 ## Decisions
 
@@ -118,6 +126,13 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D39 | Pace forecast: fresh snapshots go into a 24 h history (`userData/usage-history.json`, compact JSON, ≤ 2000 points); per limit, points of the current window (reset time ± 1 h) within a lookback of 1 h (session) or 24 h (weekly / other), ≥ 3 points spanning ≥ 15 min, least-squares slope > 0, projected from the latest point; shown only when 100 % comes before the reset and the data is fresh; rounded to 5 min | "At this pace" should follow the current pace — a burst two hours ago shouldn't predict a session limit now; for weekly limits a day averages nights and breaks in. Claude Desktop data has no reset time, so no forecast there. |
 | D40 | Theme: *System* / *Dark* / *Light* through `nativeTheme.themeSource` (the page follows `prefers-color-scheme`); default *Dark*, so D10's look stays the default. Hard-coded colours became CSS variables with identical dark values; the light theme only overrides neutrals and text colours (`--warn-text`, `--crit-text`, `--brand-text`) | No IPC or renderer logic needed, and *System* follows OS changes live. Keeping the severity colours unchanged keeps hard rule 8 (three places in sync) as it is. |
 | D41 | **Account indicator.** Whose usage it is comes from Claude Code's `.claude.json` → `oauthAccount` (`emailAddress`, `displayName`, `organizationName`, `organizationUuid`; no secrets, no network), read with the token on every Claude Code poll and stored in the snapshot (`UsageSnapshot.account`, cached too), so stale data keeps its own account. Claude Desktop samples get it only when their org is Claude Code's org, otherwise "Claude Desktop's account" (D26 stays). A personal org's name (`<email>'s Organization`) is hidden, any other org name shown. Expanded: line under the title (avatar with initials, e-mail up to 42 chars, org on a second line); compact: only the e-mail, small and centred on a second line under the rings (up to 32 chars, trimmed before the @ so the domain stays; the line never widens the pill; nothing when unknown). Menu → *Show account*, default on | Owner's request (2026-09-26); the compact form is the owner's design ("a small line under the rings, only the username, minimal") after a first version with an account chip beside the rings. A local file costs no request (hard rule 2); `/api/oauth/profile` would. In the snapshot rather than read live, so a `/login` to another account never relabels the previous account's numbers. Personal org names only repeat the e-mail; a team's name tells a personal and a work account with the same e-mail apart. The switch is for screen sharing — the overlay is always on top. Not in the tray tooltip: Windows cuts it at 127 characters, and the limits matter more there. |
+| D42 | **The window is exactly the card** — no transparent margin around it (was 12 / 16 / 20 px for the drop shadow), so no drop shadow. The card's edge is drawn inside it: dark 1 px border outside, light 1 px inset line within (light theme: a darker border only). The renderer reports its exact fractional size (`fitWindow()`), main rounds up once after the zoom factor (with a 0.01 tolerance for float noise), and the card is stretched (`min-width: 100vw` / `min-height: 100vh`) when the window is < 3 CSS px bigger than it — i.e. only over rounding slack, never while the window is still catching up with a new size | Owner's request (2026-09-26): the overlay could never touch the top of the screen — Windows stops a dragged window at the top edge, and the card sat 12 px below the window's top (16 px from the sides, 20 px from the bottom). A shadow needs room outside the card, and any room is a gap at the screen edge; the owner wants no forced gap. Without the margin, rounding to whole DIPs (twice, plus float noise such as 312.00003 → 313) showed as a 1–4 px strip at the right and bottom, hence one rounding and the stretch. The invisible margin also caught clicks meant for windows underneath. |
+| D43 | **README screenshots are generated, never hand-made:** `npm run screenshot:readme` renders the fixed list `README_IMAGES` in `scripts/screenshots.mjs` (mock scenario + view → `docs/images/*.png`). Every change that alters what they show re-renders them in the same change (rule in `CLAUDE.md` → Finish, the BACKLOG "Change or bug" prompt and the phase template). README shows them at the overlay's CSS width (`width="312"` / `"336"`). The main image uses the `forecast` scenario | The owner found the README images out of date (2026-09-26): GitHub still showed pre-account images, and a card-frame change was under way. A named command makes a refresh one step and repeatable in any session; the rule makes it part of finishing UI work. `forecast` shows the newest feature (pace line) on the first image. |
+| D44 | **No resize while the overlay is being dragged; resizes never pull it further onto one display.** `main.ts` sets `dragging` on `will-move` and clears it on `moved` (Windows: the OS move loop's `WM_MOVING` / `WM_EXITSIZEMOVE`), skips `fit()` meanwhile and fits once after the drop. `resizedBounds()` (pure, `window-core.ts`) keeps a resized window on its display's work area but never moves it further in than it already was | Owner's report (2026-09-26, 4 monitors: primary 125 %, the others 100 %): dropped on monitor 4, the overlay jumped back to monitor 3 or to a display edge. Reproduced with a synthesized drag and traced: crossing onto a display with another scale factor makes the renderer report a slightly different size (393.6 → 394 DIP), the resulting `setBounds` mid-drag was applied when the drag ended (jump to where it crossed), and the old clamp pushed a card lying across two displays fully onto one. |
+| D45 | **In-app updates with `electron-updater`** (first runtime dependency, 6.8.9, approved by the owner 2026-09-26), GitHub provider on the public repo `masoudjaafariwork/Claude-usage` (`build.publish`; no token anywhere). Modes (`update-core.ts`): *auto* = Windows NSIS install and Linux AppImage; *notify* = macOS (ad-hoc signed, D16 — Squirrel.Mac needs a Developer ID), the Windows portable exe (`PORTABLE_EXECUTABLE_FILE`; the NSIS installer would install a second copy) and the deb (belongs to the package manager); *off* = dev, mock and screenshot runs. Check 30 s after start, then every 6 h, 1 h after a failed check, scheduled by a 15-min tick against wall-clock time; no checks while downloading or while an update waits. Only full releases count (`allowPrerelease` false); full downloads only (`disableDifferentialDownload`, no blockmaps uploaded); esbuild keeps the module external and electron-builder packs it | The owner asked for the usual practice: electron-updater is the standard updater for electron-builder apps and handles the hard parts (silent NSIS run, AppImage swap, sha512 check, cache, restart). A public repo needs no token, and a token must never ship in the app. Checking every 6 h costs one small github.com request (`releases/latest` + `latest*.yml`, not the rate-limited API); the tick survives sleep. Delta updates were out of scope. |
+| D46 | **Release files without spaces:** `Claude-Usage-Setup-<v>.exe`, `Claude-Usage-<v>-Portable.exe`, `Claude-Usage-<v>-<arch>.dmg` (AppImage and deb already had none). CI uploads `release/latest*.yml` with the installers; the draft is published by hand as a **normal** release (not a pre-release). Published files are never replaced — a fix is a new version | electron-updater's GitHub provider turns spaces in `latest.yml` into dashes, but a `gh release upload` turns them into dots (`Claude.Usage.Setup…`): the download would 404. A pre-release is invisible to `releases/latest`, which is what the updater reads (v0.2.0 is one). A replaced installer no longer matches the sha512 in `latest.yml`. |
+| D47 | **Update UI = the menu + notifications, no dialogs.** One menu item next to *About* (*Check for updates* / *Checking…* / *— up to date* / *Downloading vX… n %* / *— last check failed*); when there is something to do it moves to the top: *Restart to update to vX* (auto) or *Update available (vX) — open download page* (notify). Scheduled checks notify only "vX is ready" / "vX is available", once per version per run; a check from the menu also notifies "up to date", "downloading" and errors (short reason: no connection / no update information / GitHub limiting / damaged download; details in the log) | The menu closes when *Check for updates* is clicked, so a notification is the only visible answer. The tray app runs all the time and a Windows shutdown may not fire `quit`, so without a "ready" notice (electron-updater's own `checkForUpdatesAndNotify` shows one too) an update could wait for weeks. An actionable item at the top of a long menu is found at once. |
+| D48 | **Installing:** *Restart to update* flushes settings, then `quitAndInstall(silent, runAfter)`; otherwise `autoInstallOnAppQuit` installs silently on a normal quit without restarting. electron-updater's info lines aren't logged (our own lines say the same without local paths); its warnings and errors are, one line of ≤ 300 chars. Linux: when the AppImage is replaced by a file with the new version in its name (`appimage-filename-updated`), `APPIMAGE` is pointed at it and launch at login rewritten (`login-item.ts` reads `APPIMAGE` when used) | The settings store writes 400 ms after a change and the installer may start before that. The update uninstaller runs with `--updated`, so D19 keeps the Run key; the per-user install path stays the same. electron-updater deletes the old AppImage, which would leave a dead autostart entry until the next manual start. |
 
 ## Usage API notes (observed 2026-09-24)
 
@@ -233,6 +248,37 @@ Kept for the record in case Anthropic ever offers an official way.
   sign-in isn't read, D26). Like the token, a
   `CLAUDE_CONFIG_DIR` set only in the VS Code extension's settings is invisible. Not in the tray
   tooltip. macOS/Linux untested (same file and keys as on Windows per Claude Code).
+- **No margin around the card (D42):** no drop shadow any more; over a background of the card's
+  own colour only the 1 px border separates them. The first start after this change keeps the
+  saved window position, so the card shows up 16 px further left and 12 px higher (× Size) than
+  before — drag it once. The stretch over rounding slack happens after the window resize; if a
+  resize event were ever missed, a ≤ 2 px strip could show until the next render (≤ 30 s).
+  Verified with renders on Windows 11 (all 34 mock images and the README images have 0 px empty
+  on every side); a real mouse drag to the top edge still has to be tried by hand (a synthesized
+  drag wasn't reliable). On macOS a window can't go above the menu bar anyway; macOS/Linux untested.
+- **Dragging across monitors (D44):** Windows itself moves a dropped window down when its top edge
+  is on no display — e.g. dropped high on a monitor whose top is lower than its neighbour's (the
+  owner's monitor 4 starts 159 px lower than monitor 3). The overlay then lands with its top at
+  that monitor's top edge, below the cursor's drop point; a top edge still partly on another
+  display is left alone. This is the OS keeping the window reachable, not the app. Only Windows
+  needs the drag guard: on macOS `moved` is an alias of `move` (the flag lasts one step), Linux
+  sends neither event; both untested. After a drop across displays with different scale factors
+  the overlay can shift by 1–2 px (DIP rounding, as with Size).
+- **Updates (Phase 5):**
+  - Tested on Windows 11 only, with local builds and a local update server (same NSIS code path).
+    The GitHub side (`releases/latest`, `latest.yml` download) is first exercised by the owner's
+    0.3.0 → 0.3.1 release test. macOS (notify only) and Linux (AppImage swap, deb notify) untested.
+  - 0.2.0 and older have no updater: 0.3.0 has to be installed by hand once. v0.2.0 on GitHub is a
+    pre-release without `latest.yml` — invisible to the updater, harmless.
+  - A Windows shutdown may end the app without a normal quit, so a downloaded update can wait until
+    the user quits or clicks *Restart to update* (the "ready" notification says so). Installing on
+    quit doesn't start the app again; *Restart to update* does.
+  - Builds are unsigned, so the Windows updater can't check a publisher signature — the update is
+    trusted because it comes over HTTPS from the repo's releases and matches the sha512 in
+    `latest.yml`. Whoever controls the GitHub account can ship an update to every installed copy:
+    keep 2FA on.
+  - Linux AppImage: the new file gets the new version in its name and the old one is deleted; a
+    desktop shortcut made by hand to the old file breaks (launch at login is rewritten, D48).
 
 ## Session log
 
@@ -379,3 +425,84 @@ Kept for the record in case Anthropic ever offers an official way.
   hidden, org id present). The real app wasn't restarted: another session's dev instance was running.
 - Done in the same working tree while the Phase 4 session was finishing (shared files, see there).
 - Electron book v1.7: a new chapter on the account indicator.
+
+### 2026-09-26 — Session 12: README screenshots
+
+- The owner said the README images looked older than the app. Locally they matched the last
+  commit, but that commit wasn't pushed, so GitHub showed images without the account line.
+- New `npm run screenshot:readme` (`--readme` in `scripts/screenshots.mjs`, list `README_IMAGES`):
+  `forecast` expanded → `overlay-expanded.png`, `expired` expanded → `overlay-stale.png`, `normal`
+  compact → `overlay-compact.png`. The script now exits non-zero when a render fails or writes no
+  image — found while the other session's screenshot run held the shared mock single-instance
+  lock, which made renders quit silently with exit 0 (new gotcha in `CLAUDE.md`).
+- Standing rule (D43) in `CLAUDE.md` → Finish, the BACKLOG "Change or bug" prompt and
+  `phases/_TEMPLATE.md`: changes that show in the README images re-render them.
+- Rendered while a parallel session was removing the card's transparent margin and shadow (D42,
+  unfinished) — owner's choice to render with it. The images therefore show the card without
+  margin/shadow (transparent corners); README widths set to the CSS size (312 / 336). **If D42
+  changes further, run `npm run screenshot:readme` again.**
+- Electron book v1.8: `c-mock` updated with the README mode.
+
+### 2026-09-26 — Session 13: card flush with the screen edges (no margin)
+
+- The owner couldn't park the overlay against the top of the screen: there was always a gap. Cause:
+  `#app` had a transparent 12 / 16 / 20 px padding (room for the card's drop shadow), and Windows
+  stops a dragged window at the screen's top edge — so the card stayed ≥ 12 px below it.
+- Removed the padding and the outer shadow; the card's edge is now drawn inside it (D42).
+  `INITIAL_SIZE` 344 × 280 → 312 × 248.
+- Without the margin, the size rounding became visible: the renderer and main both rounded up,
+  and float noise (312.00003) cost a whole DIP — a 1–4 px transparent strip at the right and
+  bottom. Now the renderer reports the exact size (`fitWindow()`), main rounds once with a 0.01
+  tolerance, and the card is stretched over the remaining < 1 DIP. Measured on all 34 mock
+  screenshots (125 % display scaling, Size 90–150 %): 0 px empty on every side; the edge pixels
+  are the card's border (not clipped).
+- README images re-rendered after the final change (`npm run screenshot:readme`, D43), 0 px
+  empty on every side.
+- A synthesized mouse drag to the top edge (PowerShell `mouse_event`) wasn't reliable — the owner
+  checks the real drag by hand.
+- Done in the same working tree as other sessions (README images, drag fix, Phase 5). The drag
+  fix's comments first cited "D43" (the README rule here); it is D44 now (session 14).
+- Electron book v1.9: new section on the window = card (no margin, DIP rounding).
+
+### 2026-09-26 — Session 14: dragging across monitors
+
+- The owner (4 monitors: primary 4K at 125 %, laptop, a 1080p and a portrait monitor at 100 %)
+  reported: dragged from monitor 1 to monitor 4 and dropped, the overlay jumped to monitor 3 or
+  didn't stay under the mouse and stuck to a monitor edge.
+- Reproduced with a synthesized drag on a mock run (own `--user-data-dir`, so the shared mock lock
+  of other sessions' screenshot runs wasn't touched): dropped on monitor 4, it ended at the
+  top-left corner of monitor 3's work area. A temporary trace (window events + every fit) showed
+  the cause: crossing from 125 % to 100 % makes the renderer report 393.6 → 394 DIP mid-drag, the
+  `fit()` → `setBounds` then took effect when the drag ended, and the old clamp had pulled it onto
+  the display it was crossing. Fixed with a drag guard and a clamp that never pulls further in (D44);
+  the placement math moved to the pure `window-core.ts` (6 tests).
+- Verified afterwards with 7 drags over all four monitors (incl. laptop and a drop across monitors
+  3/4): every drop stays under the cursor. The remaining "pulled down to the edge" case is Windows'
+  own rule for a top edge on no display (Known issues).
+- Synthesized drags are reliable with small steps (≈ 200 `SetCursorPos` moves of ≤ 30 px, 5 ms
+  apart, per-monitor-v2 DPI aware); big jumps (≥ 80 px per move) sometimes never start the drag.
+- The working tree also held other sessions' unfinished changes (D42 card without margin, Phase 5
+  updater); the fix touched only `main.ts` (drag guard) and `window.ts` (uses `resizedBounds`).
+- With the same script, a drag to the primary display's top edge ends at y = 0 (Windows pulls the
+  top back onto the screen): the card now sits flush with the top edge (D42's goal).
+
+### 2026-09-26 — Session 15: Phase 5 (app auto-update)
+
+- Owner's answers: `electron-updater` approved after an explanation (standard for electron-builder
+  apps; "if everyone does it, do it here too"); the repo stays public; no Apple Developer ID.
+- Built `update-core.ts` (pure, 11 tests) and `updater.ts`, the menu item (top of the menu when
+  actionable), update notifications, `build.publish`, release file names without spaces, CI upload
+  of `latest*.yml`, README *Updates* + release procedure + troubleshooting (D45–D48). Found in
+  electron-updater's code: the GitHub provider maps spaces in file names to dashes (a `gh` upload
+  maps them to dots), ignores pre-releases, and deletes the old AppImage on update.
+- Verified on Windows 11 with a separate test identity ("Claude Usage UpdTest") built as 0.3.0 and
+  0.3.1 and served from a local HTTP server: download + "ready" notification + *Restart to update*
+  (restarted as 0.3.1 in 13 s, a position changed 450 ms before the click was saved), install on a
+  normal quit, *Check for updates* → up to date / connection error, and notify mode in the portable
+  exe (no download, nothing installed). Menu clicks through the main-process inspector. The test
+  app and its data were removed afterwards; the owner's installed app wasn't touched.
+- The first test against GitHub is the owner's release of 0.3.0 and then 0.3.1 (steps in the phase
+  file and README). 125 tests pass (with other sessions' new ones).
+- Done in the same working tree as sessions 12–14 (shared files: `main.ts`, `README.md`, this file,
+  `package.json`); decision numbers started at D45 because D42–D44 were taken meanwhile.
+- Electron book v2.0: Phase 5 chapters (auto-update).

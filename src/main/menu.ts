@@ -4,6 +4,7 @@ import type { SourceMode, StatusKind } from '../shared/types';
 import { NOTIFY_THRESHOLDS } from './notifications-core';
 import { OPACITY_OPTIONS, REFRESH_INTERVAL_OPTIONS_SEC, SCALE_OPTIONS, type Settings, type ThemeSetting } from './settings';
 import { shortcutLabel, type ShortcutState, type ShortcutsStatus } from './shortcuts-core';
+import type { UpdateMenuItem } from './update-core';
 
 const SOURCE_ITEMS: ReadonlyArray<{ mode: SourceMode; label: string }> = [
   { mode: 'auto', label: 'Auto — Claude Code, then Claude Desktop' },
@@ -40,6 +41,9 @@ export interface MenuActions {
   openClaudeCode(): void;
   openSettingsFolder(): void;
   openLogsFolder(): void;
+  checkForUpdates(): void;
+  installUpdate(): void;
+  openUpdateDownloadPage(): void;
   showAbout(): void;
   quit(): void;
 }
@@ -53,6 +57,8 @@ export interface MenuContext {
   statusKind: StatusKind;
   shortcuts: ShortcutsStatus;
   notificationsSupported: boolean;
+  /** The updates item: at the top when there is something to do, else next to About. */
+  update: UpdateMenuItem;
 }
 
 /** Shows a working global shortcut next to its menu item (the menu doesn't register it again). */
@@ -70,8 +76,19 @@ export function buildMenu(settings: Readonly<Settings>, context: MenuContext, ac
     }`,
     enabled: false,
   });
+  const { update } = context;
+  const updateItem: MenuItemConstructorOptions = {
+    label: update.label,
+    enabled: update.enabled,
+    click: () => {
+      if (update.action === 'check') actions.checkForUpdates();
+      else if (update.action === 'install') actions.installUpdate();
+      else if (update.action === 'open-download-page') actions.openUpdateDownloadPage();
+    },
+  };
 
   const template: MenuItemConstructorOptions[] = [
+    ...(update.prominent ? [updateItem, { type: 'separator' as const }] : []),
     {
       label: windowVisible ? 'Hide overlay' : 'Show overlay',
       ...accelerator(shortcuts.toggle),
@@ -214,6 +231,7 @@ export function buildMenu(settings: Readonly<Settings>, context: MenuContext, ac
     },
     { label: 'Open settings folder', click: () => actions.openSettingsFolder() },
     { label: 'Open logs folder', click: () => actions.openLogsFolder() },
+    ...(update.prominent ? [] : [updateItem]),
     { label: `About Claude Usage v${app.getVersion()}`, click: () => actions.showAbout() },
     { type: 'separator' },
     { label: 'Quit Claude Usage', click: () => actions.quit() },

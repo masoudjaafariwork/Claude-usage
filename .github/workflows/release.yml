@@ -1,7 +1,9 @@
 # Builds the installers on Windows, macOS and Linux when a version tag (v*) is pushed, and attaches
 # them to a DRAFT GitHub Release. Publishing the draft is a manual step on GitHub.
 #
-# Release: bump "version" in package.json, commit, `git tag v<version>`, push the tag.
+# Release: bump "version" in package.json, commit, `git tag v<version>`, push the tag; then publish
+# the draft as a normal release (not a pre-release). The latest*.yml files are what installed apps
+# read to find and verify an update (electron-updater, D45) — they must stay attached.
 name: Release
 
 on:
@@ -55,6 +57,7 @@ jobs:
             release/*.dmg
             release/*.AppImage
             release/*.deb
+            release/latest*.yml
 
   draft-release:
     name: Draft GitHub Release

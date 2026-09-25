@@ -3,9 +3,10 @@
 import { BrowserWindow, screen, type Display, type Rectangle } from 'electron';
 import { join } from 'node:path';
 import type { Settings } from './settings';
+import { resizedBounds } from './window-core';
 
-/** Initial size before the renderer reports its real content size. */
-const INITIAL_SIZE = { width: 344, height: 280 };
+/** Initial size before the renderer reports its real content size (the card; no margin around it). */
+const INITIAL_SIZE = { width: 312, height: 248 };
 /** Gap from the screen edge when placing the overlay in a corner. */
 const EDGE_MARGIN = 16;
 /** App icon copied to dist/ by scripts/build.mjs (Windows/macOS take theirs from the packaged app). */
@@ -105,20 +106,14 @@ export function applyLocked(win: BrowserWindow, locked: boolean): void {
  * which was saved at the real size (anchoring there would shift the overlay on every start).
  */
 export function fitToContent(win: BrowserWindow, contentWidth: number, contentHeight: number, keepNearestEdge = true): void {
-  const width = Math.min(800, Math.max(80, Math.ceil(contentWidth)));
-  const height = Math.min(1200, Math.max(40, Math.ceil(contentHeight)));
+  // Round up once; the tolerance keeps float noise (312.00003) from adding a whole empty DIP.
+  const width = Math.min(800, Math.max(80, Math.ceil(contentWidth - 0.01)));
+  const height = Math.min(1200, Math.max(40, Math.ceil(contentHeight - 0.01)));
   const current = win.getBounds();
   if (current.width === width && current.height === height) return;
 
   const area = screen.getDisplayMatching(current).workArea;
-  let { x, y } = current;
-  if (keepNearestEdge && current.x + current.width / 2 > area.x + area.width / 2) x = current.x + current.width - width;
-  if (keepNearestEdge && current.y + current.height / 2 > area.y + area.height / 2) y = current.y + current.height - height;
-  // Keep it on the display; if it is bigger than the display (large size on a small screen), the
-  // top-left part with the header stays visible.
-  x = Math.max(area.x, Math.min(x, area.x + area.width - width));
-  y = Math.max(area.y, Math.min(y, area.y + area.height - height));
-  win.setBounds({ x, y, width, height });
+  win.setBounds(resizedBounds(current, area, width, height, keepNearestEdge));
 }
 
 export function moveToDisplay(win: BrowserWindow, display: Display): void {

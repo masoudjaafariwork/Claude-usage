@@ -25,7 +25,8 @@ const configs = [
     platform: 'node',
     format: 'cjs',
     target: 'node22',
-    external: ['electron'],
+    // Runtime dependencies stay in node_modules; electron-builder packs them into the app.
+    external: ['electron', 'electron-updater'],
   },
   {
     ...shared,

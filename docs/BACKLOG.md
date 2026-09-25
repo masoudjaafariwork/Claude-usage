@@ -12,7 +12,7 @@ technical notes, acceptance criteria, a manual test checklist, a ready-to-paste 
 | 2 | Packaging, app icon, launch at login | ✅ Done (2026-09-24) | [phase-2-packaging.md](phases/phase-2-packaging.md) |
 | 3 | Fallback data source (Claude Desktop), source selection & diagnostics — claude.ai sign-in dropped (D28) | ✅ Done (2026-09-25) | [phase-3-fallback-source.md](phases/phase-3-fallback-source.md) |
 | 4 | UX: notifications, click-through, shortcut, size, pace forecast, theme | ✅ Done (2026-09-26) | [phase-4-ux.md](phases/phase-4-ux.md) |
-| 5 | App auto-update | ⏭️ Next | [phase-5-auto-update.md](phases/phase-5-auto-update.md) |
+| 5 | App auto-update | ✅ Done (2026-09-26) — real-release test (0.3.0 → 0.3.1) by the owner | [phase-5-auto-update.md](phases/phase-5-auto-update.md) |
 
 **Running a phase:** open a new Claude Code session in this repo, open the phase file, copy the
 text in its **Prompt** block, paste it, send. Run phases in order, one per session.
@@ -33,7 +33,8 @@ stands, what was decided, and what the next step is. Then wait for my instructio
 
 Follow CLAUDE.md. Check the decisions in docs/PROGRESS.md before changing behaviour and tell me if
 the request conflicts with one. Add or update tests where logic changes, run `npm run check`, and
-for UI changes run `npm run screenshot` and review the PNGs. Finally update docs/PROGRESS.md
+for UI changes run `npm run screenshot` and review the PNGs; if the README images are affected,
+also run `npm run screenshot:readme` and review docs/images. Finally update docs/PROGRESS.md
 (session log, decisions, known issues) and docs/BACKLOG.md if an item is affected.
 ```
 
@@ -58,7 +59,8 @@ Move an idea into a phase file (with the "Plan a new phase" prompt) when it's ti
 - Persian (fa) UI with RTL layout and a language setting.
 - "Hide from screen capture" option (`win.setContentProtection`) for screen sharing.
 - Tray-only / menu-bar-only mode (no overlay).
-- Extract the pure window-position math from `window.ts` and unit-test it.
+- Extract the rest of the pure window-position math from `window.ts` (reachability, default corner)
+  into `window-core.ts` and unit-test it (the resize placement is there since D44).
 - Show which limit is binding (`is_active`) once its meaning is confirmed.
 - Code signing: a Windows certificate (no SmartScreen warning) and an Apple Developer ID with
   notarization (no "Open Anyway" step).
@@ -67,5 +69,9 @@ Move an idea into a phase file (with the "Plan a new phase" prompt) when it's ti
 - Change the global shortcuts from the menu (today only in `settings.json`, D37); on Wayland,
   global shortcuts through the GlobalShortcuts portal.
 - A manual "build only" trigger (`workflow_dispatch`) for the release workflow, to test CI without a tag.
+- Updates: a menu switch to turn automatic checks off; a small "update ready" dot on the overlay's
+  ⋯ button; delta downloads (upload `*.blockmap`, drop `disableDifferentialDownload`); real macOS
+  auto-update once there is an Apple Developer ID (zip target + signing + notarization in CI);
+  deb auto-update through electron-updater's `DebUpdater` (asks for the admin password).
 - Report the Electron login-item bug (paths with spaces) upstream; drop the `reg.exe` workaround
   once it is fixed (D18).

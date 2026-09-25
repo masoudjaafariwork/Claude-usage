@@ -40,6 +40,8 @@ import { registerShortcuts, unregisterShortcuts } from './shortcuts';
 import { shortcutLabel, type ShortcutsStatus } from './shortcuts-core';
 import { loadSnapshot, saveSnapshot } from './snapshot-cache';
 import { TrayController } from './tray';
+import { updateMode } from './update-core';
+import { Updater } from './updater';
 import { fetchUsageJson } from './usage-api';
 import { UsageService } from './usage-service';
 import { ClaudeCodeSource, type UsageSource } from './usage-source';
@@ -181,6 +183,29 @@ function start(): void {
     onClick: () => showOverlay(),
     log: log.write,
   });
+  // Updates from GitHub Releases (installed builds only; dev, mock and screenshot runs never update).
+  const updater = new Updater({
+    mode: updateMode({
+      packaged: app.isPackaged,
+      devRun: Boolean(cli.mock || cli.screenshot),
+      platform: process.platform,
+      env: process.env,
+    }),
+    currentVersion: app.getVersion(),
+    log: log.write,
+    onChange: () => updateTray(),
+    notify: (notice) => notifier.show(notice, notice.opensDownloadPage ? () => updater.openDownloadPage() : undefined),
+    openUrl: (url) => void shell.openExternal(url),
+    beforeInstall: () => settings.flush(),
+    onAppImageMoved: (path) => {
+      process.env.APPIMAGE = path;
+      try {
+        if (loginItem.available && settings.get().launchAtLogin) loginItem.set(true);
+      } catch (err) {
+        log.error(`Launch at login update failed: ${describeError(err)}`);
+      }
+    },
+  });
   let shortcuts: ShortcutsStatus = {
     enabled: false,
     toggle: { accelerator: settings.get().toggleShortcut, registered: false },
@@ -195,6 +220,8 @@ function start(): void {
   let shown = false;
   /** Last content size reported by the renderer, in CSS pixels (the window needs it × zoom factor). */
   let contentSize: { width: number; height: number } | null = null;
+  /** True while the user drags the overlay (Windows; see the 'will-move' handler). */
+  let dragging = false;
 
   const state = (): AppState => {
     const current = settings.get();
@@ -328,6 +355,9 @@ function start(): void {
       mkdirSync(log.dir, { recursive: true });
       void shell.openPath(log.dir);
     },
+    checkForUpdates: () => updater.checkNow(),
+    installUpdate: () => updater.install(),
+    openUpdateDownloadPage: () => updater.openDownloadPage(),
     showAbout: () => void showAbout(),
     quit: () => app.quit(),
   };
@@ -342,6 +372,7 @@ function start(): void {
         statusKind: service.status.kind,
         shortcuts,
         notificationsSupported: notifier.supported,
+        update: updater.menuItem,
       },
       actions,
     );
@@ -412,7 +443,7 @@ function start(): void {
   // --- Window behaviour ---------------------------------------------------------------------------
   /** Fits the window to the content at the current size setting (CSS pixels x zoom factor = DIPs). */
   function fit(keepNearestEdge: boolean): void {
-    if (!contentSize) return;
+    if (!contentSize || dragging) return;
     const { scale } = settings.get();
     fitToContent(win, contentSize.width * scale, contentSize.height * scale, keepNearestEdge);
   }
@@ -441,6 +472,19 @@ function start(): void {
   setTimeout(() => {
     if (!shown) showFirstTime();
   }, 2500);
+
+  // No resizing while the user drags the overlay. Crossing onto a display with another scale factor
+  // makes the renderer report a slightly different size mid-drag, and a setBounds then made the
+  // overlay jump back to where it crossed once it was dropped (D44). Fit after the drop instead.
+  // Windows sends 'will-move' throughout the drag and 'moved' once at its end; on macOS 'moved' is an
+  // alias of 'move', so there the flag only lasts one step; Linux sends neither.
+  win.on('will-move', () => {
+    dragging = true;
+  });
+  win.on('moved', () => {
+    dragging = false;
+    fit(true);
+  });
 
   let moveTimer: NodeJS.Timeout | null = null;
   win.on('move', () => {
@@ -488,12 +532,14 @@ function start(): void {
     stopWatchingDesktop();
     stopWatchingCredentials();
     service.stop();
+    updater.stop();
     settings.flush();
     tray.destroy();
   });
   app.on('will-quit', () => unregisterShortcuts());
 
   service.start();
+  updater.start();
 }
 
 async function showAbout(): Promise<void> {

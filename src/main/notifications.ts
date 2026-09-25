@@ -52,12 +52,13 @@ export class Notifier {
     this.show({ title: 'Notifications are on', body: 'Claude Usage will tell you when a limit reaches the levels you picked.' });
   }
 
-  private show({ title, body }: { title: string; body: string }): void {
+  /** Any other notice (e.g. updates). Clicking it runs `onClick`, or shows the overlay by default. */
+  show({ title, body }: { title: string; body: string }, onClick: () => void = this.options.onClick): void {
     if (!this.supported) return;
     // Windows and Linux show this image in the notification; macOS always uses the app icon.
     const icon = process.platform === 'darwin' ? undefined : nativeImage.createFromPath(APP_ICON_PATH);
     const notification = new Notification({ title, body, ...(icon ? { icon } : {}) });
-    notification.on('click', () => this.options.onClick());
+    notification.on('click', () => onClick());
     notification.on('failed', (_event, error) => this.options.log('warn', `Notification failed: ${error}`));
     this.shown.push(notification);
     if (this.shown.length > KEEP_SHOWN) this.shown.shift();

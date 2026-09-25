@@ -511,6 +511,7 @@ function render(): void {
   const card = state.view.compact ? compactView(state) : expandedView(state, now);
   card.style.opacity = String(state.view.opacity);
   root.replaceChildren(card);
+  fitWindow();
 
   for (const meter of state.snapshot?.meters ?? []) lastPercent.set(meter.id, meter.percent);
   if (state.snapshot?.spend) lastPercent.set('spend', state.snapshot.spend.percent);
@@ -520,10 +521,33 @@ function render(): void {
   requestAnimationFrame(() => requestAnimationFrame(() => animations.forEach((run) => run())));
 }
 
-new ResizeObserver(() => {
+// ---- Window size --------------------------------------------------------------------------------
+
+let reportedSize = { width: 0, height: 0 };
+
+/**
+ * Reports the card's exact (fractional) size; main rounds it up once, after the zoom factor, to
+ * whole DIPs. So the window can be a pixel or two bigger than the card, and the card is stretched
+ * over that sliver to touch every window edge — and so the screen edge (D42). A bigger difference
+ * means the window hasn't caught up with a new size yet; then the card keeps its own size.
+ */
+function fitWindow(): void {
+  const card = root.firstElementChild as HTMLElement | null;
+  if (!card) return;
+  card.style.minWidth = card.style.minHeight = '';
   const { width, height } = root.getBoundingClientRect();
-  api.resize(Math.ceil(width), Math.ceil(height));
-}).observe(root);
+  if (width !== reportedSize.width || height !== reportedSize.height) {
+    reportedSize = { width, height };
+    api.resize(width, height);
+  }
+  if (innerWidth - width < 3) card.style.minWidth = '100vw';
+  if (innerHeight - height < 3) card.style.minHeight = '100vh';
+}
+
+// Besides after every render: when the window has been resized (also by a Size change), and as a
+// safety net whenever the content changes size between renders.
+window.addEventListener('resize', fitWindow);
+new ResizeObserver(fitWindow).observe(root);
 
 window.addEventListener('contextmenu', (event) => {
   event.preventDefault();

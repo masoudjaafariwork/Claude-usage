@@ -76,7 +76,8 @@ function linuxLoginItem(): LoginItem {
   const file = linuxAutostartFile(process.env, homedir());
   // Keep --no-sandbox when the app needed it to start (AppImage on Ubuntu 24.04+).
   const args = process.argv.includes('--no-sandbox') ? ['--no-sandbox'] : [];
-  const exec = execLine(process.env.APPIMAGE || process.execPath, args);
+  // Read APPIMAGE each time: an update renames the AppImage and main.ts points APPIMAGE at the new file.
+  const exec = () => execLine(process.env.APPIMAGE || process.execPath, args);
   return {
     available: true,
     state() {
@@ -86,12 +87,12 @@ function linuxLoginItem(): LoginItem {
       } catch {
         // missing → off
       }
-      return parseLinuxAutostart(text, exec);
+      return parseLinuxAutostart(text, exec());
     },
     set(on) {
       if (on) {
         mkdirSync(dirname(file), { recursive: true });
-        writeFileSync(file, linuxDesktopEntry(app.getName(), exec), 'utf8');
+        writeFileSync(file, linuxDesktopEntry(app.getName(), exec()), 'utf8');
       } else {
         rmSync(file, { force: true });
       }
