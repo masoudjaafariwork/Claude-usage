@@ -109,6 +109,13 @@ export interface AppState {
   view: ViewSettings;
   sourceMode: SourceMode;
   /**
+   * The Claude Code account picked in the menu, read from its `.claude.json` now. Shown while there
+   * is no snapshot yet; a snapshot's own account wins otherwise (D41).
+   */
+  selectedAccount: AccountInfo | null;
+  /** True when an added config folder is picked instead of the default account (Phase 6). */
+  addedAccount: boolean;
+  /**
    * "At this pace" forecast: meter id → ISO time when the limit reaches 100 %, only for limits
    * that would hit it before their reset (and only while the data is fresh).
    */

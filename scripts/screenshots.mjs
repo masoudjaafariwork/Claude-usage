@@ -22,6 +22,7 @@ const ALL = [
   'desktop-unavailable',
   'forecast',
   'locked',
+  'other-account',
 ];
 
 /** Extra renders: file-name suffix → scenario + flags. */

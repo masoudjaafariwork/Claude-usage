@@ -66,6 +66,8 @@ export class UsageService extends EventEmitter<{ change: [] }> {
   private failures = 0;
   private lastRequestAt = 0;
   private lastLogged = '';
+  /** Bumped when another Claude Code account is chosen; results of older requests are dropped. */
+  private generation = 0;
 
   constructor(deps: UsageServiceDeps, initialSnapshot: UsageSnapshot | null = null) {
     super();
@@ -97,6 +99,21 @@ export class UsageService extends EventEmitter<{ change: [] }> {
     if (!this.running) return;
     if (this.refreshing) this.repollAfterCurrent = true;
     else void this.poll();
+  }
+
+  /**
+   * Another Claude Code account (config folder) was chosen: show its own cached data (or nothing)
+   * and poll it at once. A request still running for the previous account is discarded when it
+   * returns, so its numbers never show up as the new account's.
+   */
+  accountChanged(snapshot: UsageSnapshot | null): void {
+    this.generation++;
+    this.snapshot = snapshot;
+    this.status = { kind: 'loading' };
+    this.failures = 0;
+    this.lastLogged = '';
+    this.emit('change');
+    this.sourcesChanged();
   }
 
   /**
@@ -144,6 +161,7 @@ export class UsageService extends EventEmitter<{ change: [] }> {
   /** One round over the sources: updates snapshot/status and returns seconds until the next attempt. */
   async attempt(): Promise<number> {
     this.lastRequestAt = this.now();
+    const generation = this.generation;
     const mode = this.deps.mode();
     const order = mode === 'auto' ? AUTO_ORDER : [mode];
     const unavailable: Status[] = [];
@@ -152,12 +170,15 @@ export class UsageService extends EventEmitter<{ change: [] }> {
       const shownFetchedAt = mode === 'auto' && shown && shown.source !== id ? Date.parse(shown.fetchedAt) : null;
       try {
         const snapshot = await this.deps.sources[id].fetch({ shownFetchedAt });
+        // Another account was chosen meanwhile: poll() asks again for that one.
+        if (generation !== this.generation) return MIN_GAP_SEC;
         this.snapshot = snapshot;
         this.status = { kind: 'ok' };
         this.failures = 0;
         this.logState(`ok via ${SOURCE_LABELS[id]}`);
         return this.nextOkDelaySec();
       } catch (err) {
+        if (generation !== this.generation) return MIN_GAP_SEC;
         if (err instanceof SourceUnavailableError) {
           unavailable.push(err.status);
           continue;

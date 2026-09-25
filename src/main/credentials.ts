@@ -5,9 +5,9 @@
 // (to pick up tokens Claude Code renewed), and never write, refresh or log the token.
 import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { AccountInfo } from '../shared/types';
+import type { ClaudeCodeLocation } from './claude-accounts';
 
 export interface ClaudeCredentials {
   accessToken: string;
@@ -20,14 +20,6 @@ export interface ClaudeCredentials {
 
 export class CredentialsNotFoundError extends Error {
   override name = 'CredentialsNotFoundError';
-}
-
-const KEYCHAIN_SERVICE = 'Claude Code-credentials';
-
-/** Claude Code's config directory (honours CLAUDE_CONFIG_DIR like Claude Code itself does). */
-export function claudeConfigDir(): string {
-  const override = process.env.CLAUDE_CONFIG_DIR?.trim();
-  return override ? override : join(homedir(), '.claude');
 }
 
 export function parseCredentials(text: string, source: ClaudeCredentials['source']): ClaudeCredentials | null {
@@ -51,9 +43,9 @@ export function parseCredentials(text: string, source: ClaudeCredentials['source
   };
 }
 
-async function readFromFile(): Promise<ClaudeCredentials | null> {
+async function readFromFile(dir: string): Promise<ClaudeCredentials | null> {
   try {
-    const text = await readFile(join(claudeConfigDir(), '.credentials.json'), 'utf8');
+    const text = await readFile(join(dir, '.credentials.json'), 'utf8');
     return parseCredentials(text, 'file');
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
@@ -61,11 +53,11 @@ async function readFromFile(): Promise<ClaudeCredentials | null> {
   }
 }
 
-function readFromKeychain(): Promise<ClaudeCredentials | null> {
+function readFromKeychain(service: string): Promise<ClaudeCredentials | null> {
   return new Promise((resolve) => {
     execFile(
       'security',
-      ['find-generic-password', '-s', KEYCHAIN_SERVICE, '-w'],
+      ['find-generic-password', '-s', service, '-w'],
       { timeout: 10_000 },
       (err, stdout) => resolve(err ? null : parseCredentials(stdout.trim(), 'keychain')),
     );
@@ -102,13 +94,13 @@ export function parseClaudeCodeAccount(text: string): ClaudeCodeAccount | null {
 }
 
 /**
- * Claude Code's account from its config file (`.claude.json` in CLAUDE_CONFIG_DIR or the home
- * folder) — non-secret. Labels the data and picks Claude Desktop samples of the same org.
+ * Claude Code's account from its config file (`.claude.json` in the config folder, or in the home
+ * folder for the default one) — non-secret. Labels the data and picks Claude Desktop samples of the
+ * same org.
  */
-export async function readClaudeCodeAccount(): Promise<ClaudeCodeAccount | null> {
-  const override = process.env.CLAUDE_CONFIG_DIR?.trim();
+export async function readClaudeCodeAccount(location: ClaudeCodeLocation): Promise<ClaudeCodeAccount | null> {
   try {
-    return parseClaudeCodeAccount(await readFile(join(override ? override : homedir(), '.claude.json'), 'utf8'));
+    return parseClaudeCodeAccount(await readFile(location.accountFile, 'utf8'));
   } catch {
     return null;
   }
@@ -122,13 +114,14 @@ export function accountInfo(account: ClaudeCodeAccount | null): AccountInfo | nu
   return { email, name, organization: personal ? null : orgName };
 }
 
-export async function readCredentials(): Promise<ClaudeCredentials> {
+/** The sign-in stored at `location` (claude-accounts.ts: the default account or an added folder). */
+export async function readCredentials(location: ClaudeCodeLocation): Promise<ClaudeCredentials> {
   const found: ClaudeCredentials[] = [];
   if (process.platform === 'darwin') {
-    const fromKeychain = await readFromKeychain();
+    const fromKeychain = await readFromKeychain(location.keychainService);
     if (fromKeychain) found.push(fromKeychain);
   }
-  const fromFile = await readFromFile();
+  const fromFile = await readFromFile(location.dir);
   if (fromFile) found.push(fromFile);
 
   // On macOS the Keychain and the file can diverge; the one expiring last is the freshest.

@@ -69,8 +69,18 @@ test('maps Desktop keys to the API meter ids; no reset times, xu and codenames i
   assert.equal(desktopSnapshot({ t: 1, org: null, u: { xu: 100 } }), null);
 });
 
-function source(history: string | null, now: number, account: ClaudeCodeAccount | null = null) {
-  const src = new DesktopSource({ readHistory: async () => history, claudeCodeAccount: async () => account, now: () => now });
+function source(
+  history: string | null,
+  now: number,
+  account: ClaudeCodeAccount | null = null,
+  orgMatch: 'off' | 'if-known' | 'strict' = 'off',
+) {
+  const src = new DesktopSource({
+    readHistory: async () => history,
+    claudeCodeAccount: async () => account,
+    orgMatch: () => orgMatch,
+    now: () => now,
+  });
   return { src };
 }
 
@@ -132,6 +142,23 @@ test('samples are labelled with Claude Code’s account only when they are of it
   assert.equal(await label('team', account('mine')), null, 'another org: Desktop may be signed in to another account');
   assert.equal(await label(null, account('mine')), null, 'v1 samples have no org');
   assert.equal(await label('mine', null), null, 'Claude Code not signed in');
+});
+
+test('org match (D51): strict for an added account folder, only when Claude Code’s account is known in Auto', async () => {
+  const history = (...orgs: Array<string | null>) =>
+    JSON.stringify({ version: 2, samples: orgs.map((org, i) => ({ t: 1000 + i * 100, org, u: { fh: 10 + i } })) });
+  const fetch = (text: string, who: ClaudeCodeAccount | null, orgMatch: 'off' | 'if-known' | 'strict') =>
+    source(text, 2000, who, orgMatch).src.fetch({ shownFetchedAt: null });
+  for (const orgMatch of ['if-known', 'strict'] as const) {
+    assert.equal((await fetch(history('mine', 'team'), account('mine'), orgMatch)).meters[0]?.percent, 10, 'its own org, though older');
+    assert.equal(await unavailableKind(fetch(history('team'), account('mine'), orgMatch)), 'desktop-unavailable', 'only another org');
+    assert.equal(await unavailableKind(fetch(history(null), account('mine'), orgMatch)), 'desktop-unavailable', 'org unknown (v1)');
+  }
+  // Claude Code's account unknown: an added folder shows nothing; Auto still serves Desktop-only users.
+  assert.equal(await unavailableKind(fetch(history('team'), null, 'strict')), 'desktop-unavailable');
+  assert.equal((await fetch(history('team'), null, 'if-known')).meters[0]?.percent, 10);
+  // Claude Desktop only: any org, just not labelled (D41).
+  assert.equal((await fetch(history('team'), account('mine'), 'off')).account, undefined);
 });
 
 test('desktopDataDirs covers MSIX, Squirrel, macOS and Linux community builds', () => {

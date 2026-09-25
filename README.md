@@ -25,6 +25,10 @@ Windows · macOS · Linux — Electron + TypeScript.
 - Shows **which account** the numbers belong to: the e-mail Claude Code is signed in with (on the
   card also a Team or Enterprise plan's team name; in the compact pill a small line under the
   rings). Menu → *Show account* hides it, e.g. while you share your screen.
+- **Several Claude Code accounts**: if you keep each account in its own Claude Code config folder
+  (`CLAUDE_CONFIG_DIR`, e.g. one VS Code per account), add the folders in menu → *Claude Code
+  account* and switch between them — or let each account's launch script switch the overlay
+  ([below](#several-claude-code-accounts)).
 - Tray / menu-bar icon that shows a live ring for your most-constrained limit.
 - **Notifications** when a limit reaches 75 %, 90 % and 100 % — once per limit and usage window —
   and, optionally, when it resets (menu → *Notifications*).
@@ -63,6 +67,10 @@ does.
   automatically once Claude Code renews it.
 - The account it shows (e-mail, name, organization) comes from Claude Code's settings file
   `.claude.json`, which holds no secrets.
+- With `CLAUDE_CONFIG_DIR` (an account in its own folder) Claude Code keeps both files in that
+  folder — on macOS the sign-in is the Keychain item `Claude Code-credentials-<hash of the folder>`.
+  The overlay reads whichever account you pick (see
+  [Several Claude Code accounts](#several-claude-code-accounts)).
 
 **Claude desktop app (fallback).** While it runs, the Claude desktop app writes your plan usage to
 `plan-usage-history.json` in its own data folder about every 15 minutes. In *Auto* mode, when
@@ -70,8 +78,10 @@ Claude Code's sign-in is missing or expired, the overlay shows the newest sample
 it is at most 20 minutes old ("via Claude Desktop · as of 14:32"). It only reads that one file — no
 sign-in, no network — and never touches the desktop app's own sign-in. The file has no reset
 times and no weekly split by app, so those parts are left out. The desktop app pauses its
-sampling while the computer is idle or locked. Its samples name only an organization, so the
-account is shown only when that is Claude Code's organization ("Claude Desktop's account" otherwise).
+sampling while the computer is idle or locked. The desktop app has a single sign-in and its samples
+name only an organization, so in *Auto* they are used only when that is the organization of the
+Claude Code account you're looking at — never another account's numbers. (With *Claude Desktop
+only* they are always shown, labelled "Claude Desktop's account" when the organization differs.)
 
 The overlay never offers a claude.ai sign-in of its own: Anthropic does not allow third-party apps
 to offer Claude.ai login or to store claude.ai session tokens.
@@ -139,6 +149,36 @@ Startup apps* (Windows), *System Settings → General → Login Items* (macOS), 
 `~/.config/autostart/claude-usage.desktop` (Linux). The overlay respects it when you switch
 it off there. The option only works in the installed app, not with `npm start`.
 
+### Several Claude Code accounts
+
+Claude Code keeps an account's sign-in in its config folder: `~/.claude` by default, or the folder
+in the `CLAUDE_CONFIG_DIR` environment variable. If you run several accounts that way — for example
+a VS Code per account, each started from a script that sets `CLAUDE_CONFIG_DIR` — the overlay can
+show any of them, one at a time:
+
+- Menu → **Claude Code account** → **Add folder…** and pick the account's config folder (the one
+  `CLAUDE_CONFIG_DIR` points to; it contains `.claude.json`). The menu then lists the default
+  account and every added folder by e-mail; click one to switch. **Remove folder** takes one out.
+- Each account keeps its own last data, pace forecast and notifications. The overlay starts with
+  the account you picked last.
+- Or switch from the command line — also when the overlay is already running:
+  `"Claude Usage.exe" --claude-config-dir="D:\Work\claude-config"` (`--claude-config-dir=default`
+  goes back to the default account). Put it in the account's own script, next to the line that
+  starts its VS Code:
+
+  ```bat
+  @echo off
+  set "CLAUDE_CONFIG_DIR=D:\Work\claude-config"
+  start "" "%LOCALAPPDATA%\Programs\claude-usage\Claude Usage.exe" --claude-config-dir="%CLAUDE_CONFIG_DIR%"
+  code --user-data-dir "D:\Work\VSCode-Profile" --extensions-dir "D:\Work\VSCode-Profile\extensions"
+  ```
+
+- **Open Claude Code** (shown when that account's sign-in has expired) opens a terminal that runs
+  `claude` with that folder, so Claude Code renews the right account. It needs the `claude` command
+  or the Claude Code extension for VS Code installed.
+- The Claude desktop app fills gaps only for the account it is signed in to (see
+  [How it works](#how-it-works)).
+
 ### Updates
 
 The app looks for a new version on the
@@ -167,7 +207,7 @@ npm start
 
 - **Move:** drag the card.
 - **Menu:** the ⋯ button, right-click, or the tray icon. The menu has show/hide, lock, the data
-  source, compact mode and which limits it shows, show account, always on top, size, opacity,
+  source, the Claude Code account, compact mode and which limits it shows, show account, always on top, size, opacity,
   theme, refresh interval, move to display, reset position, notifications, keyboard shortcuts, the
   settings and logs folders, check for updates, and quit.
 - **Keyboard:** `Ctrl+Alt+U` shows/hides the overlay and `Ctrl+Alt+Shift+U` locks/unlocks it from
@@ -184,7 +224,7 @@ npm start
 | --- | --- |
 | `npm start` | Build and run with real data |
 | `npm run start:mock` | Run with fake data |
-| `node scripts/start.mjs --mock=critical` | Other scenarios: `normal`, `warning`, `critical`, `expired`, `no-credentials`, `rate-limited`, `offline`, `loading`, `via-desktop`, `desktop-unavailable`, `forecast`, `locked`; add `--theme=light` or `--scale=1.5` to try those |
+| `node scripts/start.mjs --mock=critical` | Other scenarios: `normal`, `warning`, `critical`, `expired`, `no-credentials`, `rate-limited`, `offline`, `loading`, `via-desktop`, `desktop-unavailable`, `forecast`, `locked`, `other-account`; add `--theme=light` or `--scale=1.5` to try those |
 | `npm run screenshot` | Render every mock scenario (plus light-theme and size variants) to `screenshots/` |
 | `npm run screenshot:readme` | Re-render the screenshots at the top of this README (`docs/images/`) |
 | `npm run check` | Type-check and run unit tests |
@@ -224,8 +264,9 @@ Project guide for AI-assisted development: [CLAUDE.md](CLAUDE.md). Status and de
 
 - **"Not signed in"** (Auto mode): sign in to Claude Code (below) or open the Claude desktop app.
 - **"Not signed in to Claude Code"**: sign in from the Claude Code panel in VS Code, or run
-  `claude` in a terminal and use `/login`. If you set `CLAUDE_CONFIG_DIR` only in the VS Code
-  extension's settings, the overlay can't see it; set it as a user environment variable instead.
+  `claude` in a terminal and use `/login`. If your Claude Code uses another config folder
+  (`CLAUDE_CONFIG_DIR`, e.g. set in the VS Code extension's settings or a launch script), add that
+  folder in menu → *Claude Code account* → *Add folder…*.
 - **"Claude Code sign-in expired"**: click **Open Claude Code** in the banner (or the menu). It opens
   a new Claude Code tab in VS Code — or, without the VS Code extension, a terminal running `claude` —
   and Claude Code renews its own token when it starts; the overlay notices within seconds. You don't

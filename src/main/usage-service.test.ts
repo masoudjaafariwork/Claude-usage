@@ -5,6 +5,7 @@ import { CredentialsNotFoundError, type ClaudeCodeAccount, type ClaudeCredential
 import { DesktopSource } from './desktop-source';
 import { mockRawUsage } from './mock';
 import { UsageHttpError } from './usage-errors';
+import { parseUsage } from './usage-parse';
 import { ClaudeCodeSource } from './usage-source';
 import { MIN_GAP_SEC, RECHECK_CREDENTIALS_SEC, UsageService, backoffSec } from './usage-service';
 
@@ -313,4 +314,36 @@ test('a rewritten credentials file brings Claude Code back at once — but never
   await settle();
   assert.equal(offline.counts.fetches, fetches);
   offline.svc.stop();
+});
+
+test('another account: its cached data at once, a request still running for the old one is dropped, then polled', async () => {
+  let finishOld: (raw: unknown) => void = () => {};
+  const { svc, counts } = service({
+    mode: 'claude-code',
+    fetchUsage: () =>
+      counts.fetches === 1
+        ? new Promise((resolve) => (finishOld = resolve)) // the previous account's request, still running
+        : Promise.resolve(mockRawUsage(NOW, { session: 70, weekly: 10, fable: 5 })),
+  });
+  const sessions: number[] = [];
+  svc.on('change', () => {
+    const percent = svc.snapshot?.meters.find((m) => m.id === 'session')?.percent;
+    if (percent !== undefined) sessions.push(percent);
+  });
+  svc.start();
+  await settle();
+  assert.equal(svc.refreshing, true);
+
+  const cached = parseUsage(mockRawUsage(NOW - HOUR, { session: 40, weekly: 20, fable: 5 }), null, new Date(NOW - HOUR));
+  svc.accountChanged(cached);
+  assert.equal(svc.snapshot, cached);
+  assert.equal(svc.status.kind, 'loading');
+
+  finishOld(mockRawUsage(NOW, { session: 20, weekly: 50, fable: 30 }));
+  await settle();
+  assert.equal(svc.status.kind, 'ok');
+  assert.equal(svc.snapshot?.meters.find((m) => m.id === 'session')?.percent, 70);
+  assert.equal(counts.fetches, 2);
+  assert.ok(!sessions.includes(20), 'the old account’s numbers never showed');
+  svc.stop();
 });

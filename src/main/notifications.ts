@@ -12,7 +12,7 @@ import { APP_ICON_PATH } from './window';
 const KEEP_SHOWN = 10;
 
 export interface NotifierOptions {
-  /** Where the records live; null = memory only (mock runs). */
+  /** Where the records live; null = memory only (mock runs). Per Claude Code account (useRecords). */
   file: string | null;
   /** Clicking a notification (shows the overlay). */
   onClick(): void;
@@ -20,13 +20,20 @@ export interface NotifierOptions {
 }
 
 export class Notifier {
-  private records: NotifyRecord[];
+  private records: NotifyRecord[] = [];
+  private file: string | null = null;
   private readonly shown: Notification[] = [];
   private readonly options: NotifierOptions;
 
   constructor(options: NotifierOptions) {
     this.options = options;
-    this.records = options.file ? sanitizeRecords(readJson(options.file)) : [];
+    this.useRecords(options.file);
+  }
+
+  /** Another Claude Code account: its own records (its limits have their own windows). */
+  useRecords(file: string | null): void {
+    this.file = file;
+    this.records = file ? sanitizeRecords(readJson(file)) : [];
   }
 
   get supported(): boolean {
@@ -67,9 +74,9 @@ export class Notifier {
   }
 
   private save(): void {
-    if (!this.options.file) return;
+    if (!this.file) return;
     try {
-      writeJsonAtomic(this.options.file, { version: 1, records: this.records });
+      writeJsonAtomic(this.file, { version: 1, records: this.records });
     } catch (err) {
       this.options.log('error', `Saving notification state failed: ${describeError(err)}`);
     }

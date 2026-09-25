@@ -1,6 +1,7 @@
 // The context menu, shared by the tray icon, the overlay's ⋯ button and right-click.
 import { Menu, app, screen, type MenuItemConstructorOptions } from 'electron';
 import type { SourceMode, StatusKind } from '../shared/types';
+import type { AccountMenuEntry } from './claude-accounts';
 import { NOTIFY_THRESHOLDS } from './notifications-core';
 import { OPACITY_OPTIONS, REFRESH_INTERVAL_OPTIONS_SEC, SCALE_OPTIONS, type Settings, type ThemeSetting } from './settings';
 import { shortcutLabel, type ShortcutState, type ShortcutsStatus } from './shortcuts-core';
@@ -34,6 +35,10 @@ export interface MenuActions {
   resetPosition(): void;
   setLaunchAtLogin(on: boolean): void;
   setSource(mode: SourceMode): void;
+  /** Show another Claude Code account: an added config folder, or null for the default one. */
+  setClaudeCodeDir(dir: string | null): void;
+  addClaudeCodeDir(): void;
+  removeClaudeCodeDir(dir: string): void;
   setNotifyAt(threshold: number, on: boolean): void;
   setNotifyReset(on: boolean): void;
   testNotification(): void;
@@ -54,6 +59,8 @@ export interface MenuContext {
   loginItemAvailable: boolean;
   /** Weekly limits in the current data, offered as compact-pill toggles. */
   weeklyMeters: ReadonlyArray<{ id: string; label: string }>;
+  /** The default Claude Code account and the added config folders (claude-accounts.ts). */
+  accounts: readonly AccountMenuEntry[];
   statusKind: StatusKind;
   shortcuts: ShortcutsStatus;
   notificationsSupported: boolean;
@@ -86,6 +93,7 @@ export function buildMenu(settings: Readonly<Settings>, context: MenuContext, ac
       else if (update.action === 'open-download-page') actions.openUpdateDownloadPage();
     },
   };
+  const added = context.accounts.flatMap(({ dir, label }) => (dir === null ? [] : [{ dir, label }]));
 
   const template: MenuItemConstructorOptions[] = [
     ...(update.prominent ? [updateItem, { type: 'separator' as const }] : []),
@@ -111,6 +119,29 @@ export function buildMenu(settings: Readonly<Settings>, context: MenuContext, ac
         checked: settings.source === mode,
         click: () => actions.setSource(mode),
       })),
+    },
+    {
+      label: 'Claude Code account',
+      submenu: [
+        ...context.accounts.map(
+          (entry): MenuItemConstructorOptions => ({
+            label: entry.label,
+            type: 'radio',
+            checked: entry.selected,
+            click: () => actions.setClaudeCodeDir(entry.dir),
+          }),
+        ),
+        { type: 'separator' },
+        { label: 'Add folder…', click: () => actions.addClaudeCodeDir() },
+        ...(added.length > 0
+          ? [
+              {
+                label: 'Remove folder',
+                submenu: added.map(({ dir, label }) => ({ label, click: () => actions.removeClaudeCodeDir(dir) })),
+              },
+            ]
+          : []),
+      ],
     },
     // Claude Code renews its own sign-in when it starts (the overlay never does, D3).
     ...(context.statusKind === 'token-expired' || context.statusKind === 'no-credentials'

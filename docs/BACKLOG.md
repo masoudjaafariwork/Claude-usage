@@ -12,7 +12,8 @@ technical notes, acceptance criteria, a manual test checklist, a ready-to-paste 
 | 2 | Packaging, app icon, launch at login | ✅ Done (2026-09-24) | [phase-2-packaging.md](phases/phase-2-packaging.md) |
 | 3 | Fallback data source (Claude Desktop), source selection & diagnostics — claude.ai sign-in dropped (D28) | ✅ Done (2026-09-25) | [phase-3-fallback-source.md](phases/phase-3-fallback-source.md) |
 | 4 | UX: notifications, click-through, shortcut, size, pace forecast, theme | ✅ Done (2026-09-26) | [phase-4-ux.md](phases/phase-4-ux.md) |
-| 5 | App auto-update | ✅ Done (2026-09-26) — real-release test (1.0.0 → 1.0.1) by the owner | [phase-5-auto-update.md](phases/phase-5-auto-update.md) |
+| 5 | App auto-update | ✅ Done (2026-09-26) — real-release test (1.0.0 → 1.1.0) by the owner | [phase-5-auto-update.md](phases/phase-5-auto-update.md) |
+| 6 | Several Claude Code accounts (config folders) with a switcher | ✅ Done (2026-09-26) — version 1.1.0 | [phase-6-accounts.md](phases/phase-6-accounts.md) |
 
 **Running a phase:** open a new Claude Code session in this repo, open the phase file, copy the
 text in its **Prompt** block, paste it, send. Run phases in order, one per session.
@@ -52,7 +53,8 @@ Phases table in docs/BACKLOG.md. Don't implement anything yet — show me the pl
 
 Move an idea into a phase file (with the "Plan a new phase" prompt) when it's time to build it.
 
-- Multiple accounts (several `CLAUDE_CONFIG_DIR`s) with a switcher. (No claude.ai sign-ins — D28.)
+- Several accounts shown at the same time (Phase 6 switches between them, one at a time). (No
+  claude.ai sign-ins — D28.)
 - Weekly usage history sparkline (Claude Desktop's `plan-usage-history.json` keeps 30 days of
   samples; `desktop-source.ts` already parses it).
 - Other providers (e.g. Codex) side by side.

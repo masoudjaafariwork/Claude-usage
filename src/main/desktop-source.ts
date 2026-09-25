@@ -132,6 +132,12 @@ export interface DesktopSourceDeps {
    * that org are labelled with it.
    */
   claudeCodeAccount(): Promise<ClaudeCodeAccount | null>;
+  /**
+   * Whether a sample must be of Claude Code's org (D51) — Desktop has one sign-in, and another org's
+   * numbers are someone else's: 'strict' for an added account folder; 'if-known' in Auto (only when
+   * Claude Code's account is known: Desktop-only users have none); 'off' shows any (Desktop only).
+   */
+  orgMatch?(): 'off' | 'if-known' | 'strict';
   now(): number;
 }
 
@@ -153,8 +159,16 @@ export class DesktopSource implements UsageSource {
     }
     const samples = parseDesktopHistory(text);
     const account = await this.deps.claudeCodeAccount();
+    const orgMatch = this.deps.orgMatch?.() ?? 'off';
+    const mustMatch = orgMatch === 'strict' || (orgMatch === 'if-known' && Boolean(account?.orgUuid));
     const severalOrgs = new Set(samples.map((s) => s.org)).size > 1;
-    const sample = latestSample(samples, severalOrgs ? (account?.orgUuid ?? null) : null);
+    const sample = latestSample(samples, severalOrgs || mustMatch ? (account?.orgUuid ?? null) : null);
+    if (mustMatch && sample && (sample.org === null || sample.org !== account?.orgUuid)) {
+      throw new SourceUnavailableError({
+        kind: 'desktop-unavailable',
+        message: 'Claude Desktop has no usage of this account (it is signed in to another one).',
+      });
+    }
     const snapshot = sample && this.deps.now() - sample.t <= DESKTOP_MAX_AGE_MS ? desktopSnapshot(sample) : null;
     if (!snapshot) {
       throw new SourceUnavailableError({

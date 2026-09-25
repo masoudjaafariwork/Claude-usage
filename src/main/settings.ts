@@ -3,6 +3,7 @@
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { SourceMode } from '../shared/types';
+import { MAX_FOLDERS } from './claude-accounts';
 import { NOTIFY_THRESHOLDS } from './notifications-core';
 import { DEFAULT_SHORTCUTS, isValidShortcut } from './shortcuts-core';
 
@@ -25,6 +26,10 @@ export interface Settings {
   launchAtLogin: boolean;
   /** Where usage comes from; 'auto' = Claude Code, then Claude Desktop. */
   source: SourceMode;
+  /** Claude Code config folders the user added (several accounts, one CLAUDE_CONFIG_DIR each). */
+  claudeCodeDirs: string[];
+  /** The added folder whose account is shown; null = the default (the app's CLAUDE_CONFIG_DIR, or ~/.claude). */
+  claudeCodeDir: string | null;
   /** Click-through: the overlay ignores the mouse. Unlocked from the tray menu or the lock shortcut. */
   locked: boolean;
   /** Zoom factor of the overlay, one of SCALE_OPTIONS. */
@@ -50,6 +55,8 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   refreshIntervalSec: 180,
   launchAtLogin: false,
   source: 'auto',
+  claudeCodeDirs: [],
+  claudeCodeDir: null,
   locked: false,
   scale: 1,
   theme: 'dark',
@@ -78,21 +85,22 @@ const MAX_REFRESH_SEC = 3600;
 
 const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
-/** Unique, non-empty, reasonably short strings; anything else is dropped. */
-function sanitizeIdList(v: unknown): string[] {
+/** Unique, non-empty strings up to `maxLength` characters, at most `maxCount`; anything else is dropped. */
+function sanitizeStringList(v: unknown, maxLength = 100, maxCount = 50): string[] {
   if (!Array.isArray(v)) return [];
-  const ids = v.filter((id): id is string => typeof id === 'string' && id.length > 0 && id.length <= 100);
-  return [...new Set(ids)].slice(0, 50);
+  const items = v.filter((item): item is string => typeof item === 'string' && item.trim().length > 0 && item.length <= maxLength);
+  return [...new Set(items)].slice(0, maxCount);
 }
 
 export function sanitizeSettings(raw: unknown): Settings {
   const r = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
   const pos = r.position as Record<string, unknown> | null | undefined;
+  const claudeCodeDirs = sanitizeStringList(r.claudeCodeDirs, 1024, MAX_FOLDERS);
   return {
     position:
       pos && isFiniteNumber(pos.x) && isFiniteNumber(pos.y) ? { x: Math.round(pos.x), y: Math.round(pos.y) } : null,
     compact: typeof r.compact === 'boolean' ? r.compact : DEFAULT_SETTINGS.compact,
-    compactHidden: sanitizeIdList(r.compactHidden),
+    compactHidden: sanitizeStringList(r.compactHidden),
     showAccount: typeof r.showAccount === 'boolean' ? r.showAccount : DEFAULT_SETTINGS.showAccount,
     alwaysOnTop: typeof r.alwaysOnTop === 'boolean' ? r.alwaysOnTop : DEFAULT_SETTINGS.alwaysOnTop,
     opacity: isFiniteNumber(r.opacity) ? Math.min(1, Math.max(0.3, r.opacity)) : DEFAULT_SETTINGS.opacity,
@@ -101,6 +109,8 @@ export function sanitizeSettings(raw: unknown): Settings {
       : DEFAULT_SETTINGS.refreshIntervalSec,
     launchAtLogin: typeof r.launchAtLogin === 'boolean' ? r.launchAtLogin : DEFAULT_SETTINGS.launchAtLogin,
     source: SOURCE_MODES.includes(r.source as SourceMode) ? (r.source as SourceMode) : DEFAULT_SETTINGS.source,
+    claudeCodeDirs,
+    claudeCodeDir: typeof r.claudeCodeDir === 'string' && claudeCodeDirs.includes(r.claudeCodeDir) ? r.claudeCodeDir : null,
     locked: typeof r.locked === 'boolean' ? r.locked : DEFAULT_SETTINGS.locked,
     scale: SCALE_OPTIONS.find((option) => option === r.scale) ?? DEFAULT_SETTINGS.scale,
     theme: THEMES.includes(r.theme as ThemeSetting) ? (r.theme as ThemeSetting) : DEFAULT_SETTINGS.theme,

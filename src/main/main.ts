@@ -6,6 +6,9 @@
 //   --screenshot=<file>    render, save a PNG of the overlay to <file>, then quit
 //   --compact / --expanded override the view mode for this run
 //   --theme=<system|dark|light>, --scale=<0.9|1|1.15|1.3|1.5> override theme and size (screenshots)
+// User option:
+//   --claude-config-dir=<folder|default>  show that Claude Code account (config folder); a running
+//                          copy switches to it (claude-accounts.ts)
 import {
   app,
   BrowserWindow,
@@ -19,13 +22,22 @@ import {
   type IpcMainEvent,
   type IpcMainInvokeEvent,
 } from 'electron';
-import { mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { AppState, SourceId, UsageSnapshot } from '../shared/types';
+import {
+  accountMenuEntries,
+  accountStateKey,
+  chooseFolder,
+  claudeCodeLocation,
+  configDirArg,
+  normalizeFolder,
+  type ClaudeCodeLocation,
+} from './claude-accounts';
 import { gatherLaunchFacts, launchClaudeCode, planClaudeCodeLaunch } from './claude-code-launcher';
-import { claudeConfigDir, readClaudeCodeAccount, readCredentials } from './credentials';
+import { accountInfo, readClaudeCodeAccount, readCredentials, type ClaudeCodeAccount } from './credentials';
 import { DesktopSource, desktopDataDirs, readDesktopHistory, watchDesktopHistory } from './desktop-source';
 import { watchFileInDirs } from './file-watch';
 import { RotatingLog, describeError } from './log';
@@ -132,9 +144,29 @@ function start(): void {
     }
   }
 
-  const snapshotFile = join(userData, 'last-usage.json');
+  // Several Claude Code accounts (Phase 6): the default one plus config folders added from the menu
+  // or with --claude-config-dir; one is shown at a time.
+  const home = homedir();
+  const startDir = folderFromArgs(process.argv.slice(1), process.cwd());
+  // An account's launch script sets CLAUDE_CONFIG_DIR for its own VS Code and passes it to us with
+  // --claude-config-dir too. The option names the account; the inherited variable would also turn
+  // the default account into that folder (and reach Open Claude Code's terminal), so drop it.
+  if (startDir !== undefined) delete process.env.CLAUDE_CONFIG_DIR;
+  const locationOf = (dir: string | null): ClaudeCodeLocation => claudeCodeLocation(dir, process.platform, process.env, home);
+  const defaultLocation = locationOf(null);
+  if (startDir !== undefined) settings.update(chooseFolder(settings.get().claudeCodeDirs, startDir, defaultLocation.dir, process.platform));
+  let location = locationOf(settings.get().claudeCodeDir);
+  const accountStateDir = (dir: string) => join(userData, 'accounts', accountStateKey(dir, process.platform));
+  /** The shown account's own files: cached snapshot, pace history, notification records. */
+  const accountFile = (name: string) => {
+    const dir = settings.get().claudeCodeDir;
+    return dir === null ? join(userData, name) : join(accountStateDir(dir), name);
+  };
+  /** Every account as its `.claude.json` says (null key = the default account): menu and card. */
+  const accounts = new Map<string | null, ClaudeCodeAccount | null>();
+
   const userAgent = `ClaudeUsage/${app.getVersion()} (${process.platform}; Electron ${process.versions.electron})`;
-  const desktopDirs = desktopDataDirs(process.platform, process.env, homedir());
+  const desktopDirs = desktopDataDirs(process.platform, process.env, home);
   let sources: Record<SourceId, UsageSource>;
   let initialSnapshot: UsageSnapshot | null;
   let initialHistory: HistoryPoint[] = [];
@@ -143,26 +175,35 @@ function start(): void {
     sources = mock.sources;
     initialSnapshot = mock.initialSnapshot;
     initialHistory = mock.history;
-    settings.update({ source: mock.mode, locked: mock.locked });
+    // Scenarios decide the account too, so a folder picked in an earlier mock run doesn't carry over.
+    settings.update({
+      source: mock.mode,
+      locked: mock.locked,
+      claudeCodeDirs: mock.folder ? [mock.folder.dir] : [],
+      claudeCodeDir: mock.folder?.dir ?? null,
+    });
+    if (mock.folder) accounts.set(mock.folder.dir, mock.folder.account);
   } else {
     sources = {
       'claude-code': new ClaudeCodeSource({
-        readCredentials,
+        readCredentials: () => readCredentials(location),
         fetchUsage: (token) => fetchUsageJson(token, userAgent, log.write),
-        readAccount: readClaudeCodeAccount,
+        readAccount: () => readClaudeCodeAccount(location),
         now: Date.now,
       }),
       'claude-desktop': new DesktopSource({
         readHistory: () => readDesktopHistory(desktopDirs),
-        claudeCodeAccount: readClaudeCodeAccount,
+        claudeCodeAccount: () => readClaudeCodeAccount(location),
+        orgMatch: () => (settings.get().claudeCodeDir !== null ? 'strict' : settings.get().source === 'auto' ? 'if-known' : 'off'),
         now: Date.now,
       }),
     };
-    initialSnapshot = loadSnapshot(snapshotFile);
+    initialSnapshot = loadSnapshot(accountFile('last-usage.json'));
   }
   log.info(
     `Claude Usage ${app.getVersion()} starting (${process.platform}, Electron ${process.versions.electron}, ` +
-      `${app.isPackaged ? 'installed' : 'dev'}${cli.mock ? `, mock=${cli.mock}` : ''}, source=${settings.get().source})`,
+      `${app.isPackaged ? 'installed' : 'dev'}${cli.mock ? `, mock=${cli.mock}` : ''}, source=${settings.get().source}, ` +
+      `account=${accountLogName()})`,
   );
   const service = new UsageService(
     { sources, mode: () => settings.get().source, intervalSec: () => settings.get().refreshIntervalSec, log: log.write },
@@ -171,15 +212,21 @@ function start(): void {
   // Claude Desktop rewrites its history about every 15 min; pick new samples up right away.
   const stopWatchingDesktop = cli.mock ? () => {} : watchDesktopHistory(desktopDirs, () => service.desktopHistoryChanged());
   // Claude Code rewrites its credentials file when it renews its token: recover in seconds, not 60 s.
-  const stopWatchingCredentials = cli.mock
-    ? () => {}
-    : watchFileInDirs([claudeConfigDir()], '.credentials.json', () => service.credentialsChanged());
+  // `/login` rewrites it too, so the menu's e-mails are read again.
+  const watchCredentials = () =>
+    cli.mock
+      ? () => {}
+      : watchFileInDirs([location.dir], '.credentials.json', () => {
+          service.credentialsChanged();
+          void readAccounts();
+        });
+  let stopWatchingCredentials = watchCredentials();
   let lastClaudeCodeLaunch = 0;
-  // Snapshot history for the pace forecast (last 24 h; mock runs keep theirs in memory).
-  const history = new UsageHistory(cli.mock ? null : join(userData, 'usage-history.json'), initialHistory);
+  // Snapshot history for the pace forecast (last 24 h, per account; mock runs keep theirs in memory).
+  let history = new UsageHistory(cli.mock ? null : accountFile('usage-history.json'), initialHistory);
   let forecast: Record<string, string> = {};
   const notifier = new Notifier({
-    file: cli.mock ? null : join(userData, 'notifications.json'),
+    file: cli.mock ? null : accountFile('notifications.json'),
     onClick: () => showOverlay(),
     log: log.write,
   });
@@ -238,6 +285,8 @@ function start(): void {
         showAccount: current.showAccount,
       },
       sourceMode: current.source,
+      selectedAccount: accountInfo(accounts.get(current.claudeCodeDir) ?? null),
+      addedAccount: current.claudeCodeDir !== null,
       forecast: service.status.kind === 'ok' ? forecast : {},
     };
   };
@@ -327,6 +376,17 @@ function start(): void {
       broadcast();
       service.sourcesChanged();
     },
+    setClaudeCodeDir: (dir) => switchAccount(dir),
+    addClaudeCodeDir: () => void addClaudeCodeDir(),
+    removeClaudeCodeDir: (dir) => {
+      if (settings.get().claudeCodeDir === dir) switchAccount(null);
+      settings.update({ claudeCodeDirs: settings.get().claudeCodeDirs.filter((d) => d !== dir) });
+      accounts.delete(dir);
+      // Its cached snapshot, pace history and notification records go with it.
+      if (!cli.mock) rmSync(accountStateDir(dir), { recursive: true, force: true });
+      log.info('Claude Code account folder removed');
+      updateTray();
+    },
     setNotifyAt: (threshold, on) => {
       const others = settings.get().notifyAt.filter((t) => t !== threshold);
       settings.update({ notifyAt: on ? [...others, threshold] : others });
@@ -345,7 +405,8 @@ function start(): void {
     openClaudeCode: () => {
       if (Date.now() - lastClaudeCodeLaunch < 5000) return; // a double click opens one window, not two
       lastClaudeCodeLaunch = Date.now();
-      const plan = planClaudeCodeLaunch(gatherLaunchFacts(process.platform, process.env, homedir()));
+      const addedFolder = settings.get().claudeCodeDir === null ? null : location.dir;
+      const plan = planClaudeCodeLaunch(gatherLaunchFacts(process.platform, process.env, home, addedFolder, tmpdir()));
       launchClaudeCode(plan, (url) => shell.openExternal(url), log.write).catch((err: unknown) =>
         log.warn(`Open Claude Code failed: ${describeError(err)}`),
       );
@@ -369,6 +430,15 @@ function start(): void {
         windowVisible: win.isVisible(),
         loginItemAvailable: loginItem.available,
         weeklyMeters: (service.snapshot?.meters ?? []).filter((m) => m.group === 'weekly'),
+        accounts: accountMenuEntries({
+          dirs: settings.get().claudeCodeDirs,
+          selected: settings.get().claudeCodeDir,
+          defaultDir: defaultLocation.dir,
+          emailOf: (dir) => accounts.get(dir)?.email ?? null,
+          showEmail: settings.get().showAccount,
+          home,
+          platform: process.platform,
+        }),
         statusKind: service.status.kind,
         shortcuts,
         notificationsSupported: notifier.supported,
@@ -398,6 +468,84 @@ function start(): void {
   }
   applyShortcuts();
 
+  // --- Claude Code accounts -----------------------------------------------------------------------
+  function accountLogName(): string {
+    return settings.get().claudeCodeDir === null ? 'default' : 'added folder';
+  }
+
+  /** --claude-config-dir from a command line: an existing folder, null for the default, else undefined. */
+  function folderFromArgs(argv: readonly string[], cwd: string): string | null | undefined {
+    const dir = configDirArg(argv, cwd, process.platform);
+    if (typeof dir === 'string' && !existsSync(dir)) {
+      log.warn('--claude-config-dir: that folder does not exist; ignored');
+      return undefined;
+    }
+    return dir;
+  }
+
+  /**
+   * Shows another account (an added config folder, or null for the default one), adding the folder
+   * when it is new. Everything that belongs to an account follows: sign-in, credentials watch, cached
+   * snapshot, pace history and notification records.
+   */
+  function switchAccount(dir: string | null): void {
+    const before = settings.get().claudeCodeDir;
+    settings.update(chooseFolder(settings.get().claudeCodeDirs, dir, defaultLocation.dir, process.platform));
+    if (settings.get().claudeCodeDir === before) {
+      updateTray();
+      return;
+    }
+    location = locationOf(settings.get().claudeCodeDir);
+    stopWatchingCredentials();
+    stopWatchingCredentials = watchCredentials();
+    history = new UsageHistory(cli.mock ? null : accountFile('usage-history.json'));
+    forecast = {};
+    notifier.useRecords(cli.mock ? null : accountFile('notifications.json'));
+    lastSeenAt = null;
+    log.info(`Claude Code account → ${accountLogName()}`);
+    service.accountChanged(cli.mock ? null : loadSnapshot(accountFile('last-usage.json')));
+    void readAccounts();
+  }
+
+  /** Menu → Add folder…: a folder picker, with a warning when the folder has no Claude Code files. */
+  async function addClaudeCodeDir(): Promise<void> {
+    const result = await dialog.showOpenDialog({
+      title: 'Add a Claude Code config folder',
+      message: 'Choose the folder that CLAUDE_CONFIG_DIR points to for that account.',
+      buttonLabel: 'Add folder',
+      defaultPath: home,
+      properties: ['openDirectory', 'showHiddenFiles', 'dontAddToRecent'],
+    });
+    const picked = result.canceled ? undefined : result.filePaths[0];
+    if (!picked) return;
+    const dir = normalizeFolder(picked, process.platform);
+    if (!['.claude.json', '.credentials.json'].some((name) => existsSync(join(dir, name)))) {
+      const { response } = await dialog.showMessageBox({
+        type: 'warning',
+        title: 'Claude Usage',
+        message: 'No Claude Code sign-in in this folder',
+        detail:
+          `${dir} has no .claude.json or .credentials.json.\n\n` +
+          'Pick the folder that CLAUDE_CONFIG_DIR is set to for that account, or sign in to Claude Code ' +
+          'with that folder first.',
+        buttons: ['Add anyway', 'Cancel'],
+        defaultId: 1,
+        cancelId: 1,
+      });
+      if (response !== 0) return;
+    }
+    switchAccount(dir);
+  }
+
+  /** Reads every account's `.claude.json` (no secrets) for the menu and the card (mock runs: none). */
+  async function readAccounts(): Promise<void> {
+    if (cli.mock) return;
+    const dirs = [null, ...settings.get().claudeCodeDirs];
+    const read = await Promise.all(dirs.map((dir) => readClaudeCodeAccount(locationOf(dir))));
+    dirs.forEach((dir, i) => accounts.set(dir, read[i] ?? null));
+    broadcast();
+  }
+
   // Every fresh snapshot: history, forecast, notifications, cache. Stale data (status not ok) is
   // left alone.
   let lastSeenAt: string | null = null;
@@ -411,7 +559,7 @@ function start(): void {
         const { notifyAt, notifyReset } = settings.get();
         notifier.check(snapshot, { thresholds: notifyAt, reset: notifyReset }, forecast);
       }
-      if (!cli.mock) saveSnapshot(snapshotFile, snapshot);
+      if (!cli.mock) saveSnapshot(accountFile('last-usage.json'), snapshot);
     }
     broadcast();
   });
@@ -522,7 +670,12 @@ function start(): void {
   powerMonitor.on('resume', refreshSoon);
   powerMonitor.on('unlock-screen', refreshSoon);
 
-  app.on('second-instance', () => showOverlay());
+  // Started again (e.g. from an account's own .bat with --claude-config-dir): switch, then show.
+  app.on('second-instance', (_event, argv, workingDirectory) => {
+    const dir = folderFromArgs(argv, workingDirectory);
+    if (dir !== undefined) switchAccount(dir);
+    showOverlay();
+  });
   app.on('window-all-closed', () => {
     // Keep running in the tray.
   });
@@ -540,6 +693,7 @@ function start(): void {
 
   service.start();
   updater.start();
+  void readAccounts();
 }
 
 async function showAbout(): Promise<void> {

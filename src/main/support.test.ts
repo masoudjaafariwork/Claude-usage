@@ -133,6 +133,17 @@ test('sanitizeSettings keeps compactHidden as a list of unique ids', () => {
   );
 });
 
+test('sanitizeSettings keeps Claude Code folders, and a selected folder only when it is in the list', () => {
+  assert.deepEqual([DEFAULT_SETTINGS.claudeCodeDirs, DEFAULT_SETTINGS.claudeCodeDir], [[], null]);
+  const dirs = ['D:\\Revaal\\claude-config', 'E:\\work', 'D:\\Revaal\\claude-config', ' ', 42, 'x'.repeat(1025)];
+  const clean = sanitizeSettings({ claudeCodeDirs: dirs, claudeCodeDir: 'E:\\work' });
+  assert.deepEqual(clean.claudeCodeDirs, ['D:\\Revaal\\claude-config', 'E:\\work']);
+  assert.equal(clean.claudeCodeDir, 'E:\\work');
+  assert.equal(sanitizeSettings({ claudeCodeDirs: ['E:\\work'], claudeCodeDir: 'F:\\gone' }).claudeCodeDir, null);
+  assert.equal(sanitizeSettings({ claudeCodeDir: 'E:\\work' }).claudeCodeDir, null, 'not in the list');
+  assert.equal(sanitizeSettings({ claudeCodeDirs: Array.from({ length: 30 }, (_, i) => `D:\\a${i}`) }).claudeCodeDirs.length, 20);
+});
+
 test('loadSnapshot treats snapshots cached before Phase 3 as Claude Code data', () => {
   const dir = mkdtempSync(join(tmpdir(), 'claude-usage-cache-'));
   try {

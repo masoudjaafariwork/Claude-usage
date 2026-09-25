@@ -49,7 +49,7 @@ The book is local only: do **not** publish or republish it to claude.ai (owner's
 | `npm run make-icon` | Regenerate `build/icon.png` (committed) |
 
 Mock scenarios: `normal`, `warning`, `critical`, `expired`, `no-credentials`, `rate-limited`,
-`offline`, `loading`, `via-desktop`, `desktop-unavailable`, `forecast`, `locked` (defined in `src/main/mock.ts`).
+`offline`, `loading`, `via-desktop`, `desktop-unavailable`, `forecast`, `locked`, `other-account` (defined in `src/main/mock.ts`).
 Extra flags: `--compact`, `--expanded`, `--theme=<system|dark|light>`, `--scale=<0.9|1|1.15|1.3|1.5>`,
 `--screenshot=<file>` (render, save PNG, quit). Mock runs use a separate userData dir and keep
 notification records and usage history in memory; screenshot runs never notify or grab shortcuts.
@@ -63,13 +63,14 @@ src/
   main/                  Electron main process
     main.ts              Wiring: settings, service, window, tray, IPC, power/display events, CLI flags
     credentials.ts       READ-ONLY access to Claude Code's OAuth token (file / macOS Keychain)   [pure]
+    claude-accounts.ts   Several accounts: config folder → sign-in / .claude.json / Keychain name, menu, --claude-config-dir [pure]
     usage-api.ts         net.fetch GET api.anthropic.com/api/oauth/usage
     usage-errors.ts      UsageHttpError, Retry-After parsing                                       [pure]
     usage-parse.ts       Raw JSON → UsageSnapshot (tolerant; limits[] first, legacy keys fallback) [pure]
     usage-source.ts      UsageSource contract, SourceUnavailableError, ClaudeCodeSource           [pure]
     desktop-source.ts    Claude Desktop's plan-usage-history.json: read, parse, watch (no network) [pure]
     file-watch.ts        Debounced folder watch for one file name (survives atomic renames)       [pure]
-    claude-code-launcher.ts  "Open Claude Code": VS Code URI → terminal `claude` → docs (D34)    [pure]
+    claude-code-launcher.ts  "Open Claude Code": VS Code URI → terminal `claude` → docs (D34, D53) [pure]
     usage-service.ts     Source selection (Auto/single), polling, backoff, status, emits 'change' [pure]
     notifications-core.ts  75/90/100 % + reset notices: once per limit/threshold/window (D35)   [pure]
     notifications.ts     Shows them (Electron Notification), records in notifications.json
@@ -104,6 +105,10 @@ Data flow: `UsageService` (main) asks the sources in order — Auto: Claude Code
 forecast in `AppState.forecast`) and through the notification check. A source throws `SourceUnavailableError` to hand over to the
 next one; other errors are reported as they are (no fallback on network errors). The renderer sends back
 `usage:refresh`, `view:set-compact`, `window:resize` (content size), `menu:show`.
+One Claude Code account (config folder, `settings.claudeCodeDir`) is read at a time; switching moves
+the credentials watch, cached snapshot, pace history and notification records to that account
+(`userData/accounts/<key>/` for added folders) and discards a request still running for the old one.
+Claude Desktop's samples count only for the shown account's org (D51).
 
 `[pure]` modules must not import `electron`, so `npm test` can run them under plain Node.
 

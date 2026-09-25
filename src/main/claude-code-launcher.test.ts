@@ -4,6 +4,7 @@ import {
   CLAUDE_CODE_SETUP_URL,
   claudeExtraDirs,
   findExecutable,
+  findExtensionClaude,
   findVsCodeScheme,
   planClaudeCodeLaunch,
   type LaunchFacts,
@@ -12,6 +13,8 @@ import {
 const facts = (overrides: Partial<LaunchFacts>): LaunchFacts => ({
   platform: 'win32',
   home: 'C:\\Users\\Jane Doe',
+  configDir: null,
+  tempDir: 'C:\\Temp',
   vscodeScheme: null,
   claudePath: null,
   linuxTerminal: null,
@@ -53,6 +56,45 @@ test('macOS: Terminal opens the claude file; Linux: the first terminal emulator 
     planClaudeCodeLaunch(facts({ platform: 'linux', home: '/home/j', claudePath: '/home/j/.local/bin/claude', linuxTerminal: terminal }));
   assert.deepEqual((linux('gnome-terminal') as { args: string[] }).args, ['--', '/home/j/.local/bin/claude']);
   assert.deepEqual((linux('x-terminal-emulator') as { args: string[] }).args, ['-e', '/home/j/.local/bin/claude']);
+});
+
+test('an added config folder skips VS Code (its default account) and runs claude with CLAUDE_CONFIG_DIR', () => {
+  const win = planClaudeCodeLaunch(facts({ vscodeScheme: 'vscode', claudePath: 'C:\\npm\\claude.cmd', configDir: 'D:\\Revaal\\claude-config' }));
+  assert.equal(win.kind, 'spawn');
+  if (win.kind !== 'spawn') return;
+  assert.equal(win.command, 'cmd.exe');
+  assert.deepEqual(win.env, { CLAUDE_CONFIG_DIR: 'D:\\Revaal\\claude-config' });
+
+  const linux = planClaudeCodeLaunch(
+    facts({ platform: 'linux', home: '/home/j', claudePath: '/usr/bin/claude', linuxTerminal: 'konsole', configDir: '/home/j/work' }),
+  );
+  assert.deepEqual(linux.kind === 'spawn' && [linux.command, linux.args, linux.env], ['konsole', ['-e', '/usr/bin/claude'], { CLAUDE_CONFIG_DIR: '/home/j/work' }]);
+
+  // macOS: Terminal doesn't inherit the environment, so a .command script sets it.
+  const mac = planClaudeCodeLaunch(facts({ platform: 'darwin', home: '/Users/j', tempDir: '/tmp', claudePath: '/opt/homebrew/bin/claude', configDir: "/Users/j/Jane's claude" }));
+  assert.equal(mac.kind, 'spawn');
+  if (mac.kind !== 'spawn') return;
+  assert.deepEqual(mac.args, ['-a', 'Terminal', '/tmp/claude-usage-open-claude-code.command']);
+  assert.equal(mac.script?.path, '/tmp/claude-usage-open-claude-code.command');
+  assert.ok(mac.script?.text.startsWith('#!/bin/sh\n'));
+  assert.ok(mac.script?.text.includes(`CLAUDE_CONFIG_DIR='/Users/j/Jane'\\''s claude' exec '/opt/homebrew/bin/claude'`));
+  assert.equal(mac.env, undefined);
+
+  // No claude to run: the setup page, never the VS Code route of the wrong account.
+  assert.equal(planClaudeCodeLaunch(facts({ vscodeScheme: 'vscode', configDir: 'D:\\x' })).kind, 'url');
+  assert.equal((planClaudeCodeLaunch(facts({ vscodeScheme: 'vscode', configDir: 'D:\\x' })) as { via: string }).via, 'docs');
+});
+
+test('findExtensionClaude picks the newest extension that ships a claude binary', () => {
+  const ext = 'C:\\Users\\j\\.vscode\\extensions';
+  const entries = ['anthropic.claude-code-2.1.99-win32-x64', 'anthropic.claude-code-2.1.282-win32-x64', 'anthropic.claude-code-2.1.300-win32-x64', 'ms-python.python-1.0.0'];
+  const present = new Set([`${ext}\\anthropic.claude-code-2.1.282-win32-x64\\resources\\native-binary\\claude.exe`, `${ext}\\anthropic.claude-code-2.1.99-win32-x64\\resources\\native-binary\\claude.exe`]);
+  assert.equal(
+    findExtensionClaude('win32', 'C:\\Users\\j', (dir) => (dir === ext ? entries : []), (file) => present.has(file)),
+    `${ext}\\anthropic.claude-code-2.1.282-win32-x64\\resources\\native-binary\\claude.exe`,
+    '2.1.300 has no binary; 2.1.282 is newer than 2.1.99',
+  );
+  assert.equal(findExtensionClaude('linux', '/home/j', () => []), null);
 });
 
 test('nothing found (or Linux without a terminal) → the Claude Code setup page', () => {

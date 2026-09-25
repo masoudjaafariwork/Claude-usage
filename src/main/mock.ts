@@ -22,6 +22,7 @@ export const MOCK_SCENARIOS = [
   'desktop-unavailable',
   'forecast',
   'locked',
+  'other-account',
 ] as const;
 export type MockScenario = (typeof MOCK_SCENARIOS)[number];
 
@@ -38,6 +39,8 @@ const MOCK_TEAM_ACCOUNT: ClaudeCodeAccount = {
   orgName: 'Analytical Engines Ltd',
   orgUuid: '00000000-0000-4000-8000-000000000002',
 };
+/** A second account in its own config folder (Phase 6, `other-account` scenario). */
+const MOCK_FOLDER = { dir: 'D:\\Work\\claude-config', account: { ...MOCK_TEAM_ACCOUNT, email: 'ada@analytical-engines.example' } };
 
 interface Levels {
   session: number;
@@ -105,6 +108,8 @@ export interface MockSetup {
   locked: boolean;
   /** Usage history to start with (the pace forecast needs earlier points). */
   history: HistoryPoint[];
+  /** An added Claude Code account folder to show instead of the default account. */
+  folder: { dir: string; account: ClaudeCodeAccount } | null;
 }
 
 /**
@@ -150,17 +155,24 @@ export function createMockSource(scenario: MockScenario): MockSetup {
     fetchUsage: () => Promise<unknown> = () => delay(mockRawUsage(Date.now(), LEVELS.normal)),
     account: ClaudeCodeAccount = MOCK_ACCOUNT,
   ) => new ClaudeCodeSource({ readCredentials: read, fetchUsage, readAccount: async () => account, now: Date.now });
-  const desktop = (sampleAgeMs: number | null) =>
+  const desktop = (sampleAgeMs: number | null, account = MOCK_ACCOUNT, orgMatch: 'if-known' | 'strict' = 'if-known') =>
     new DesktopSource({
       readHistory: async () => (sampleAgeMs === null ? null : JSON.stringify({ version: 2, samples: [desktopSample(sampleAgeMs)] })),
-      claudeCodeAccount: async () => MOCK_ACCOUNT,
+      claudeCodeAccount: async () => account,
+      orgMatch: () => orgMatch,
       now: Date.now,
     });
   const noCredentials = () => Promise.reject(new CredentialsNotFoundError('mock'));
 
   const setup = (
     sources: Partial<Record<SourceId, UsageSource>>,
-    options: { initialSnapshot?: UsageSnapshot | null; mode?: SourceMode; locked?: boolean; history?: HistoryPoint[] } = {},
+    options: {
+      initialSnapshot?: UsageSnapshot | null;
+      mode?: SourceMode;
+      locked?: boolean;
+      history?: HistoryPoint[];
+      folder?: MockSetup['folder'];
+    } = {},
   ): MockSetup => ({
     sources: {
       'claude-code': sources['claude-code'] ?? claudeCode(noCredentials),
@@ -170,6 +182,7 @@ export function createMockSource(scenario: MockScenario): MockSetup {
     mode: options.mode ?? 'auto',
     locked: options.locked ?? false,
     history: options.history ?? [],
+    folder: options.folder ?? null,
   });
   const withLevels = (levels: Levels, account = MOCK_ACCOUNT) =>
     claudeCode(() => delay(credentials, 0), () => delay(mockRawUsage(Date.now(), levels)), account);
@@ -210,5 +223,15 @@ export function createMockSource(scenario: MockScenario): MockSetup {
       return setup({ 'claude-code': withLevels(LEVELS.forecast) }, { history: forecastHistory(now) });
     case 'locked':
       return setup({ 'claude-code': withLevels(LEVELS.normal) }, { locked: true });
+    case 'other-account':
+      // An added folder whose sign-in has expired, nothing cached yet; Claude Desktop has only the
+      // default account's org, which doesn't count for it.
+      return setup(
+        {
+          'claude-code': claudeCode(() => delay(expired, 0), undefined, MOCK_FOLDER.account),
+          'claude-desktop': desktop(6 * MIN, MOCK_FOLDER.account, 'strict'),
+        },
+        { folder: MOCK_FOLDER },
+      );
   }
 }

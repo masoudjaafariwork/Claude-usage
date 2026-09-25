@@ -10,12 +10,13 @@ Living record of where the project stands. Update it at the end of every session
 | [2 — Packaging, app icon, launch at login](phases/phase-2-packaging.md) | ✅ Done (2026-09-24) |
 | [3 — Fallback data source (Claude Desktop), source selection & diagnostics](phases/phase-3-fallback-source.md) | ✅ Done (2026-09-25) — claude.ai sign-in dropped (D28) |
 | [4 — UX: notifications, click-through, shortcut, size, pace forecast, theme](phases/phase-4-ux.md) | ✅ Done (2026-09-26) |
-| [5 — App auto-update](phases/phase-5-auto-update.md) | ✅ Done (2026-09-26) — first test with real releases (1.0.0 → 1.0.1) pending, by the owner |
+| [5 — App auto-update](phases/phase-5-auto-update.md) | ✅ Done (2026-09-26) — first test with real releases (1.0.0 → 1.1.0) pending, by the owner |
+| [6 — Several Claude Code accounts (config folders) with a switcher](phases/phase-6-accounts.md) | ✅ Done (2026-09-26) — released as 1.1.0 |
 
 Each phase has its own plan file in [`phases/`](phases/) (scope, notes, acceptance criteria,
 ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLOG.md).
 
-## What works today (Phases 1–5)
+## What works today (Phases 1–6)
 
 - Frameless, transparent, always-on-top overlay; drag anywhere; position remembered; stays reachable
   when monitors change; "Move to display" menu for multi-monitor setups. The window is exactly the
@@ -80,6 +81,14 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
   macOS, the portable exe and the deb only notify and open the download page. Menu → *Check for
   updates* reports the outcome in a notification. Releases need `latest*.yml` (CI attaches them) and
   must be published as normal releases, not pre-releases (D45–D48).
+- **Several Claude Code accounts (Phase 6):** menu → *Claude Code account* lists the default account
+  and added config folders (one `CLAUDE_CONFIG_DIR` per account, e.g. one VS Code profile each) as
+  "e-mail — folder"; *Add folder…* / *Remove folder*. One account is shown at a time, each with its
+  own cached data, pace history and notification records. `Claude Usage.exe
+  --claude-config-dir=<folder|default>` picks one at start or switches a running copy, so an
+  account's own `.bat` can switch the overlay. *Open Claude Code* for an added folder runs `claude`
+  in a terminal with that folder. Claude Desktop's samples only count when they are of the shown
+  account's org (D50–D54).
 
 ## Decisions
 
@@ -133,6 +142,12 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D46 | **Release files without spaces:** `Claude-Usage-Setup-<v>.exe`, `Claude-Usage-<v>-Portable.exe`, `Claude-Usage-<v>-<arch>.dmg` (AppImage and deb already had none). CI uploads `release/latest*.yml` with the installers; the draft is published by hand as a **normal** release (not a pre-release). Published files are never replaced — a fix is a new version | electron-updater's GitHub provider turns spaces in `latest.yml` into dashes, but a `gh release upload` turns them into dots (`Claude.Usage.Setup…`): the download would 404. A pre-release is invisible to `releases/latest`, which is what the updater reads (v0.2.0 is one). A replaced installer no longer matches the sha512 in `latest.yml`. |
 | D47 | **Update UI = the menu + notifications, no dialogs.** One menu item next to *About* (*Check for updates* / *Checking…* / *— up to date* / *Downloading vX… n %* / *— last check failed*); when there is something to do it moves to the top: *Restart to update to vX* (auto) or *Update available (vX) — open download page* (notify). Scheduled checks notify only "vX is ready" / "vX is available", once per version per run; a check from the menu also notifies "up to date", "downloading" and errors (short reason: no connection / no update information / GitHub limiting / damaged download; details in the log) | The menu closes when *Check for updates* is clicked, so a notification is the only visible answer. The tray app runs all the time and a Windows shutdown may not fire `quit`, so without a "ready" notice (electron-updater's own `checkForUpdatesAndNotify` shows one too) an update could wait for weeks. An actionable item at the top of a long menu is found at once. |
 | D48 | **Installing:** *Restart to update* flushes settings, then `quitAndInstall(silent, runAfter)`; otherwise `autoInstallOnAppQuit` installs silently on a normal quit without restarting. electron-updater's info lines aren't logged (our own lines say the same without local paths); its warnings and errors are, one line of ≤ 300 chars. Linux: when the AppImage is replaced by a file with the new version in its name (`appimage-filename-updated`), `APPIMAGE` is pointed at it and launch at login rewritten (`login-item.ts` reads `APPIMAGE` when used) | The settings store writes 400 ms after a change and the installer may start before that. The update uninstaller runs with `--updated`, so D19 keeps the Run key; the per-user install path stays the same. electron-updater deletes the old AppImage, which would leave a dead autostart entry until the next manual start. |
+| D50 | **Several Claude Code accounts = config folders, shown one at a time.** Settings `claudeCodeDirs` (added folders, ≤ 20) and `claudeCodeDir` (selected; `null` = default = the app's own `CLAUDE_CONFIG_DIR`, else `~/.claude`). Where a folder keeps its sign-in follows Claude Code 2.1.283 (read in its code): `<dir>/.credentials.json`, `<dir>/.claude.json`, macOS Keychain `Claude Code-credentials-<sha256(dir)[:8]>`; default: `~/.claude/.credentials.json`, `~/.claude.json`, `Claude Code-credentials`. Folders compare resolved, case-insensitive on Windows/macOS; adding the default folder selects the default entry. Switch from the menu or with `--claude-config-dir=<folder>` (or `=default`) at start or into a running copy (`second-instance`); a folder that doesn't exist is ignored (logged). Menu labels "e-mail — folder" (`~` for home, middle cut > 60 chars), e-mails left out while *Show account* is off | Owner's setup (2026-09-26): several accounts, each with its own VS Code started from a `.bat` that sets `CLAUDE_CONFIG_DIR`. Before, the overlay saw one folder per run (its own environment) and the single-instance lock blocked a second copy. One account at a time keeps one request per interval (hard rule 2); showing several at once stays an idea. The command-line switch lets the account's own `.bat` switch the overlay together with VS Code. |
+| D51 | **Claude Desktop only counts for its own org.** A Desktop sample names only its org; it is used when that is the shown Claude Code account's `organizationUuid`: always for an added folder (*strict*: an unknown account or org means no Desktop data), and in *Auto* for the default account when its account is known (*if-known*: Desktop-only users, with no Claude Code account, still get Desktop's numbers). *Claude Desktop only* shows any org, labelled as in D41. Replaces D29's "any sample ≤ 20 min" and narrows D41's "Claude Desktop's account" to the Desktop-only mode and unknown accounts | Found in the first real run: Revaal's token had expired, so Auto fell back to Desktop — signed in to another account — and the Revaal selection showed that account's numbers. Owner (2026-09-26) proposed "the source should always be Claude Code"; the org match keeps Phase 3's gap-filler for the account Desktop really belongs to (on the owner's machine Desktop's history has only the default account's org) and drops it everywhere else. *Claude Code only* remains in the menu. In a Team org two members share the org, so the match can't tell them apart there. |
+| D52 | **Per-account state.** An added folder keeps `last-usage.json`, `usage-history.json` and `notifications.json` in `userData/accounts/<first 12 hex of sha256(folder)>/`; the default account keeps the existing files in `userData` (no migration). A switch shows the new account's cached snapshot (or nothing) with status *loading* and polls at once; `UsageService` bumps a generation counter so a request still running for the previous account is dropped when it returns. *Remove folder* switches to the default first when needed and deletes that folder's state | Different accounts have different windows: a shared history would mix two paces, shared notification records would repeat or swallow notices. Without the generation guard, a slow request for the old account would briefly show its numbers and enter the new account's history and notifications. |
+| D53 | ***Open Claude Code* for an added folder** runs `claude` in a terminal with `CLAUDE_CONFIG_DIR` set (Windows / Linux: in the spawn environment; macOS: a `.command` script in the temp folder, because Terminal doesn't inherit it); the VS Code URI is skipped for it. `claude` = the command-line tool, else the binary bundled in the newest Claude Code extension (`~/.vscode*/extensions/anthropic.claude-code-*/resources/native-binary/claude[.exe]`) | `vscode://anthropic.claude-code/open` opens the default VS Code profile, i.e. the default account — it would renew the wrong token. A terminal with the folder set is what the account's own VS Code does. The bundled binary covers extension-only users. |
+| D54 | **Before any data, the card shows the selected account** (`AppState.selectedAccount`, read from its `.claude.json`); a snapshot's own account still wins (D41). For an added folder the "sign-in expired" banner drops the Claude Desktop hint and "not signed in" says to use `/login` in the Claude Code that *Open Claude Code* starts; the compact pill shows the e-mail line under a status message too | The first real screenshot of Revaal (expired, nothing cached) showed a banner but not whose sign-in had expired. |
+| D55 | **Version 1.1.0** for Phase 6 (a minor release: new feature, nothing breaks) | Semantic Versioning, as D49. It is also the first real test of the updater (1.0.0 → 1.1.0). |
 | D49 | **Version 1.0.0** for the first release with the updater (0.2.0 → 1.0.0; no 0.3.x). The real-release updater test becomes 1.0.0 → 1.0.1. README says openly that only Windows 11 is tested; macOS and Linux builds are CI-built but never run | Owner's choice (2026-09-26): all planned phases are done. Recommended first was 0.3.0 → 0.3.1 for the test and 1.0.0 once it passed; the owner preferred 1.0.0 now. Technically the same: a broken updater in the first updater version needs one manual install either way. |
 
 ## Usage API notes (observed 2026-09-24)
@@ -141,7 +156,13 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
   `anthropic-beta: oauth-2025-04-20`. Access tokens last ~8 h (`expiresAt` in the credentials).
 - Credentials: `~/.claude/.credentials.json` (Windows/Linux, or `$CLAUDE_CONFIG_DIR`) →
   `claudeAiOauth.{accessToken, refreshToken, expiresAt, refreshTokenExpiresAt, scopes[],
-  subscriptionType, rateLimitTier}`; on macOS the Keychain item `Claude Code-credentials`.
+  subscriptionType, rateLimitTier}`; on macOS the Keychain item `Claude Code-credentials`, or
+  `Claude Code-credentials-<first 8 hex of sha256(CLAUDE_CONFIG_DIR)>` when that is set (Claude
+  Code 2.1.283). The account file is `~/.claude.json`, or `$CLAUDE_CONFIG_DIR/.claude.json`.
+- Seen in Claude Code 2.1.283's code (not investigated further): a Windows Credential Manager
+  store, switched on by `CLAUDE_CODE_FORCE_WINDOWS_CREDMAN=1` or a switch read from `.claude.json`.
+  If Claude Code ever keeps the sign-in there instead of the file, the overlay would say "not
+  signed in" — watch for it.
 - Useful response parts: `limits[]` (`kind`, `group`, `percent`, `severity`, `resets_at`,
   `scope.model.display_name`, `is_active`), `seven_day_breakdown.rows[]`, `spend`, legacy
   `five_hour` / `seven_day` / `extra_usage`. Real sample: `src/main/fixtures/usage-2026-09.json`.
@@ -207,7 +228,8 @@ Kept for the record in case Anthropic ever offers an official way.
 - Sign-in source: the `claude` CLI and the Claude Code VS Code extension (which bundles its own
   Claude Code binary) both write `~/.claude/.credentials.json` / the Keychain item, so either works.
   The Claude desktop app alone gives no sign-in, only its usage history (Phase 3). A
-  `CLAUDE_CONFIG_DIR` set only in the extension's settings is invisible to the overlay.
+  `CLAUDE_CONFIG_DIR` set only in the extension's settings is not picked up by itself; add that
+  folder in menu → *Claude Code account* (Phase 6).
 - Screenshot mode (`--screenshot`) captures 1.5 s after the first show: with real data over a slow
   VPN the card may still be loading. Mock scenarios are unaffected.
 - v0.1.0 was published (prerelease) as *Claude Usage Overlay*. On Windows, 0.2.0 installs next to
@@ -246,9 +268,25 @@ Kept for the record in case Anthropic ever offers an official way.
 - **Account indicator (D41):** after a `/login` to another account, the previous account's numbers
   (labelled as such) stay until the next poll. Claude Desktop samples of an org other than Claude
   Code's show "Claude Desktop's account" on the card and nothing in the compact pill (its
-  sign-in isn't read, D26). Like the token, a
-  `CLAUDE_CONFIG_DIR` set only in the VS Code extension's settings is invisible. Not in the tray
-  tooltip. macOS/Linux untested (same file and keys as on Windows per Claude Code).
+  sign-in isn't read, D26) — since D51 only in *Claude Desktop only* mode or when Claude Code's
+  account is unknown. A `CLAUDE_CONFIG_DIR` set only in the VS Code extension's settings has to be
+  added as a folder (Phase 6). Not in the tray tooltip. macOS/Linux untested (same file and keys as
+  on Windows per Claude Code).
+- **Several accounts (Phase 6):**
+  - Claude Desktop matches an account only by org (D51): two members of one Team org can't be told
+    apart, so Desktop's numbers could be the other member's in Auto.
+  - The "sign-in expired" banner of the *default* account still mentions keeping Claude Desktop
+    open, also when Desktop belongs to another account (then it doesn't help).
+  - macOS: the Keychain name hashes the folder string exactly as Claude Code got it — a folder
+    picked in the dialog matches when `CLAUDE_CONFIG_DIR` held the same absolute path without a
+    trailing slash; otherwise only `.credentials.json` (if any) is found. The `.command` launch
+    script (D53) is untested; so is the Linux terminal route with the folder.
+  - *Open Claude Code* for an added folder opens a terminal, not that account's own VS Code (its
+    `--user-data-dir` isn't known to the overlay). Windows: environment passing through `start`
+    checked; the real click (Claude Code renewing Revaal's expired token) is the owner's test.
+  - Menu labels show folders as typed; on Windows an `&` in a folder name may show as an underlined
+    mnemonic.
+  - Mock runs reset the account folders to what the scenario needs (only `other-account` has one).
 - **No margin around the card (D42):** no drop shadow any more; over a background of the card's
   own colour only the 1 px border separates them. The first start after this change keeps the
   saved window position, so the card shows up 16 px further left and 12 px higher (× Size) than
@@ -268,7 +306,8 @@ Kept for the record in case Anthropic ever offers an official way.
 - **Updates (Phase 5):**
   - Tested on Windows 11 only, with local builds and a local update server (same NSIS code path).
     The GitHub side (`releases/latest`, `latest.yml` download) is first exercised by the owner's
-    1.0.0 → 1.0.1 release test. macOS (notify only) and Linux (AppImage swap, deb notify) untested.
+    1.0.0 → 1.1.0 update (the first release after 1.0.0; D55). macOS (notify only) and Linux
+    (AppImage swap, deb notify) untested.
   - 0.2.0 and older have no updater: 1.0.0 has to be installed by hand once. v0.2.0 on GitHub is a
     pre-release without `latest.yml` — invisible to the updater, harmless.
   - A Windows shutdown may end the app without a normal quit, so a downloaded update can wait until
@@ -517,3 +556,36 @@ Kept for the record in case Anthropic ever offers an official way.
   README: first updater version 1.0.0, release example 1.0.1, a "Tested on Windows 11" note under
   *Install*. Phase 5 test is now 1.0.0 → 1.0.1.
 - Electron book v2.1: a section on version numbers and 1.0.0 in the release chapter.
+
+### 2026-09-26 — Session 16: Phase 6 (several Claude Code accounts), version 1.1.0
+
+- The owner runs several Claude Code accounts, each in its own VS Code started from a `.bat` that
+  sets `CLAUDE_CONFIG_DIR`, and asked for a way to point the overlay at another folder. Answered
+  first (the overlay already honoured its own `CLAUDE_CONFIG_DIR`, one account per run), then
+  planned Phase 6 (`phases/phase-6-accounts.md`) and built it: the owner said "do it" without
+  picking between switching and showing all accounts at once — switching was chosen (one request
+  per interval, D50).
+- Read Claude Code 2.1.283's code for where a config folder keeps its sign-in (Keychain name with a
+  hash of the folder on macOS, `.claude.json` inside the folder) and noticed an opt-in Windows
+  Credential Manager store (Usage API notes).
+- New pure `claude-accounts.ts` (locations, folder comparison, state key, menu labels,
+  `--claude-config-dir`; 7 tests); `credentials.ts` reads a given location; settings
+  `claudeCodeDirs` / `claudeCodeDir`; menu → *Claude Code account*; per-account state and a
+  generation guard in `UsageService` (D52); `second-instance` switching; *Open Claude Code* with the
+  folder (D53); the selected account on the card before any data (D54); mock scenario
+  `other-account`. Tests 125 → 137.
+- First real run with `D:\Revaal\claude-config`: its token had expired two days earlier, so Auto
+  showed Claude Desktop's sample — of the default account's org. The owner raised the same point
+  at the same time ("the source should always be Claude Code"); agreed in part and applied an org
+  match instead (D51): on this machine Desktop's history has only the default account's org, so the
+  default account keeps its gap-filler and Revaal shows "sign-in expired".
+- Verified on Windows 11 with real data in a separate `--user-data-dir` (the installed app wasn't
+  touched): start on the Revaal folder → "sign-in expired" with its e-mail on the card; a second
+  launch with `--claude-config-dir=default` switched the running copy (HTTP 200, default account);
+  one with `d:\revaal\CLAUDE-config\` switched back to the stored folder without adding a
+  duplicate; per-account files landed where planned. `start` passing `CLAUDE_CONFIG_DIR` to the new
+  console checked with a hidden run. All 36 mock screenshots reviewed; the README images are
+  unaffected (their scenarios render as before).
+- Version 1.1.0 (D55) — also the owner's first real updater test (1.0.0 → 1.1.0).
+- Electron book v2.2: a chapter on several accounts (single-instance `second-instance` argv,
+  per-account state, the generation guard).

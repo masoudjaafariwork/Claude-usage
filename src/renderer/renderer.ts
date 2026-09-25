@@ -162,7 +162,10 @@ function paceLine(st: AppState, meter: LimitMeter, now: Date, className: string)
   return h('div', className, 'At this pace: limit in ', h('b', null, formatApprox(ms)));
 }
 
-/** Whose usage is shown, from the snapshot (so stale data keeps the account it belongs to). */
+/**
+ * Whose usage is shown, from the snapshot (so stale data keeps the account it belongs to); before
+ * any data, the account picked in the menu.
+ */
 interface AccountView {
   /** E-mail (shortened to fit) or display name; null when Claude Desktop's account isn't known. */
   main: string | null;
@@ -174,11 +177,11 @@ interface AccountView {
 
 function accountView(st: AppState, maxEmail: number): AccountView | null {
   const snap = st.snapshot;
-  if (!st.view.showAccount || !snap) return null;
-  const account = snap.account;
+  if (!st.view.showAccount) return null;
+  const account = snap ? snap.account : st.selectedAccount;
   if (!account) {
     // Desktop's own sign-in is never read (D26), so a sample of another org has no known account.
-    if (snap.source !== 'claude-desktop') return null;
+    if (snap?.source !== 'claude-desktop') return null;
     return { main: null, org: null, initials: '', tooltip: 'Claude Desktop’s account: its sign-in isn’t read, so it isn’t known here' };
   }
   return {
@@ -348,14 +351,23 @@ function bannerSpec(st: AppState, now: Date): BannerSpec | null {
       icon: 'key',
       title: 'Claude Code sign-in expired',
       body: [
-        auto
+        // Claude Desktop only helps the account it is signed in to; an added folder's, as a rule, not.
+        auto && !st.addedAccount
           ? 'Open Claude Code to renew it, or keep the Claude desktop app open. The overlay recovers on its own.'
           : 'Open Claude Code to renew it — the overlay recovers on its own.',
       ],
       action: OPEN_CLAUDE_CODE,
     }),
     'no-credentials': () =>
-      auto
+      st.addedAccount
+        ? {
+            tone: 'warn',
+            icon: 'key',
+            title: 'Not signed in to Claude Code',
+            body: ['This account’s folder has no sign-in yet. Open Claude Code (it starts with this folder) and use ', code('/login'), '.'],
+            action: OPEN_CLAUDE_CODE,
+          }
+        : auto
         ? {
             tone: 'warn',
             icon: 'key',
@@ -496,7 +508,7 @@ function compactView(st: AppState): HTMLElement {
       st.view.locked ? lockBadge(st) : h('div', 'actions', refreshButton(st), button('expand', 'Expand', () => api.setCompact(false))),
     ),
   );
-  const account = items.length > 0 ? compactAccountLine(st) : null;
+  const account = compactAccountLine(st);
   const card = h('div', `card compact${isStale(st) ? ' stale' : ''}${account ? ' with-account' : ''}`, row, account);
   card.title = st.status.message ?? '';
   return card;
