@@ -145,4 +145,4 @@ Project guide for AI-assisted development: [CLAUDE.md](CLAUDE.md). Status and de
 
 ## License
 
-[GPL-3.0](LICENSE)
+[MIT](LICENSE)

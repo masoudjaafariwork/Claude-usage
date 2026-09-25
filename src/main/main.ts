@@ -288,7 +288,7 @@ async function showAbout(): Promise<void> {
       'Always-on-top overlay for your Claude plan usage limits.',
       `Electron ${process.versions.electron} · Chromium ${process.versions.chrome} · Node ${process.versions.node}`,
       '',
-      'License: GPL-3.0. Not affiliated with Anthropic.',
+      'License: MIT. Not affiliated with Anthropic.',
     ].join('\n'),
     icon: nativeImage.createFromPath(APP_ICON_PATH).resize({ width: 64, height: 64, quality: 'best' }),
     buttons: ['OK'],

@@ -9,7 +9,7 @@
     "email": "masoudjaafariwork@gmail.com"
   },
   "homepage": "https://github.com/masoudjaafariwork/Claude-usage",
-  "license": "GPL-3.0-only",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "build": "node scripts/build.mjs",

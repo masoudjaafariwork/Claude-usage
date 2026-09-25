@@ -69,6 +69,7 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D24 | Keep a Persian, teacher-style Electron book at `D:\Clade usage\electron-book.html` (outside the repo) and update it after every phase; private artifact copy on claude.ai | The owner is learning Electron through this project and wants a complete book by the end. Outside the repo because it is personal learning material, not project documentation (which stays English). |
 | D26 | Never read Claude Desktop's own sign-in (`config.json` → `oauth:tokenCache*`, encrypted with Electron safeStorage). Desktop-only users are served by Phase 3: its non-secret `plan-usage-history.json` and a claude.ai sign-in inside our app | Decrypting another app's protected token is what credential stealers do (antivirus flags, a macOS Keychain prompt for Claude's key), breaks whenever Desktop changes its storage, and carries the same rotation risk as D3. |
 | D25 | Product renamed **Claude Usage Overlay → Claude Usage** (package `claude-usage`, appId `com.masoudjaafari.claude-usage`, userData `%APPDATA%\Claude Usage`), version 0.2.0 | User's choice: shorter, matches the repo and the in-app title. Done right after the v0.1.0 prerelease (1 download, the owner's). A new appId makes it a separate app — uninstall 0.1.0 first; settings don't carry over (no migration code for a name that lived one day). |
+| D27 | License **GPL-3.0-only → MIT** (`LICENSE`, `package.json`, lockfile, README, About dialog) | User's choice (2026-09-25): simplest and most common licence in the JS/Electron ecosystem; the owner accepts closed-source forks. Switched while the owner is still the sole author, so no contributor consent was needed. |
 
 ## Usage API notes (observed 2026-09-24)
 
@@ -177,3 +178,9 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
   read-only source → added to the Phase 3 plan (now "Fallback data sources").
 - Open: the v0.1.0 prerelease on GitHub (old name) — the owner decides whether to delete it; v0.2.0
   is released by pushing tag `v0.2.0`.
+
+### 2026-09-25 — Session 5: license → MIT
+
+- Relicensed the project from GPL-3.0-only to MIT (D27): `LICENSE` text, `license` in
+  `package.json` / `package-lock.json`, README "License" section, About dialog.
+- Electron book v1.2: license rows and the About code sample updated; changelog entry added.
