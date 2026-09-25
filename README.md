@@ -94,6 +94,10 @@ Download the file for your system from the
 [Releases page](https://github.com/masoudjaafariwork/Claude-usage/releases). The builds are not
 code-signed, so every OS shows a warning the first time.
 
+**Tested on Windows 11.** The macOS and Linux builds are made by the same release workflow but
+haven't been tried on a real Mac or Linux machine yet — if something doesn't work there, please
+open an issue.
+
 > **Coming from 0.1.0?** That prerelease was called *Claude Usage Overlay*. From 0.2.0 the app is
 > called *Claude Usage* and installs as a separate app: uninstall *Claude Usage Overlay* first
 > (Settings → Apps; this also removes its launch-at-login entry). Settings are not carried over.
@@ -151,7 +155,8 @@ starts and then every 6 hours (a small file from github.com; nothing is sent abo
   (v…) — open download page**.
 - **Check for updates** (menu, next to *About*) checks right away and tells you the outcome in a
   notification: up to date, downloading, or why the check failed.
-- Versions before 0.3.0 have no updater: install 0.3.0 once by hand.
+- Versions before 1.0.0 have no updater: install 1.0.0 once by hand (it replaces 0.2.0 and keeps
+  your settings).
 
 ## Run from source
 
@@ -195,9 +200,9 @@ Installed copies update from the **latest published, non-pre-release** GitHub Re
 installer through the `latest.yml`, `latest-mac.yml` and `latest-linux.yml` files attached to it.
 
 1. Bump the version (also updates `package-lock.json`) and commit:
-   `npm version 0.3.1 --no-git-tag-version`, then
-   `git commit -am "chore: release v0.3.1"`.
-2. Tag and push: `git push`, then `git tag v0.3.1` and `git push origin v0.3.1`.
+   `npm version 1.0.1 --no-git-tag-version`, then
+   `git commit -am "chore: release v1.0.1"`.
+2. Tag and push: `git push`, then `git tag v1.0.1` and `git push origin v1.0.1`.
 3. GitHub Actions ([release.yml](.github/workflows/release.yml)) checks that the tag matches
    `package.json`, runs the tests, builds on Windows, macOS and Linux and attaches everything to a
    **draft** release (10–15 minutes; *Actions* tab).

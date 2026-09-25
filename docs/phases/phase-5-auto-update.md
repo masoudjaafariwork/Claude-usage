@@ -142,6 +142,7 @@ builds; the dmg writes `latest-mac.yml`; the AppImage and deb entries are merged
 `latest-linux.yml` and the AppImage updater picks the `.AppImage`.
 
 **Not verified:** the GitHub provider against a real release (v0.2.0 is a pre-release without
-`latest.yml`, so it is invisible to the updater) — that is the owner's test with 0.3.0 → 0.3.1.
-macOS and Linux untested (see Known issues). Existing 0.2.0 installs have no updater: 0.3.0 must be
+`latest.yml`, so it is invisible to the updater) — that is the owner's test with 1.0.0 → 1.0.1
+(the first release with the updater is 1.0.0, D49; the test builds above were numbered 0.3.x).
+macOS and Linux untested (see Known issues). Existing 0.2.0 installs have no updater: 1.0.0 must be
 installed by hand once.

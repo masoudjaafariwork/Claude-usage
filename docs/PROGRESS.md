@@ -10,7 +10,7 @@ Living record of where the project stands. Update it at the end of every session
 | [2 — Packaging, app icon, launch at login](phases/phase-2-packaging.md) | ✅ Done (2026-09-24) |
 | [3 — Fallback data source (Claude Desktop), source selection & diagnostics](phases/phase-3-fallback-source.md) | ✅ Done (2026-09-25) — claude.ai sign-in dropped (D28) |
 | [4 — UX: notifications, click-through, shortcut, size, pace forecast, theme](phases/phase-4-ux.md) | ✅ Done (2026-09-26) |
-| [5 — App auto-update](phases/phase-5-auto-update.md) | ✅ Done (2026-09-26) — first test with real releases (0.3.0 → 0.3.1) pending, by the owner |
+| [5 — App auto-update](phases/phase-5-auto-update.md) | ✅ Done (2026-09-26) — first test with real releases (1.0.0 → 1.0.1) pending, by the owner |
 
 Each phase has its own plan file in [`phases/`](phases/) (scope, notes, acceptance criteria,
 ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLOG.md).
@@ -133,6 +133,7 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D46 | **Release files without spaces:** `Claude-Usage-Setup-<v>.exe`, `Claude-Usage-<v>-Portable.exe`, `Claude-Usage-<v>-<arch>.dmg` (AppImage and deb already had none). CI uploads `release/latest*.yml` with the installers; the draft is published by hand as a **normal** release (not a pre-release). Published files are never replaced — a fix is a new version | electron-updater's GitHub provider turns spaces in `latest.yml` into dashes, but a `gh release upload` turns them into dots (`Claude.Usage.Setup…`): the download would 404. A pre-release is invisible to `releases/latest`, which is what the updater reads (v0.2.0 is one). A replaced installer no longer matches the sha512 in `latest.yml`. |
 | D47 | **Update UI = the menu + notifications, no dialogs.** One menu item next to *About* (*Check for updates* / *Checking…* / *— up to date* / *Downloading vX… n %* / *— last check failed*); when there is something to do it moves to the top: *Restart to update to vX* (auto) or *Update available (vX) — open download page* (notify). Scheduled checks notify only "vX is ready" / "vX is available", once per version per run; a check from the menu also notifies "up to date", "downloading" and errors (short reason: no connection / no update information / GitHub limiting / damaged download; details in the log) | The menu closes when *Check for updates* is clicked, so a notification is the only visible answer. The tray app runs all the time and a Windows shutdown may not fire `quit`, so without a "ready" notice (electron-updater's own `checkForUpdatesAndNotify` shows one too) an update could wait for weeks. An actionable item at the top of a long menu is found at once. |
 | D48 | **Installing:** *Restart to update* flushes settings, then `quitAndInstall(silent, runAfter)`; otherwise `autoInstallOnAppQuit` installs silently on a normal quit without restarting. electron-updater's info lines aren't logged (our own lines say the same without local paths); its warnings and errors are, one line of ≤ 300 chars. Linux: when the AppImage is replaced by a file with the new version in its name (`appimage-filename-updated`), `APPIMAGE` is pointed at it and launch at login rewritten (`login-item.ts` reads `APPIMAGE` when used) | The settings store writes 400 ms after a change and the installer may start before that. The update uninstaller runs with `--updated`, so D19 keeps the Run key; the per-user install path stays the same. electron-updater deletes the old AppImage, which would leave a dead autostart entry until the next manual start. |
+| D49 | **Version 1.0.0** for the first release with the updater (0.2.0 → 1.0.0; no 0.3.x). The real-release updater test becomes 1.0.0 → 1.0.1. README says openly that only Windows 11 is tested; macOS and Linux builds are CI-built but never run | Owner's choice (2026-09-26): all planned phases are done. Recommended first was 0.3.0 → 0.3.1 for the test and 1.0.0 once it passed; the owner preferred 1.0.0 now. Technically the same: a broken updater in the first updater version needs one manual install either way. |
 
 ## Usage API notes (observed 2026-09-24)
 
@@ -267,8 +268,8 @@ Kept for the record in case Anthropic ever offers an official way.
 - **Updates (Phase 5):**
   - Tested on Windows 11 only, with local builds and a local update server (same NSIS code path).
     The GitHub side (`releases/latest`, `latest.yml` download) is first exercised by the owner's
-    0.3.0 → 0.3.1 release test. macOS (notify only) and Linux (AppImage swap, deb notify) untested.
-  - 0.2.0 and older have no updater: 0.3.0 has to be installed by hand once. v0.2.0 on GitHub is a
+    1.0.0 → 1.0.1 release test. macOS (notify only) and Linux (AppImage swap, deb notify) untested.
+  - 0.2.0 and older have no updater: 1.0.0 has to be installed by hand once. v0.2.0 on GitHub is a
     pre-release without `latest.yml` — invisible to the updater, harmless.
   - A Windows shutdown may end the app without a normal quit, so a downloaded update can wait until
     the user quits or clicks *Restart to update* (the "ready" notification says so). Installing on
@@ -506,3 +507,13 @@ Kept for the record in case Anthropic ever offers an official way.
 - Done in the same working tree as sessions 12–14 (shared files: `main.ts`, `README.md`, this file,
   `package.json`); decision numbers started at D45 because D42–D44 were taken meanwhile.
 - Electron book v2.0: Phase 5 chapters (auto-update).
+
+### 2026-09-26 — Session 15 (continued): version 1.0.0
+
+- The owner asked why the app isn't 1.0 with all phases done. Explained Semantic Versioning (1.0 =
+  "stable, for everyone") and recommended testing the updater with 0.3.0 → 0.3.1 first; the owner
+  chose 1.0.0 now (D49).
+- `package.json` / `package-lock.json` → 1.0.0 (`npm version 1.0.0 --no-git-tag-version`; no tag).
+  README: first updater version 1.0.0, release example 1.0.1, a "Tested on Windows 11" note under
+  *Install*. Phase 5 test is now 1.0.0 → 1.0.1.
+- Electron book v2.1: a section on version numbers and 1.0.0 in the release chapter.

@@ -1,7 +1,7 @@
 {
   "name": "claude-usage",
   "productName": "Claude Usage",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Always-on-top desktop overlay that shows your Claude plan usage limits.",
   "main": "dist/main/main.js",
   "author": {
