@@ -22,7 +22,19 @@ Windows · macOS · Linux — Electron + TypeScript.
   (Claude Code / Chats / Cowork …), and extra-usage credits when enabled.
 - Compact pill mode for a minimal footprint: the session plus the weekly limits you pick (menu →
   *Compact mode shows*; all are on by default), with its own refresh button.
+- Shows **which account** the numbers belong to: the e-mail Claude Code is signed in with (on the
+  card also a Team or Enterprise plan's team name; in the compact pill a small line under the
+  rings). Menu → *Show account* hides it, e.g. while you share your screen.
 - Tray / menu-bar icon that shows a live ring for your most-constrained limit.
+- **Notifications** when a limit reaches 75 %, 90 % and 100 % — once per limit and usage window —
+  and, optionally, when it resets (menu → *Notifications*).
+- **Pace forecast**: "At this pace: limit in ~1h 15m" under the session (and a weekly limit) when
+  your recent usage would hit 100 % before the reset.
+- **Lock (click-through)**: clicks go straight to the window underneath, so the overlay never gets
+  in the way. Unlock from the tray menu or with the keyboard.
+- **Global shortcuts**: `Ctrl+Alt+U` shows/hides the overlay, `Ctrl+Alt+Shift+U` locks/unlocks it
+  (`⌘⌥U` / `⌘⌥⇧U` on macOS).
+- **Size** 90–150 % and a **Light** theme besides the default dark one (menu → *Size*, *Theme*).
 - Refreshes every 3 minutes (1–10 min configurable), plus right after a limit resets.
 - Two data sources: **Claude Code**'s sign-in, and the **Claude desktop app**'s own usage history
   as a fallback (no extra sign-in). Menu → *Source* picks *Auto*, *Claude Code only* or
@@ -44,6 +56,8 @@ does.
 - The token goes only to `api.anthropic.com`. There is no telemetry and no third-party server.
 - If Claude Code's sign-in expires (after ~8 h without use), the overlay says so and recovers
   automatically once Claude Code renews it.
+- The account it shows (e-mail, name, organization) comes from Claude Code's settings file
+  `.claude.json`, which holds no secrets.
 
 **Claude desktop app (fallback).** While it runs, the Claude desktop app writes your plan usage to
 `plan-usage-history.json` in its own data folder about every 15 minutes. In *Auto* mode, when
@@ -51,7 +65,8 @@ Claude Code's sign-in is missing or expired, the overlay shows the newest sample
 it is at most 20 minutes old ("via Claude Desktop · as of 14:32"). It only reads that one file — no
 sign-in, no network — and never touches the desktop app's own sign-in. The file has no reset
 times and no weekly split by app, so those parts are left out. The desktop app pauses its
-sampling while the computer is idle or locked.
+sampling while the computer is idle or locked. Its samples name only an organization, so the
+account is shown only when that is Claude Code's organization ("Claude Desktop's account" otherwise).
 
 The overlay never offers a claude.ai sign-in of its own: Anthropic does not allow third-party apps
 to offer Claude.ai login or to store claude.ai session tokens.
@@ -123,9 +138,16 @@ npm start
 ```
 
 - **Move:** drag the card.
-- **Menu:** the ⋯ button, right-click, or the tray icon. The menu has the data source, compact
-  mode and which limits it shows, always on top, opacity, refresh interval, move to display, reset
-  position, the settings and logs folders, and quit.
+- **Menu:** the ⋯ button, right-click, or the tray icon. The menu has show/hide, lock, the data
+  source, compact mode and which limits it shows, show account, always on top, size, opacity,
+  theme, refresh interval, move to display, reset position, notifications, keyboard shortcuts, the
+  settings and logs folders, and quit.
+- **Keyboard:** `Ctrl+Alt+U` shows/hides the overlay and `Ctrl+Alt+Shift+U` locks/unlocks it from
+  any app (`⌘⌥U` / `⌘⌥⇧U` on macOS). Menu → *Keyboard shortcuts* switches them off. To use other
+  keys, edit `toggleShortcut` / `lockShortcut` in `settings.json` (menu → *Open settings folder*)
+  with the app closed, e.g. `"toggleShortcut": "CommandOrControl+Shift+F9"` (a modifier is
+  required). With the overlay focused, `Ctrl` `+` / `-` / `0` or `Ctrl` + mouse wheel change its
+  size.
 - **Tray:** on Windows/Linux, left-click toggles the overlay. On macOS, click the menu-bar icon.
 
 ## Development
@@ -134,8 +156,8 @@ npm start
 | --- | --- |
 | `npm start` | Build and run with real data |
 | `npm run start:mock` | Run with fake data |
-| `node scripts/start.mjs --mock=critical` | Other scenarios: `normal`, `warning`, `critical`, `expired`, `no-credentials`, `rate-limited`, `offline`, `loading`, `via-desktop`, `desktop-unavailable` |
-| `npm run screenshot` | Render every mock scenario to `screenshots/` |
+| `node scripts/start.mjs --mock=critical` | Other scenarios: `normal`, `warning`, `critical`, `expired`, `no-credentials`, `rate-limited`, `offline`, `loading`, `via-desktop`, `desktop-unavailable`, `forecast`, `locked`; add `--theme=light` or `--scale=1.5` to try those |
+| `npm run screenshot` | Render every mock scenario (plus light-theme and size variants) to `screenshots/` |
 | `npm run check` | Type-check and run unit tests |
 | `npm run dist` | Build installers for the current OS into `release/` (`dist:win`, `dist:mac`, `dist:linux` for one OS) |
 | `npm run make-icon` | Regenerate the app icon `build/icon.png` |
@@ -164,6 +186,16 @@ Project guide for AI-assisted development: [CLAUDE.md](CLAUDE.md). Status and de
   within seconds.
 - **Anything else**: menu → *Open logs folder* → `claude-usage.log`. Tokens, cookies and e-mail
   addresses are removed before anything is written, so the log is safe to share.
+- **The overlay ignores clicks**: it is locked (a lock icon replaces its buttons). Unlock it from
+  the tray menu (*Lock (click-through)*) or press `Ctrl+Alt+Shift+U`.
+- **No notifications**: menu → *Notifications* → *Send a test notification*. If nothing appears,
+  check Focus Assist / Do not disturb and the OS notification settings for *Claude Usage*
+  (macOS asks for permission the first time). On Windows, notifications from `npm start` show
+  properly only when the app has been installed once (its Start menu shortcut registers the name).
+- **A shortcut doesn't work**: menu → *Keyboard shortcuts* says "in use by another app" when
+  another program owns the keys; pick others in `settings.json`. On Linux under Wayland global
+  shortcuts aren't available. On keyboard layouts where AltGr is Ctrl+Alt, `Ctrl+Alt+U` can block
+  an AltGr character — change or disable the shortcut.
 - **"Can't reach Anthropic"**: requests use your system proxy settings. Check your connection or VPN.
 - **macOS Keychain prompt**: choose *Always Allow* so the overlay can read Claude Code's sign-in.
 - **Linux (GNOME)**: the tray icon needs the AppIndicator extension. On Wayland, always-on-top and

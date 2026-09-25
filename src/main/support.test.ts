@@ -6,8 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { inflateSync } from 'node:zlib';
-import { parseCredentials } from './credentials';
-import { DEFAULT_SETTINGS, sanitizeSettings } from './settings';
+import { accountInfo, parseClaudeCodeAccount, parseCredentials } from './credentials';
+import { DEFAULT_SETTINGS, sanitizeSettings, stepScale } from './settings';
 import { loadSnapshot } from './snapshot-cache';
 import { encodePng, renderRing } from './tray-icon';
 import { parseRetryAfter } from './usage-errors';
@@ -33,6 +33,42 @@ test('parseCredentials rejects missing or malformed data', () => {
   assert.equal(parseCredentials(JSON.stringify({ claudeAiOauth: { accessToken: 'x' } }), 'keychain')?.expiresAt, null);
 });
 
+test('parseClaudeCodeAccount reads oauthAccount from .claude.json', () => {
+  const text = JSON.stringify({
+    numStartups: 3,
+    oauthAccount: {
+      accountUuid: 'a-1',
+      emailAddress: 'ada@example.com',
+      displayName: 'Ada Lovelace',
+      organizationUuid: 'org-1',
+      organizationName: "ada@example.com's Organization",
+      organizationRole: 'admin',
+    },
+  });
+  assert.deepEqual(parseClaudeCodeAccount(text), {
+    email: 'ada@example.com',
+    name: 'Ada Lovelace',
+    orgName: "ada@example.com's Organization",
+    orgUuid: 'org-1',
+  });
+  assert.equal(parseClaudeCodeAccount('not json'), null);
+  assert.equal(parseClaudeCodeAccount('{}'), null, 'signed out: no oauthAccount');
+  assert.equal(parseClaudeCodeAccount(JSON.stringify({ oauthAccount: { emailAddress: '' } })), null);
+});
+
+test('accountInfo leaves out the personal org name but keeps a team org', () => {
+  const ada = { email: 'ada@example.com', name: 'Ada Lovelace', orgUuid: 'org-1' };
+  assert.deepEqual(accountInfo({ ...ada, orgName: "ada@example.com's Organization" }), {
+    email: 'ada@example.com',
+    name: 'Ada Lovelace',
+    organization: null,
+  });
+  assert.equal(accountInfo({ ...ada, orgName: "Ada Lovelace's Organization" })?.organization, null);
+  assert.equal(accountInfo({ ...ada, orgName: 'Analytical Engines Ltd' })?.organization, 'Analytical Engines Ltd');
+  assert.equal(accountInfo({ email: null, name: null, orgName: 'Team', orgUuid: 'org-1' }), null, 'nobody to show');
+  assert.equal(accountInfo(null), null);
+});
+
 test('sanitizeSettings fills defaults and clamps values', () => {
   assert.deepEqual(sanitizeSettings(undefined), DEFAULT_SETTINGS);
   const s = sanitizeSettings({ position: { x: 10.4, y: 'bad' }, opacity: 5, refreshIntervalSec: 5, compact: true });
@@ -48,6 +84,44 @@ test('sanitizeSettings keeps known source modes only', () => {
   assert.equal(sanitizeSettings({ source: 'claude-desktop' }).source, 'claude-desktop');
   assert.equal(sanitizeSettings({ source: 'claude-ai' }).source, 'auto');
   assert.equal(sanitizeSettings({ source: 42 }).source, 'auto');
+});
+
+test('sanitizeSettings: Phase 4 options (lock, scale, theme, notifications, shortcuts)', () => {
+  assert.equal(DEFAULT_SETTINGS.locked, false);
+  assert.equal(DEFAULT_SETTINGS.theme, 'dark');
+  assert.deepEqual(DEFAULT_SETTINGS.notifyAt, [75, 90, 100]);
+  const s = sanitizeSettings({
+    locked: true,
+    scale: 1.3,
+    theme: 'light',
+    notifyAt: [100, 90, 'x', 50, 90],
+    notifyReset: false,
+    shortcutsEnabled: false,
+    toggleShortcut: 'Ctrl+Shift+F9',
+    lockShortcut: 'L',
+  });
+  assert.equal(s.locked, true);
+  assert.equal(s.scale, 1.3);
+  assert.equal(s.theme, 'light');
+  assert.deepEqual(s.notifyAt, [90, 100]);
+  assert.equal(s.notifyReset, false);
+  assert.equal(s.shortcutsEnabled, false);
+  assert.equal(s.toggleShortcut, 'Ctrl+Shift+F9');
+  assert.equal(s.lockShortcut, DEFAULT_SETTINGS.lockShortcut); // no modifier: rejected
+  const bad = sanitizeSettings({ locked: 'yes', scale: 1.2, theme: 'blue', notifyAt: 'all' });
+  assert.equal(bad.locked, false);
+  assert.equal(bad.scale, 1);
+  assert.equal(bad.theme, 'dark');
+  assert.deepEqual(bad.notifyAt, [75, 90, 100]);
+  assert.deepEqual(sanitizeSettings({ notifyAt: [] }).notifyAt, []); // all switched off
+});
+
+test('stepScale moves one size up or down and stops at the ends', () => {
+  assert.equal(stepScale(1, 1), 1.15);
+  assert.equal(stepScale(1.15, -1), 1);
+  assert.equal(stepScale(1.5, 1), 1.5);
+  assert.equal(stepScale(0.9, -1), 0.9);
+  assert.equal(stepScale(1.2, 1), 1.15); // unknown value: treated as 100 %
 });
 
 test('sanitizeSettings keeps compactHidden as a list of unique ids', () => {
@@ -68,6 +142,10 @@ test('loadSnapshot treats snapshots cached before Phase 3 as Claude Code data', 
     assert.equal(loadSnapshot(file)?.source, 'claude-code');
     writeFileSync(file, JSON.stringify({ fetchedAt: '2026-09-24T10:00:00.000Z', plan: null, meters: [meter], source: 'claude-desktop' }));
     assert.equal(loadSnapshot(file)?.source, 'claude-desktop');
+    assert.equal(loadSnapshot(file)?.account, null, 'cached before accounts were shown');
+    const account = { email: 'ada@example.com', name: null, organization: 'Analytical Engines Ltd' };
+    writeFileSync(file, JSON.stringify({ fetchedAt: '2026-09-24T10:00:00.000Z', plan: null, meters: [meter], account }));
+    assert.deepEqual(loadSnapshot(file)?.account, account);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { SourceMode } from '../shared/types';
-import { CredentialsNotFoundError, type ClaudeCredentials } from './credentials';
+import { CredentialsNotFoundError, type ClaudeCodeAccount, type ClaudeCredentials } from './credentials';
 import { DesktopSource } from './desktop-source';
 import { mockRawUsage } from './mock';
 import { UsageHttpError } from './usage-errors';
@@ -53,7 +53,7 @@ function service(setup: Setup = {}) {
         ? null
         : JSON.stringify({ version: 2, samples: [{ t: now() - desktopAge, org: 'org', u: { fh: 7, sd: 61 } }] });
     },
-    preferredOrg: async () => null,
+    claudeCodeAccount: async () => null,
     now,
   });
   const svc = new UsageService({
@@ -107,6 +107,19 @@ test('an expired token is not sent to the API', async () => {
   assert.equal(await svc.attempt(), RECHECK_CREDENTIALS_SEC);
   assert.equal(svc.status.kind, 'token-expired');
   assert.equal(counts.fetches, 0);
+});
+
+test('Claude Code data is labelled with the account from .claude.json', async () => {
+  const source = (account: ClaudeCodeAccount | null) =>
+    new ClaudeCodeSource({
+      readCredentials: async () => creds(),
+      fetchUsage: async () => mockRawUsage(NOW, { session: 20, weekly: 50, fable: 30 }),
+      readAccount: async () => account,
+      now: () => NOW,
+    });
+  const ada = { email: 'ada@example.com', name: 'Ada Lovelace', orgName: 'Analytical Engines Ltd', orgUuid: 'org-1' };
+  assert.deepEqual((await source(ada).fetch()).account, { email: 'ada@example.com', name: 'Ada Lovelace', organization: 'Analytical Engines Ltd' });
+  assert.equal((await source(null).fetch()).account, undefined);
 });
 
 test('a 401 marks the token rejected until Claude Code writes a new one', async () => {

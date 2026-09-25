@@ -38,7 +38,8 @@ export interface OverlayWindow {
 }
 
 export function createOverlayWindow(settings: Readonly<Settings>): OverlayWindow {
-  const { width, height } = INITIAL_SIZE;
+  const width = Math.round(INITIAL_SIZE.width * settings.scale);
+  const height = Math.round(INITIAL_SIZE.height * settings.scale);
   const saved = settings.position;
   const restoredPosition = saved !== null && isReachable({ ...saved, width, height });
   const position = restoredPosition ? saved : topRightOf(screen.getPrimaryDisplay(), width);
@@ -65,10 +66,13 @@ export function createOverlayWindow(settings: Readonly<Settings>): OverlayWindow
       sandbox: true,
       nodeIntegration: false,
       spellcheck: false,
+      // Size setting (menu → Size). Changed later with webContents.setZoomFactor.
+      zoomFactor: settings.scale,
     },
   });
 
   applyAlwaysOnTop(win, settings.alwaysOnTop);
+  applyLocked(win, settings.locked);
   if (process.platform === 'darwin') win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
 
   // The overlay never navigates or opens other pages.
@@ -85,7 +89,17 @@ export function applyAlwaysOnTop(win: BrowserWindow, on: boolean): void {
 }
 
 /**
- * Resizes the window to the renderer's content. With `keepNearestEdge` the edge nearest to the screen
+ * Lock = click-through: mouse clicks go to the windows underneath. `forward` keeps mouse-move events
+ * coming (Windows, macOS; Linux ignores it). The overlay can't be clicked or dragged until unlocked
+ * from the tray menu or the lock shortcut.
+ */
+export function applyLocked(win: BrowserWindow, locked: boolean): void {
+  if (locked) win.setIgnoreMouseEvents(true, { forward: true });
+  else win.setIgnoreMouseEvents(false);
+}
+
+/**
+ * Resizes the window to the renderer's content (in DIPs: CSS size × zoom factor). With `keepNearestEdge` the edge nearest to the screen
  * border stays put, so an overlay parked in a right/bottom corner grows and shrinks away from that
  * corner. Without it the top-left corner stays put — used for the first fit at a restored position,
  * which was saved at the real size (anchoring there would shift the overlay on every start).
@@ -100,8 +114,10 @@ export function fitToContent(win: BrowserWindow, contentWidth: number, contentHe
   let { x, y } = current;
   if (keepNearestEdge && current.x + current.width / 2 > area.x + area.width / 2) x = current.x + current.width - width;
   if (keepNearestEdge && current.y + current.height / 2 > area.y + area.height / 2) y = current.y + current.height - height;
-  x = Math.min(Math.max(x, area.x), area.x + area.width - width);
-  y = Math.min(Math.max(y, area.y), area.y + area.height - height);
+  // Keep it on the display; if it is bigger than the display (large size on a small screen), the
+  // top-left part with the header stays visible.
+  x = Math.max(area.x, Math.min(x, area.x + area.width - width));
+  y = Math.max(area.y, Math.min(y, area.y + area.height - height));
   win.setBounds({ x, y, width, height });
 }
 

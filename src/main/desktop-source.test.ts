@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
+import type { ClaudeCodeAccount } from './credentials';
 import {
   DESKTOP_HISTORY_FILE,
   DESKTOP_MAX_AGE_MS,
@@ -68,18 +69,17 @@ test('maps Desktop keys to the API meter ids; no reset times, xu and codenames i
   assert.equal(desktopSnapshot({ t: 1, org: null, u: { xu: 100 } }), null);
 });
 
-function source(history: string | null, now: number, preferredOrg: string | null = null) {
-  let orgLookups = 0;
-  const src = new DesktopSource({
-    readHistory: async () => history,
-    preferredOrg: async () => {
-      orgLookups++;
-      return preferredOrg;
-    },
-    now: () => now,
-  });
-  return { src, orgLookups: () => orgLookups };
+function source(history: string | null, now: number, account: ClaudeCodeAccount | null = null) {
+  const src = new DesktopSource({ readHistory: async () => history, claudeCodeAccount: async () => account, now: () => now });
+  return { src };
 }
+
+const account = (orgUuid: string): ClaudeCodeAccount => ({
+  email: 'ada@example.com',
+  name: 'Ada Lovelace',
+  orgName: "ada@example.com's Organization",
+  orgUuid,
+});
 
 async function unavailableKind(promise: Promise<unknown>): Promise<string> {
   try {
@@ -95,7 +95,6 @@ test('a sample up to 20 min old is used; older means Desktop is not running', as
   const fresh = source(REAL_TEXT, REAL_NEWEST + 12 * MIN);
   const snap = await fresh.src.fetch({ shownFetchedAt: null });
   assert.deepEqual(snap.meters.map((m) => m.percent), [13, 84]);
-  assert.equal(fresh.orgLookups(), 0, 'one org in the file: no need to look up the preferred one');
 
   const stale = source(REAL_TEXT, REAL_NEWEST + DESKTOP_MAX_AGE_MS + 1);
   assert.equal(await unavailableKind(stale.src.fetch({ shownFetchedAt: null })), 'desktop-unavailable');
@@ -119,10 +118,20 @@ test('with several orgs, the samples of Claude Code’s org win even when anothe
       { t: 2000, org: 'team', u: { fh: 99, sd: 99 } },
     ],
   });
-  const { src, orgLookups } = source(history, 3000, 'mine');
+  const { src } = source(history, 3000, account('mine'));
   const snap = await src.fetch({ shownFetchedAt: null });
   assert.equal(snap.meters[0]?.percent, 11);
-  assert.equal(orgLookups(), 1);
+  assert.deepEqual(snap.account, { email: 'ada@example.com', name: 'Ada Lovelace', organization: null });
+});
+
+test('samples are labelled with Claude Code’s account only when they are of its org', async () => {
+  const history = (org: string | null) => JSON.stringify({ version: 2, samples: [{ t: 1000, org, u: { fh: 11 } }] });
+  const label = async (org: string | null, who: ClaudeCodeAccount | null) =>
+    (await source(history(org), 2000, who).src.fetch({ shownFetchedAt: null })).account ?? null;
+  assert.equal((await label('mine', account('mine')))?.email, 'ada@example.com');
+  assert.equal(await label('team', account('mine')), null, 'another org: Desktop may be signed in to another account');
+  assert.equal(await label(null, account('mine')), null, 'v1 samples have no org');
+  assert.equal(await label('mine', null), null, 'Claude Code not signed in');
 });
 
 test('desktopDataDirs covers MSIX, Squirrel, macOS and Linux community builds', () => {

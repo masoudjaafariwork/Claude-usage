@@ -1,9 +1,18 @@
 // Remembers the last successful snapshot on disk so the overlay shows (stale) data immediately
 // on startup, while offline, or while no source is available.
-import type { SourceId, UsageSnapshot } from '../shared/types';
+import type { AccountInfo, SourceId, UsageSnapshot } from '../shared/types';
 import { readJson, writeJsonAtomic } from './settings';
 
 const SOURCES: readonly SourceId[] = ['claude-code', 'claude-desktop'];
+
+const text = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v.slice(0, 200) : null);
+
+function loadAccount(raw: unknown): AccountInfo | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  const account = { email: text(r.email), name: text(r.name), organization: text(r.organization) };
+  return account.email !== null || account.name !== null ? account : null;
+}
 
 export function loadSnapshot(file: string): UsageSnapshot | null {
   const raw = readJson(file) as Partial<UsageSnapshot> | undefined;
@@ -11,6 +20,7 @@ export function loadSnapshot(file: string): UsageSnapshot | null {
   return {
     fetchedAt: raw.fetchedAt,
     plan: typeof raw.plan === 'string' ? raw.plan : null,
+    account: loadAccount(raw.account),
     meters: raw.meters,
     breakdown: Array.isArray(raw.breakdown) ? raw.breakdown : [],
     spend: raw.spend ?? null,

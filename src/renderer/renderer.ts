@@ -2,7 +2,7 @@
 // The DOM is rebuilt on every state change (it is tiny); bar and ring animations continue from the
 // previously rendered values, so updates glide instead of jumping.
 import type { AppState, BreakdownRow, LimitMeter, OverlayApi, SourceId, SpendInfo, StatusKind } from '../shared/types';
-import { compactMeters, formatAgo, formatClock, formatDuration } from './format';
+import { compactMeters, formatAgo, formatApprox, formatClock, formatDuration, initials, shortenEmail } from '../shared/format';
 
 declare global {
   interface Window {
@@ -51,6 +51,8 @@ const ICON_PATHS = {
   clock: ['M8 2.5a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11z', 'M8 5v3l2 1.5'],
   offline: ['M2.5 2.5l11 11', 'M5.4 5.6A4.5 4.5 0 0 0 3 9.5 3 3 0 0 0 6 12.5h6', 'M7.6 4.1A4.5 4.5 0 0 1 12.5 8a2.6 2.6 0 0 1 1 3.3'],
   key: ['M10 2.5a3.5 3.5 0 1 1-2.9 5.4L2.5 12.5v1h2v-1.5H6V10.5h1.5l.4-.4', 'M10.5 5.5h.01'],
+  lock: ['M4.5 7.25h7a1 1 0 0 1 1 1v4.25a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1V8.25a1 1 0 0 1 1-1z', 'M5.75 7.25V5.5a2.25 2.25 0 0 1 4.5 0v1.75'],
+  user: ['M8 8.25a2.75 2.75 0 1 0 0-5.5 2.75 2.75 0 0 0 0 5.5z', 'M3 13.5c.6-2.3 2.6-3.5 5-3.5s4.4 1.2 5 3.5'],
 } as const;
 
 type IconName = keyof typeof ICON_PATHS;
@@ -144,6 +146,81 @@ function bar(meter: { id: string; percent: number }): HTMLElement {
   return h('div', 'bar', fill);
 }
 
+/** Shown instead of the buttons while locked: clicks go through the overlay, so buttons would be useless. */
+function lockBadge(st: AppState): HTMLElement {
+  const badge = h('span', 'lock-badge', icon('lock'));
+  const unlock = st.view.unlockShortcut ? `the tray icon or ${st.view.unlockShortcut}` : 'the tray icon';
+  badge.title = `Locked: clicks go through the overlay. Unlock from ${unlock}.`;
+  return badge;
+}
+
+/** "At this pace: limit in ~1h 20m" when the forecast says 100 % comes before the reset. */
+function paceLine(st: AppState, meter: LimitMeter, now: Date, className: string): HTMLElement | null {
+  const at = st.forecast[meter.id];
+  const ms = at ? Date.parse(at) - now.getTime() : NaN;
+  if (!(ms > 0) || isStale(st)) return null;
+  return h('div', className, 'At this pace: limit in ', h('b', null, formatApprox(ms)));
+}
+
+/** Whose usage is shown, from the snapshot (so stale data keeps the account it belongs to). */
+interface AccountView {
+  /** E-mail (shortened to fit) or display name; null when Claude Desktop's account isn't known. */
+  main: string | null;
+  /** A team org's name. */
+  org: string | null;
+  initials: string;
+  tooltip: string;
+}
+
+function accountView(st: AppState, maxEmail: number): AccountView | null {
+  const snap = st.snapshot;
+  if (!st.view.showAccount || !snap) return null;
+  const account = snap.account;
+  if (!account) {
+    // Desktop's own sign-in is never read (D26), so a sample of another org has no known account.
+    if (snap.source !== 'claude-desktop') return null;
+    return { main: null, org: null, initials: '', tooltip: 'Claude Desktop’s account: its sign-in isn’t read, so it isn’t known here' };
+  }
+  return {
+    main: account.email ? shortenEmail(account.email, maxEmail) : account.name,
+    org: account.organization,
+    initials: initials(account.name, account.email),
+    tooltip: [account.name, account.email, account.organization].filter(Boolean).join(' · '),
+  };
+}
+
+function avatar(letters: string): HTMLElement {
+  return h('span', 'avatar', letters || icon('user'));
+}
+
+/** Expanded card: a line under the title (plus a team org's name below it), the avatar under the logo. */
+function accountRow(st: AppState): HTMLElement | null {
+  const view = accountView(st, 42);
+  if (!view) return null;
+  const row = h(
+    'div',
+    'account',
+    avatar(view.initials),
+    h(
+      'div',
+      'account-text',
+      h('div', 'account-main', view.main ?? 'Claude Desktop’s account'),
+      view.org ? h('div', 'account-org', view.org) : null,
+    ),
+  );
+  row.title = view.tooltip;
+  return row;
+}
+
+/** Compact pill: just the e-mail, small, on a line under the rings (nothing when it isn't known). */
+function compactAccountLine(st: AppState): HTMLElement | null {
+  const view = accountView(st, 32);
+  if (!view?.main) return null;
+  const line = h('div', 'compact-account', view.main);
+  line.title = view.tooltip;
+  return line;
+}
+
 /** Refresh button; spins while a fetch runs (and briefly after a click, even if the fetch is throttled). */
 function refreshButton(st: AppState): HTMLButtonElement {
   const refresh = button('refresh', 'Refresh now', (btn) => {
@@ -162,28 +239,37 @@ function header(st: AppState): HTMLElement {
     'header',
     'head',
     h('div', 'brand', logo(), h('span', 'title', 'Claude Usage'), st.snapshot?.plan ? h('span', 'plan', st.snapshot.plan) : null),
-    h(
-      'div',
-      'actions',
-      refreshButton(st),
-      button('collapse', 'Compact view', () => api.setCompact(true)),
-      button('menu', 'Menu', () => api.showMenu()),
-    ),
+    st.view.locked
+      ? lockBadge(st)
+      : h(
+          'div',
+          'actions',
+          refreshButton(st),
+          button('collapse', 'Compact view', () => api.setCompact(true)),
+          button('menu', 'Menu', () => api.showMenu()),
+        ),
   );
 }
 
-function hero(meter: LimitMeter, now: Date, stale: boolean, fromDesktop: boolean): HTMLElement {
+function hero(st: AppState, meter: LimitMeter, now: Date, stale: boolean, fromDesktop: boolean): HTMLElement {
   const { main, sub } = resetLines(meter, now, stale, fromDesktop);
   const ringBox = h('div', 'ring', ring(meter, 76, 8), h('div', 'ring-value', h('span', 'num', pct(meter.percent), h('small', null, '%'))));
   return h(
     'section',
     `hero sev-${meter.severity}${hasReset(meter, now) ? ' is-reset' : ''}`,
     ringBox,
-    h('div', 'hero-text', h('div', 'eyebrow', meter.label), h('div', 'hero-main', main), sub ? h('div', 'hero-sub', sub) : null),
+    h(
+      'div',
+      'hero-text',
+      h('div', 'eyebrow', meter.label),
+      h('div', 'hero-main', main),
+      sub ? h('div', 'hero-sub', sub) : null,
+      paceLine(st, meter, now, 'pace hero-pace'),
+    ),
   );
 }
 
-function meterRow(meter: LimitMeter, now: Date, stale: boolean, fromDesktop: boolean): HTMLElement {
+function meterRow(st: AppState, meter: LimitMeter, now: Date, stale: boolean, fromDesktop: boolean): HTMLElement {
   const { main, sub } = resetLines(meter, now, stale, fromDesktop);
   const line = fromDesktop ? main : [main, sub.replace(/^at /, '')].filter(Boolean).join(' · ');
   return h(
@@ -192,6 +278,7 @@ function meterRow(meter: LimitMeter, now: Date, stale: boolean, fromDesktop: boo
     h('div', 'meter-row', h('span', 'meter-label', meter.label), h('span', 'meter-value', `${pct(meter.percent)}%`)),
     bar(meter),
     h('div', 'meter-sub', line),
+    paceLine(st, meter, now, 'pace meter-pace'),
   );
 }
 
@@ -351,14 +438,14 @@ function skeleton(): HTMLElement {
 
 function expandedView(st: AppState, now: Date): HTMLElement {
   const stale = isStale(st);
-  const card = h('div', `card${stale ? ' stale' : ''}`, header(st));
+  const card = h('div', `card${stale ? ' stale' : ''}`, header(st), accountRow(st));
   const snap = st.snapshot;
   if (snap) {
     const fromDesktop = snap.source === 'claude-desktop';
     const session = snap.meters.find((m) => m.group === 'session');
     const others = snap.meters.filter((m) => m !== session);
-    if (session) card.append(hero(session, now, stale, fromDesktop));
-    if (others.length > 0) card.append(h('section', 'section meters', ...others.map((m) => meterRow(m, now, stale, fromDesktop))));
+    if (session) card.append(hero(st, session, now, stale, fromDesktop));
+    if (others.length > 0) card.append(h('section', 'section meters', ...others.map((m) => meterRow(st, m, now, stale, fromDesktop))));
     if (snap.breakdown.length > 0) card.append(breakdown(snap.breakdown));
     if (snap.spend?.enabled) card.append(spendRow(snap.spend));
   } else if (st.status.kind === 'loading') {
@@ -384,12 +471,12 @@ function compactStatusText(st: AppState): string {
 }
 
 function compactView(st: AppState): HTMLElement {
-  const card = h('div', `card compact${isStale(st) ? ' stale' : ''}`);
+  const row = h('div', 'compact-row');
   const items = st.snapshot ? compactMeters(st.snapshot.meters, st.view.compactHidden) : [];
   if (items.length > 0) {
     items.forEach(({ meter, label }, i) => {
-      if (i > 0) card.append(h('span', 'vsep'));
-      card.append(
+      if (i > 0) row.append(h('span', 'vsep'));
+      row.append(
         h(
           'div',
           `chip sev-${meter.severity}`,
@@ -399,16 +486,18 @@ function compactView(st: AppState): HTMLElement {
       );
     });
   } else {
-    card.append(logo(), h('span', 'compact-msg', compactStatusText(st)));
+    row.append(logo(), h('span', 'compact-msg', compactStatusText(st)));
   }
-  card.append(
+  row.append(
     h(
       'div',
       'tail',
       h('span', dotClass(st)),
-      h('div', 'actions', refreshButton(st), button('expand', 'Expand', () => api.setCompact(false))),
+      st.view.locked ? lockBadge(st) : h('div', 'actions', refreshButton(st), button('expand', 'Expand', () => api.setCompact(false))),
     ),
   );
+  const account = items.length > 0 ? compactAccountLine(st) : null;
+  const card = h('div', `card compact${isStale(st) ? ' stale' : ''}${account ? ' with-account' : ''}`, row, account);
   card.title = st.status.message ?? '';
   return card;
 }

@@ -7,6 +7,7 @@
 import { readFile } from 'node:fs/promises';
 import { posix, win32 } from 'node:path';
 import type { LimitMeter, UsageSnapshot } from '../shared/types';
+import { accountInfo, type ClaudeCodeAccount } from './credentials';
 import { watchFileInDirs } from './file-watch';
 import { severityFor } from './usage-parse';
 import { SourceUnavailableError, type FetchContext, type UsageSource } from './usage-source';
@@ -126,8 +127,11 @@ export function desktopSnapshot(sample: DesktopSample): UsageSnapshot | null {
 export interface DesktopSourceDeps {
   /** Contents of plan-usage-history.json from the first Desktop folder that has one; null when none does. */
   readHistory(): Promise<string | null>;
-  /** Org of Claude Code's account, to pick the right samples when several orgs appear. */
-  preferredOrg(): Promise<string | null>;
+  /**
+   * Claude Code's account: its org picks the right samples when several orgs appear, and samples of
+   * that org are labelled with it.
+   */
+  claudeCodeAccount(): Promise<ClaudeCodeAccount | null>;
   now(): number;
 }
 
@@ -148,8 +152,9 @@ export class DesktopSource implements UsageSource {
       });
     }
     const samples = parseDesktopHistory(text);
+    const account = await this.deps.claudeCodeAccount();
     const severalOrgs = new Set(samples.map((s) => s.org)).size > 1;
-    const sample = latestSample(samples, severalOrgs ? await this.deps.preferredOrg() : null);
+    const sample = latestSample(samples, severalOrgs ? (account?.orgUuid ?? null) : null);
     const snapshot = sample && this.deps.now() - sample.t <= DESKTOP_MAX_AGE_MS ? desktopSnapshot(sample) : null;
     if (!snapshot) {
       throw new SourceUnavailableError({
@@ -164,6 +169,9 @@ export class DesktopSource implements UsageSource {
         message: 'Claude Desktop has no usage newer than the data shown.',
       });
     }
-    return snapshot;
+    // A sample names only its org (Desktop's own sign-in is off limits, D26): the account is known
+    // when that is Claude Code's org, otherwise it stays unknown.
+    const known = sample!.org !== null && sample!.org === account?.orgUuid ? accountInfo(account) : null;
+    return known ? { ...snapshot, account: known } : snapshot;
   }
 }

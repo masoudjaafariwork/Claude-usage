@@ -1,4 +1,6 @@
-/* Claude Usage — dark glass card that sits on top of any wallpaper or app. */
+/* Claude Usage — glass card that sits on top of any wallpaper or app. Dark by default; the light
+   theme (menu → Theme) only swaps the variables below. main.ts sets nativeTheme.themeSource, which
+   decides what prefers-color-scheme reports here. */
 
 :root {
   color-scheme: dark;
@@ -9,10 +11,21 @@
   --track: rgba(255, 255, 255, 0.08);
   --card-top: rgba(41, 38, 36, 0.95);
   --card-bottom: rgba(20, 19, 19, 0.95);
+  --card-border: rgba(255, 255, 255, 0.08);
+  --card-shadow:
+    0 8px 14px -4px rgba(0, 0, 0, 0.5),
+    0 0 0 1px rgba(0, 0, 0, 0.35),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --hover: rgba(255, 255, 255, 0.08);
+  --press: rgba(255, 255, 255, 0.13);
+  --code-bg: rgba(255, 255, 255, 0.08);
+  --skel: rgba(255, 255, 255, 0.05);
+  --skel-hi: rgba(255, 255, 255, 0.11);
 
   --brand: #d97757;
   --brand-hi: #f0a488;
   --brand-soft: rgba(217, 119, 87, 0.16);
+  --brand-text: var(--brand-hi);
 
   /* Severity colors — keep in sync with SEVERITY_RGB in main/tray-icon.ts and the SVG gradients. */
   --ok: #45d19e;
@@ -21,10 +34,41 @@
   --warn-hi: #ffd27a;
   --crit: #f2555a;
   --crit-hi: #ff9a86;
+  /* Text in severity colours (values, hero line): the light variants on dark, darker ones on light. */
+  --warn-text: var(--warn-hi);
+  --crit-text: var(--crit-hi);
 
   --font: 'Segoe UI Variable Text', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, Ubuntu,
     Cantarell, 'Noto Sans', system-ui, sans-serif;
   --ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Light theme: neutrals and text colours only; the severity colours (and so the tray icon and the
+   ring gradients) stay the same. */
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --text: #26221f;
+    --muted: #6b655f;
+    --faint: #8e8882;
+    --line: rgba(0, 0, 0, 0.08);
+    --track: rgba(0, 0, 0, 0.08);
+    --card-top: rgba(253, 251, 248, 0.96);
+    --card-bottom: rgba(241, 237, 232, 0.96);
+    --card-border: rgba(0, 0, 0, 0.09);
+    --card-shadow:
+      0 8px 14px -4px rgba(0, 0, 0, 0.25),
+      0 0 0 1px rgba(0, 0, 0, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    --hover: rgba(0, 0, 0, 0.06);
+    --press: rgba(0, 0, 0, 0.1);
+    --code-bg: rgba(0, 0, 0, 0.06);
+    --skel: rgba(0, 0, 0, 0.05);
+    --skel-hi: rgba(0, 0, 0, 0.1);
+    --brand-text: #b5532f;
+    --warn-text: #a86400;
+    --crit-text: #c92f3b;
+  }
 }
 
 * {
@@ -66,11 +110,8 @@ body {
   padding: 12px 14px 10px;
   border-radius: 18px;
   background: linear-gradient(165deg, var(--card-top), var(--card-bottom));
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  box-shadow:
-    0 8px 14px -4px rgba(0, 0, 0, 0.5),
-    0 0 0 1px rgba(0, 0, 0, 0.35),
-    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--card-shadow);
   overflow: hidden;
   -webkit-app-region: drag;
   transition: opacity 0.2s;
@@ -125,7 +166,7 @@ body {
   border-radius: 6px;
   border: 1px solid rgba(217, 119, 87, 0.28);
   background: var(--brand-soft);
-  color: var(--brand-hi);
+  color: var(--brand-text);
   font-size: 9.5px;
   font-weight: 700;
   letter-spacing: 0.08em;
@@ -156,12 +197,12 @@ body {
 }
 
 .icon-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--hover);
   color: var(--text);
 }
 
 .icon-btn:active {
-  background: rgba(255, 255, 255, 0.13);
+  background: var(--press);
 }
 
 .icon-btn:focus-visible {
@@ -176,6 +217,68 @@ body {
 
 .icon-btn.spinning svg {
   animation: spin 0.9s linear infinite;
+}
+
+/* Lock (click-through) mode: replaces the buttons, which can't be clicked then. */
+.lock-badge {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  color: var(--faint);
+}
+
+.lock-badge svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* ---- Account ------------------------------------------------------------------------------- */
+
+/* Whose usage it is: a line under the title, the avatar centred under the logo. */
+.account {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 1px 0 0 -1px;
+  font-size: 11.5px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--brand-soft);
+  color: var(--brand-text);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.avatar svg {
+  width: 11px;
+  height: 11px;
+}
+
+.account-text {
+  min-width: 0;
+}
+
+.account-main,
+.account-org {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.account-org {
+  font-size: 10.5px;
+  line-height: 1.25;
+  color: var(--faint);
 }
 
 /* ---- Rings --------------------------------------------------------------------------------- */
@@ -271,11 +374,31 @@ body {
 }
 
 .sev-warning .hero-main {
-  color: var(--warn-hi);
+  color: var(--warn-text);
 }
 
 .sev-critical .hero-main {
-  color: var(--crit-hi);
+  color: var(--crit-text);
+}
+
+/* "At this pace: limit in ~1h 20m" */
+.pace {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.pace b {
+  font-weight: 650;
+  color: var(--warn-text);
+}
+
+.hero-pace {
+  margin-top: 3px;
+}
+
+.meter-pace {
+  margin-top: 2px;
 }
 
 /* ---- Sections & bars ----------------------------------------------------------------------- */
@@ -319,11 +442,11 @@ body {
 }
 
 .sev-warning .meter-value {
-  color: var(--warn-hi);
+  color: var(--warn-text);
 }
 
 .sev-critical .meter-value {
-  color: var(--crit-hi);
+  color: var(--crit-text);
 }
 
 .bar {
@@ -461,7 +584,7 @@ body {
 .banner-body code {
   padding: 0 3px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--code-bg);
   color: var(--text);
   font-family: ui-monospace, 'Cascadia Mono', Consolas, Menlo, monospace;
   font-size: 10.5px;
@@ -475,7 +598,7 @@ body {
   border: 1px solid rgba(217, 119, 87, 0.4);
   border-radius: 7px;
   background: var(--brand-soft);
-  color: var(--brand-hi);
+  color: var(--brand-text);
   font: inherit;
   font-size: 11px;
   font-weight: 600;
@@ -550,7 +673,7 @@ body {
 
 .skel {
   border-radius: 6px;
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 25%, rgba(255, 255, 255, 0.11) 50%, rgba(255, 255, 255, 0.05) 75%);
+  background: linear-gradient(90deg, var(--skel) 25%, var(--skel-hi) 50%, var(--skel) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s linear infinite;
 }
@@ -574,13 +697,34 @@ body {
 /* ---- Compact pill -------------------------------------------------------------------------- */
 
 .card.compact {
-  display: flex;
-  align-items: center;
-  gap: 11px;
   width: auto;
   padding: 7px 7px 7px 9px;
   border-radius: 999px;
   white-space: nowrap;
+}
+
+.compact-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+/* The account's e-mail on a small second line; it never makes the pill wider. */
+.card.compact.with-account {
+  padding-bottom: 5px;
+  border-radius: 22px;
+}
+
+.compact-account {
+  width: 0;
+  min-width: 100%;
+  margin-top: 2px;
+  overflow: hidden;
+  font-size: 10px;
+  line-height: 1.3;
+  color: var(--muted);
+  text-align: center;
+  text-overflow: ellipsis;
 }
 
 .card.compact::before {

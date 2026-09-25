@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| **Status** | Planned |
+| **Status** | ⏭️ Next |
 | **Depends on** | Phase 2 (installers + GitHub release workflow) |
 | **Size** | One Claude Code session |
 

@@ -9,13 +9,13 @@ Living record of where the project stands. Update it at the end of every session
 | [1 — MVP overlay](phases/phase-1-mvp-overlay.md) | ✅ Done (2026-09-24) |
 | [2 — Packaging, app icon, launch at login](phases/phase-2-packaging.md) | ✅ Done (2026-09-24) |
 | [3 — Fallback data source (Claude Desktop), source selection & diagnostics](phases/phase-3-fallback-source.md) | ✅ Done (2026-09-25) — claude.ai sign-in dropped (D28) |
-| [4 — UX: notifications, click-through, shortcut, pace forecast](phases/phase-4-ux.md) | ⏭️ Next |
-| [5 — App auto-update](phases/phase-5-auto-update.md) | Planned |
+| [4 — UX: notifications, click-through, shortcut, size, pace forecast, theme](phases/phase-4-ux.md) | ✅ Done (2026-09-26) |
+| [5 — App auto-update](phases/phase-5-auto-update.md) | ⏭️ Next |
 
 Each phase has its own plan file in [`phases/`](phases/) (scope, notes, acceptance criteria,
 ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLOG.md).
 
-## What works today (Phases 1–3)
+## What works today (Phases 1–4)
 
 - Frameless, transparent, always-on-top overlay; drag anywhere; position remembered; stays reachable
   when monitors change; "Move to display" menu for multi-monitor setups.
@@ -30,7 +30,8 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
   errors, `Retry-After` on 429, refresh on wake/unlock, manual refresh.
 - Stale data handling: last snapshot cached to disk and shown (desaturated, with banner) on startup,
   offline, rate-limited or expired sign-in.
-- Dev tooling: mock scenarios, screenshot mode, 63 unit tests.
+- Dev tooling: mock scenarios, screenshot mode (plus light-theme and 90 % / 150 % variants),
+  `--theme=` / `--scale=` flags, 108 unit tests.
 - **Data sources (Phase 3):** menu → *Source*: *Auto* (Claude Code; when its sign-in is missing,
   expired or rejected, the newest Claude Desktop sample ≤ 20 min old), *Claude Code only*,
   *Claude Desktop only*. Claude Desktop's `plan-usage-history.json` is read-only, needs no sign-in
@@ -53,6 +54,24 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
   (`vscode://anthropic.claude-code/open`) when the extension is installed, else a terminal running
   `claude`, else the setup page. Claude Code renews its own token when it starts; the overlay
   watches `.credentials.json` and recovers within seconds (D34).
+- **Notifications (Phase 4):** native notification when a limit reaches 75 %, 90 % or 100 %, once
+  per limit, threshold and window, and optionally when such a limit resets (menu → *Notifications*,
+  all on by default, plus *Send a test notification*). Clicking one shows the overlay (D35, D36).
+- **Lock (click-through):** menu → *Lock (click-through)*; clicks go to the windows underneath, a
+  lock icon replaces the buttons; unlock from the tray menu or `Ctrl+Alt+Shift+U` (D37).
+- **Global shortcuts:** `Ctrl+Alt+U` show/hide, `Ctrl+Alt+Shift+U` lock/unlock (`⌘⌥U` / `⌘⌥⇧U` on
+  macOS); menu → *Keyboard shortcuts* turns them off and says when one is taken by another app;
+  editable in `settings.json` (D37).
+- **Size:** menu → *Size* 90–150 %, also `Ctrl` `+` / `-` / `0` and `Ctrl`+wheel over the overlay;
+  the window always fits the card (D38).
+- **Pace forecast:** "At this pace: limit in ~1h 15m" under the session and weekly bars when the
+  recent trend reaches 100 % before the reset; from a 24 h snapshot history
+  (`userData/usage-history.json`), no extra requests (D39).
+- **Theme:** menu → *Theme* → System / Dark (default) / Light (D40).
+- **Account:** which account the numbers belong to, in both views — the expanded card has a line
+  under the title (initials avatar + e-mail, a team org's name below), the compact pill a small
+  second line with just the e-mail under the rings. From Claude Code's `.claude.json`; Claude
+  Desktop data shows it only for Claude Code's own org. Menu → *Show account* (on by default) (D41).
 
 ## Decisions
 
@@ -89,9 +108,16 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D29 | Sources: **Auto** = Claude Code, then Claude Desktop's history; plus *Claude Code only* / *Claude Desktop only* (`settings.source`). Auto falls back only when a source is *unavailable* (`SourceUnavailableError`: no sign-in, expired, rejected, no recent sample) — network / 429 / 5xx / parse errors are reported, not hidden. Desktop samples count when ≤ 20 min old and, in Auto, not older than the data shown | Falling back is normal operation, not an error. Desktop can't be fresher than a failing API, and showing older data as "ok" would hide real problems. 20 min ≈ Desktop's 15-min cadence + slack. |
 | D30 | Claude Desktop's `xu` (extra-usage utilization) is not shown | Desktop records it even while extra usage is switched off (the owner's history has `xu: 100` with extra usage disabled) and the sample has no `is_enabled`, so a row would mislead. |
 | D31 | Log file `claude-usage.log` in `app.getPath('logs')` (after `app.setAppLogsPath()`: `userData/logs` on Windows/Linux, `~/Library/Logs/Claude Usage` on macOS), 512 KB + one rotated file; logs the HTTP status of every request, status/source changes (not identical polls) and errors; every line goes through `redact()` (Bearer, `sk-ant-…`, cookie headers, secret `name=value`, JSON token fields, JWTs, e-mails; UUIDs cut to 8 chars) | Makes problems diagnosable while staying safe to share; ~25 days of history at the default interval. |
-| D32 | Desktop org preference: `oauthAccount.organizationUuid` from Claude Code's `.claude.json` (in `CLAUDE_CONFIG_DIR` or home), read only when the history has several orgs | Non-secret config; picks the same account's samples when someone is in a personal and a team org. |
+| D32 | Desktop org preference: `oauthAccount.organizationUuid` from Claude Code's `.claude.json` (in `CLAUDE_CONFIG_DIR` or home), used only when the history has several orgs (since D41 the file is read on every Desktop poll, to label the data too) | Non-secret config; picks the same account's samples when someone is in a personal and a team org. |
 | D33 | Compact pill = session ring (always) + every weekly limit, each of which can be hidden from menu → *Compact mode shows* (`settings.compactHidden`: meter ids, default `[]`). Replaces the Phase 1 rule "per-model weekly only when higher than all models" | The owner missed the Fable ring (37 % < 83 % all models) and asked for a choice, both on by default (2026-09-25). A *hidden* list (not a *shown* list) keeps new per-model limits visible by default. |
 | D34 | Expired / missing Claude Code sign-in → **Open Claude Code** button (user's click only). Order: VS Code with the Claude Code extension (`vscode://anthropic.claude-code/open`, also `vscode-insiders`), else a terminal with `claude` (Windows `cmd /c start … cmd /k`, macOS `open -a Terminal`, Linux first of x-terminal-emulator / gnome-terminal / konsole / xfce4-terminal / xterm), else the setup docs. No prompt is sent. The folder of `.credentials.json` is watched so a renewed token is picked up at once (not while rate-limited or offline) | Owner's idea (2026-09-25): let Claude Code renew its own token. Claude Code refreshes an expired token when a session starts in a trusted folder and coordinates refreshes between its processes with a lock (read in its code, v2.1.282), so D3 holds. `claude auth status` does not refresh (it only reads the file); running `claude -p` automatically would send real prompts and was rejected. |
+| D35 | Threshold notifications remember each (limit, threshold) crossing with the window's `resetsAt` and when it happened, and forget it when the window is clearly over: reset time moved ≥ 1 h, the recorded reset time has passed (current one unknown), usage fell > 5 points below the threshold, or — with no reset times at all — a whole window length (5 h / 7 d) has passed. Records live in `userData/notifications.json` (mock runs: memory) | The plan's key "limit id + `resetsAt`" breaks in practice: `resets_at` carries microseconds that differ between responses (even between limits of one response), and Claude Desktop samples have no reset time — an exact key would re-notify on every poll or on every source switch. Usage only drops at a reset, so a drop is a reliable reset signal. |
+| D36 | Notification policy: 75 / 90 / 100 % and the reset notice are on by default; at most one threshold notice per limit per poll (the highest newly reached); switched-off thresholds are still recorded, so switching one on later doesn't announce an old crossing; the reset notice only follows a limit that reached ≥ 75 % and only once usage is back below it; clicking shows the overlay; screenshot runs never notify | Fewer, more useful notifications. A reset notice after every 5-hour session would be noise; after a high one it tells the user they can continue. |
+| D37 | Lock (click-through) = `setIgnoreMouseEvents(true, { forward: true })`, persisted like always-on-top; buttons replaced by a lock icon. Two global shortcuts: `CommandOrControl+Alt+U` (show/hide) and `CommandOrControl+Alt+Shift+U` (lock/unlock), one on/off switch in the menu, accelerators editable in `settings.json` (must contain a modifier); a failed registration is logged and shown in the menu; screenshot runs don't register; unregistered on `will-quit` | A locked overlay can't be clicked, so it needs a keyboard way back besides the tray menu; show/hide alone can't unlock. No shortcut editor UI — menus only in this phase (plan: no settings window). |
+| D38 | Size = Chromium zoom (`setZoomFactor`), options 90 / 100 / 115 / 130 / 150 %; the window is the renderer's CSS size × zoom factor; the setting is applied again on `did-navigate`; `Ctrl` `+` / `-` / `0` and `Ctrl`+wheel map to the same options | Chromium persists a per-page zoom level in `userData/Preferences` and prefers it to `webPreferences.zoomFactor` (a 150 % run leaked into the next run). Plain page zoom from the default menu accelerators wouldn't resize the window (the CSS size doesn't change), leaving the card cropped. |
+| D39 | Pace forecast: fresh snapshots go into a 24 h history (`userData/usage-history.json`, compact JSON, ≤ 2000 points); per limit, points of the current window (reset time ± 1 h) within a lookback of 1 h (session) or 24 h (weekly / other), ≥ 3 points spanning ≥ 15 min, least-squares slope > 0, projected from the latest point; shown only when 100 % comes before the reset and the data is fresh; rounded to 5 min | "At this pace" should follow the current pace — a burst two hours ago shouldn't predict a session limit now; for weekly limits a day averages nights and breaks in. Claude Desktop data has no reset time, so no forecast there. |
+| D40 | Theme: *System* / *Dark* / *Light* through `nativeTheme.themeSource` (the page follows `prefers-color-scheme`); default *Dark*, so D10's look stays the default. Hard-coded colours became CSS variables with identical dark values; the light theme only overrides neutrals and text colours (`--warn-text`, `--crit-text`, `--brand-text`) | No IPC or renderer logic needed, and *System* follows OS changes live. Keeping the severity colours unchanged keeps hard rule 8 (three places in sync) as it is. |
+| D41 | **Account indicator.** Whose usage it is comes from Claude Code's `.claude.json` → `oauthAccount` (`emailAddress`, `displayName`, `organizationName`, `organizationUuid`; no secrets, no network), read with the token on every Claude Code poll and stored in the snapshot (`UsageSnapshot.account`, cached too), so stale data keeps its own account. Claude Desktop samples get it only when their org is Claude Code's org, otherwise "Claude Desktop's account" (D26 stays). A personal org's name (`<email>'s Organization`) is hidden, any other org name shown. Expanded: line under the title (avatar with initials, e-mail up to 42 chars, org on a second line); compact: only the e-mail, small and centred on a second line under the rings (up to 32 chars, trimmed before the @ so the domain stays; the line never widens the pill; nothing when unknown). Menu → *Show account*, default on | Owner's request (2026-09-26); the compact form is the owner's design ("a small line under the rings, only the username, minimal") after a first version with an account chip beside the rings. A local file costs no request (hard rule 2); `/api/oauth/profile` would. In the snapshot rather than read live, so a `/login` to another account never relabels the previous account's numbers. Personal org names only repeat the e-mail; a team's name tells a personal and a work account with the same e-mail apart. The switch is for screen sharing — the overlay is always on top. Not in the tray tooltip: Windows cuts it at 127 characters, and the limits matter more there. |
 
 ## Usage API notes (observed 2026-09-24)
 
@@ -180,7 +206,33 @@ Kept for the record in case Anthropic ever offers an official way.
   instead of quit, that folder stays behind.
 - The AppImage needs FUSE 2 and, on Ubuntu 24.04+, possibly `--no-sandbox` (documented in README).
 - `is_active` from the API is parsed but not shown (meaning unclear).
-- Opacity and refresh interval are only adjustable from the menu (no settings window).
+- Opacity, size, theme, notifications and refresh interval are only adjustable from the menu (no
+  settings window); the shortcut keys only in `settings.json` (`toggleShortcut`, `lockShortcut`).
+- **Phase 4, platform caveats (only Windows 11 tested):**
+  - *Notifications:* on Windows they show under the app's name only when a Start-menu shortcut
+    carries the AppUserModelId (the installer creates it). In dev they worked on this machine
+    because an installed build had left that shortcut; without it they may not appear or say
+    "Electron". Focus Assist / Do not disturb hides them — *Send a test notification* checks that.
+    macOS asks for permission on the first one (untested with the ad-hoc signed build); Linux
+    needs a notification daemon (libnotify / D-Bus).
+  - *Lock:* `forward: true` is ignored on Linux (clicks still pass through on X11); Wayland
+    untested. While locked, the banner's *Open Claude Code* button can't be clicked either — use
+    the menu item.
+  - *Shortcuts:* Wayland has no global shortcuts unless Electron uses the GlobalShortcuts portal
+    (not enabled). On keyboard layouts where AltGr = Ctrl+Alt (Polish, German, …) `Ctrl+Alt+U`
+    may swallow an AltGr character — change or disable it. macOS `⌘⌥U` is Safari's "Show Page
+    Source" while the app runs. The menu shows Electron's modifier order ("Alt+Ctrl+U").
+  - *Size:* after many size changes the right edge can drift by 1–4 px (DIP ↔ pixel rounding at
+    125 % display scaling). Chromium also keeps the zoom in `userData/Preferences`; harmless, the
+    setting is re-applied on start.
+  - *Forecast:* needs ≥ 15 min of data in the current window (the history survives restarts);
+    none with Claude Desktop data. The compact pill and tray tooltip don't show it.
+- **Account indicator (D41):** after a `/login` to another account, the previous account's numbers
+  (labelled as such) stay until the next poll. Claude Desktop samples of an org other than Claude
+  Code's show "Claude Desktop's account" on the card and nothing in the compact pill (its
+  sign-in isn't read, D26). Like the token, a
+  `CLAUDE_CONFIG_DIR` set only in the VS Code extension's settings is invisible. Not in the tray
+  tooltip. macOS/Linux untested (same file and keys as on Windows per Claude Code).
 
 ## Session log
 
@@ -284,3 +336,46 @@ Kept for the record in case Anthropic ever offers an official way.
   resolution on this machine: VS Code route. 71 tests pass; screenshots reviewed.
 - Done in the same working tree as session 7's uncommitted compact-view change.
 - Electron book v1.5: new chapter on opening other programs.
+
+### 2026-09-26 — Session 9: Phase 4 (notifications, lock, shortcuts, size, forecast, theme)
+
+- Implemented the whole phase plan in the order notifications → lock → shortcuts → size →
+  forecast → theme. New pure modules with tests: `notifications-core.ts`, `pace.ts`,
+  `shortcuts-core.ts`; Electron wrappers `notifications.ts`, `shortcuts.ts`; `format.ts` moved to
+  `src/shared/`. Decisions D35–D40. Tests 71 → 102.
+- Deviations from the plan, with reasons: loose window matching instead of the exact
+  "id + `resetsAt`" key (D35); a second shortcut for lock/unlock (D37); `Ctrl` `+` / `-` / `0` and
+  `Ctrl`+wheel mapped to the Size options (D38); forecast lookback of 1 h / 24 h (D39).
+- Found and fixed: Chromium persists per-page zoom in `userData/Preferences`, which overrode
+  `webPreferences.zoomFactor` in the next run (re-applied on `did-navigate`, D38); `fitToContent`
+  now keeps the top-left visible when the card is bigger than the display.
+- Verified on Windows 11 with mock runs, automated where possible: notifications read back from
+  Windows' notification database; click-through checked via the window's ex-style and
+  `WindowFromPoint`; shortcuts via synthesized key presses (incl. one held by another program);
+  size steps via the main-process inspector with captures; runtime theme switch; the menu with
+  its shortcut labels. Dark screenshots pixel-identical to before except clock times; light and
+  size variants reviewed. macOS/Linux untested (caveats under Known issues).
+- A parallel session added an account indicator in the same working tree at the same time
+  (shared files: `types.ts`, `settings.ts`, `menu.ts`, `main.ts`, `mock.ts`, `renderer.ts`,
+  `styles.css`).
+- Electron book v1.6: Phase 4 chapters.
+
+### 2026-09-26 — Session 10: account indicator
+
+- The owner asked to see which account the overlay is connected to, in both views.
+- Source: Claude Code's `.claude.json` → `oauthAccount` (key names checked; the owner's personal
+  org is named "<email>'s Organization"). `readClaudeCodeOrgUuid` became `readClaudeCodeAccount`
+  with the pure `parseClaudeCodeAccount` / `accountInfo`; `ClaudeCodeSource` labels its snapshot,
+  `DesktopSource` takes the account instead of the org and labels samples of the same org;
+  `snapshot-cache.ts` keeps the account (D41).
+- UI: account line under the title (team org on a second line), menu → *Show account*;
+  `shortenEmail()` / `initials()` in `shared/format.ts`. The compact pill first got an account chip
+  beside the rings; the owner asked instead for only the e-mail, small, on a new line under the
+  rings — done (the pill gets ~16 px taller, a smaller corner radius). Mock
+  accounts (`critical` = long e-mail in a team org, `desktop-unavailable` = unknown Desktop
+  account). README features, screenshots and "How it works" updated.
+- 108 tests pass (6 new); screenshots reviewed (dark / light, 150 %, team org, unknown Desktop
+  account, stale). The real `.claude.json` checked with a masked read (e-mail found, personal org
+  hidden, org id present). The real app wasn't restarted: another session's dev instance was running.
+- Done in the same working tree while the Phase 4 session was finishing (shared files, see there).
+- Electron book v1.7: a new chapter on the account indicator.

@@ -11,8 +11,8 @@ technical notes, acceptance criteria, a manual test checklist, a ready-to-paste 
 | 1 | MVP overlay | ✅ Done (2026-09-24) | [phase-1-mvp-overlay.md](phases/phase-1-mvp-overlay.md) |
 | 2 | Packaging, app icon, launch at login | ✅ Done (2026-09-24) | [phase-2-packaging.md](phases/phase-2-packaging.md) |
 | 3 | Fallback data source (Claude Desktop), source selection & diagnostics — claude.ai sign-in dropped (D28) | ✅ Done (2026-09-25) | [phase-3-fallback-source.md](phases/phase-3-fallback-source.md) |
-| 4 | UX: notifications, click-through, shortcut, size, pace forecast | ⏭️ Next | [phase-4-ux.md](phases/phase-4-ux.md) |
-| 5 | App auto-update | Planned | [phase-5-auto-update.md](phases/phase-5-auto-update.md) |
+| 4 | UX: notifications, click-through, shortcut, size, pace forecast, theme | ✅ Done (2026-09-26) | [phase-4-ux.md](phases/phase-4-ux.md) |
+| 5 | App auto-update | ⏭️ Next | [phase-5-auto-update.md](phases/phase-5-auto-update.md) |
 
 **Running a phase:** open a new Claude Code session in this repo, open the phase file, copy the
 text in its **Prompt** block, paste it, send. Run phases in order, one per session.
@@ -63,6 +63,9 @@ Move an idea into a phase file (with the "Plan a new phase" prompt) when it's ti
 - Code signing: a Windows certificate (no SmartScreen warning) and an Apple Developer ID with
   notarization (no "Open Anyway" step).
 - arm64 builds for Windows and Linux.
+- Pace forecast in the compact pill and the tray tooltip (today only in the expanded card).
+- Change the global shortcuts from the menu (today only in `settings.json`, D37); on Wayland,
+  global shortcuts through the GlobalShortcuts portal.
 - A manual "build only" trigger (`workflow_dispatch`) for the release workflow, to test CI without a tag.
 - Report the Electron login-item bug (paths with spaces) upstream; drop the `reg.exe` workaround
   once it is fixed (D18).

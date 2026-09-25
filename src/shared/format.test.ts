@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { LimitMeter } from '../shared/types';
-import { compactMeters, formatAgo, formatClock, formatDuration } from './format';
+import type { LimitMeter } from './types';
+import { compactMeters, formatAgo, formatApprox, formatClock, formatDuration, initials, shortenEmail } from './format';
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -14,6 +14,15 @@ test('formatDuration', () => {
   assert.equal(formatDuration(3 * HOUR + 12 * MIN), '3h 12m');
   assert.equal(formatDuration(2 * DAY), '2d');
   assert.equal(formatDuration(4 * DAY + 17 * HOUR + 20 * MIN), '4d 17h');
+});
+
+test('formatApprox rounds to 5 minutes', () => {
+  assert.equal(formatApprox(30_000), '~5m');
+  assert.equal(formatApprox(7 * MIN), '~5m');
+  assert.equal(formatApprox(8 * MIN), '~10m');
+  assert.equal(formatApprox(HOUR + 18 * MIN), '~1h 20m');
+  assert.equal(formatApprox(HOUR + 58 * MIN), '~2h');
+  assert.equal(formatApprox(2 * DAY + 5 * HOUR + 3 * MIN), '~2d 5h');
 });
 
 test('formatClock picks today / tomorrow / weekday / date', () => {
@@ -56,4 +65,21 @@ test('compactMeters shows the session and every weekly limit that is not hidden'
   assert.deepEqual(labels(['weekly_all']), ['Session 11', 'Fable 37']);
   // The session ring can't be hidden.
   assert.deepEqual(labels(['session', 'weekly_all', 'weekly_scoped:fable']), ['Session 11']);
+});
+
+test('shortenEmail cuts the name part and keeps the domain', () => {
+  assert.equal(shortenEmail('ada@example.com', 24), 'ada@example.com');
+  assert.equal(shortenEmail('charlesbabbage1791@example.com', 24), 'charlesbabb…@example.com');
+  assert.equal(shortenEmail('ada.lovelace@analytical-engines.example', 34), 'ada.lo…@analytical-engines.example');
+  // No room for the domain, or no domain at all: plain cut at the end.
+  assert.equal(shortenEmail(`a@${'x'.repeat(30)}.com`, 20), `a@${'x'.repeat(17)}…`);
+  assert.equal(shortenEmail('averyveryverylongname', 10), 'averyvery…');
+});
+
+test('initials: first and last name, else the e-mail’s first letter', () => {
+  assert.equal(initials('Ada Lovelace', 'ada@example.com'), 'AL');
+  assert.equal(initials('Ada King Lovelace', null), 'AL');
+  assert.equal(initials('  ', 'bob@example.com'), 'B');
+  assert.equal(initials(null, null), '');
+  assert.equal(initials('مسعود جعفری', null), 'مج');
 });

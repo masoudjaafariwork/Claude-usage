@@ -40,11 +40,25 @@ export interface SpendInfo {
   limit: string | null;
 }
 
+/** The Claude account the numbers belong to, from Claude Code's non-secret `.claude.json`. */
+export interface AccountInfo {
+  email: string | null;
+  /** Display name, e.g. "Ada Lovelace". */
+  name: string | null;
+  /** Organization name, only when it isn't the personal default ("<email>'s Organization"). */
+  organization: string | null;
+}
+
 export interface UsageSnapshot {
   /** ISO timestamp of when the data was fetched. */
   fetchedAt: string;
   /** Human-readable plan, e.g. "Max 20×", or null when unknown. */
   plan: string | null;
+  /**
+   * Whose usage this is. Null or missing when unknown: Claude Desktop samples of an org other than
+   * Claude Code's, or snapshots cached before accounts were shown.
+   */
+  account?: AccountInfo | null;
   meters: LimitMeter[];
   breakdown: BreakdownRow[];
   spend: SpendInfo | null;
@@ -79,6 +93,12 @@ export interface ViewSettings {
   opacity: number;
   /** Meter ids left out of the compact pill (the session ring always shows). */
   compactHidden: string[];
+  /** Click-through mode: the overlay can't be clicked (shows a lock instead of its buttons). */
+  locked: boolean;
+  /** Label of the working lock/unlock shortcut, e.g. "Ctrl+Alt+Shift+U"; null when there is none. */
+  unlockShortcut: string | null;
+  /** Show whose usage it is (e-mail) in both views; off e.g. for screen sharing. */
+  showAccount: boolean;
 }
 
 export interface AppState {
@@ -88,6 +108,11 @@ export interface AppState {
   refreshing: boolean;
   view: ViewSettings;
   sourceMode: SourceMode;
+  /**
+   * "At this pace" forecast: meter id → ISO time when the limit reaches 100 %, only for limits
+   * that would hit it before their reset (and only while the data is fresh).
+   */
+  forecast: Record<string, string>;
 }
 
 /** API exposed to the renderer by the preload script as `window.overlay`. */

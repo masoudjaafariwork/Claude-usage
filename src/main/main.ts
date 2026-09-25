@@ -5,12 +5,14 @@
 //   --mock[=scenario]      fake data (scenarios in mock.ts), separate userData directory
 //   --screenshot=<file>    render, save a PNG of the overlay to <file>, then quit
 //   --compact / --expanded override the view mode for this run
+//   --theme=<system|dark|light>, --scale=<0.9|1|1.15|1.3|1.5> override theme and size (screenshots)
 import {
   app,
   BrowserWindow,
   dialog,
   ipcMain,
   nativeImage,
+  nativeTheme,
   powerMonitor,
   screen,
   shell,
@@ -23,7 +25,7 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { AppState, SourceId, UsageSnapshot } from '../shared/types';
 import { gatherLaunchFacts, launchClaudeCode, planClaudeCodeLaunch } from './claude-code-launcher';
-import { claudeConfigDir, readClaudeCodeOrgUuid, readCredentials } from './credentials';
+import { claudeConfigDir, readClaudeCodeAccount, readCredentials } from './credentials';
 import { DesktopSource, desktopDataDirs, readDesktopHistory, watchDesktopHistory } from './desktop-source';
 import { watchFileInDirs } from './file-watch';
 import { RotatingLog, describeError } from './log';
@@ -31,7 +33,11 @@ import { createLoginItem } from './login-item';
 import { reconcileLoginItem } from './login-item-core';
 import { buildMenu, type MenuActions } from './menu';
 import { MOCK_SCENARIOS, createMockSource, isMockScenario, type MockScenario } from './mock';
-import { SettingsStore } from './settings';
+import { Notifier } from './notifications';
+import { UsageHistory, type HistoryPoint } from './pace';
+import { SCALE_OPTIONS, SettingsStore, THEMES, stepScale, type ThemeSetting } from './settings';
+import { registerShortcuts, unregisterShortcuts } from './shortcuts';
+import { shortcutLabel, type ShortcutsStatus } from './shortcuts-core';
 import { loadSnapshot, saveSnapshot } from './snapshot-cache';
 import { TrayController } from './tray';
 import { fetchUsageJson } from './usage-api';
@@ -40,6 +46,7 @@ import { ClaudeCodeSource, type UsageSource } from './usage-source';
 import {
   APP_ICON_PATH,
   applyAlwaysOnTop,
+  applyLocked,
   createOverlayWindow,
   ensureOnScreen,
   fitToContent,
@@ -51,10 +58,12 @@ interface CliOptions {
   mock: MockScenario | null;
   screenshot: string | null;
   compact: boolean | null;
+  theme: ThemeSetting | null;
+  scale: number | null;
 }
 
 function parseArgs(argv: string[]): CliOptions {
-  const options: CliOptions = { mock: null, screenshot: null, compact: null };
+  const options: CliOptions = { mock: null, screenshot: null, compact: null, theme: null, scale: null };
   for (const arg of argv) {
     if (arg === '--mock') options.mock = 'normal';
     else if (arg.startsWith('--mock=')) {
@@ -64,6 +73,13 @@ function parseArgs(argv: string[]): CliOptions {
     } else if (arg.startsWith('--screenshot=')) options.screenshot = resolve(arg.slice('--screenshot='.length));
     else if (arg === '--compact') options.compact = true;
     else if (arg === '--expanded') options.compact = false;
+    else if (arg.startsWith('--theme=')) {
+      const theme = arg.slice('--theme='.length) as ThemeSetting;
+      if (THEMES.includes(theme)) options.theme = theme;
+    } else if (arg.startsWith('--scale=')) {
+      const scale = SCALE_OPTIONS.find((option) => option === Number(arg.slice('--scale='.length)));
+      if (scale !== undefined) options.scale = scale;
+    }
   }
   return options;
 }
@@ -96,6 +112,10 @@ function start(): void {
   const log = new RotatingLog(app.getPath('logs'));
   const settings = new SettingsStore(join(userData, 'settings.json'), !cli.screenshot);
   if (cli.compact !== null) settings.update({ compact: cli.compact });
+  if (cli.theme) settings.update({ theme: cli.theme });
+  if (cli.scale) settings.update({ scale: cli.scale });
+  // Sets prefers-color-scheme for the overlay page; styles.css switches its colours with it.
+  nativeTheme.themeSource = settings.get().theme;
 
   // Dev, mock and screenshot runs never touch the OS login items.
   const loginItem = createLoginItem(app.isPackaged && !cli.mock && !cli.screenshot, APP_ID);
@@ -115,21 +135,24 @@ function start(): void {
   const desktopDirs = desktopDataDirs(process.platform, process.env, homedir());
   let sources: Record<SourceId, UsageSource>;
   let initialSnapshot: UsageSnapshot | null;
+  let initialHistory: HistoryPoint[] = [];
   if (cli.mock) {
     const mock = createMockSource(cli.mock);
     sources = mock.sources;
     initialSnapshot = mock.initialSnapshot;
-    settings.update({ source: mock.mode });
+    initialHistory = mock.history;
+    settings.update({ source: mock.mode, locked: mock.locked });
   } else {
     sources = {
       'claude-code': new ClaudeCodeSource({
         readCredentials,
         fetchUsage: (token) => fetchUsageJson(token, userAgent, log.write),
+        readAccount: readClaudeCodeAccount,
         now: Date.now,
       }),
       'claude-desktop': new DesktopSource({
         readHistory: () => readDesktopHistory(desktopDirs),
-        preferredOrg: readClaudeCodeOrgUuid,
+        claudeCodeAccount: readClaudeCodeAccount,
         now: Date.now,
       }),
     };
@@ -150,18 +173,51 @@ function start(): void {
     ? () => {}
     : watchFileInDirs([claudeConfigDir()], '.credentials.json', () => service.credentialsChanged());
   let lastClaudeCodeLaunch = 0;
+  // Snapshot history for the pace forecast (last 24 h; mock runs keep theirs in memory).
+  const history = new UsageHistory(cli.mock ? null : join(userData, 'usage-history.json'), initialHistory);
+  let forecast: Record<string, string> = {};
+  const notifier = new Notifier({
+    file: cli.mock ? null : join(userData, 'notifications.json'),
+    onClick: () => showOverlay(),
+    log: log.write,
+  });
+  let shortcuts: ShortcutsStatus = {
+    enabled: false,
+    toggle: { accelerator: settings.get().toggleShortcut, registered: false },
+    lock: { accelerator: settings.get().lockShortcut, registered: false },
+  };
 
   const { win, restoredPosition } = createOverlayWindow(settings.get());
+  // Chromium remembers a zoom level per page (userData/Preferences) and prefers it to
+  // webPreferences.zoomFactor, so apply the Size setting again as soon as the page is committed.
+  win.webContents.on('did-navigate', () => win.webContents.setZoomFactor(settings.get().scale));
   let quitting = false;
   let shown = false;
+  /** Last content size reported by the renderer, in CSS pixels (the window needs it × zoom factor). */
+  let contentSize: { width: number; height: number } | null = null;
 
-  const state = (): AppState => ({
-    snapshot: service.snapshot,
-    status: service.status,
-    refreshing: service.refreshing,
-    view: { compact: settings.get().compact, opacity: settings.get().opacity, compactHidden: settings.get().compactHidden },
-    sourceMode: settings.get().source,
-  });
+  const state = (): AppState => {
+    const current = settings.get();
+    return {
+      snapshot: service.snapshot,
+      status: service.status,
+      refreshing: service.refreshing,
+      view: {
+        compact: current.compact,
+        opacity: current.opacity,
+        compactHidden: current.compactHidden,
+        locked: current.locked,
+        unlockShortcut: shortcuts.lock.registered ? shortcutLabel(shortcuts.lock.accelerator, process.platform) : null,
+        showAccount: current.showAccount,
+      },
+      sourceMode: current.source,
+      forecast: service.status.kind === 'ok' ? forecast : {},
+    };
+  };
+
+  const showOverlay = () => {
+    if (!win.isVisible()) actions.toggleWindow();
+  };
 
   const actions: MenuActions = {
     toggleWindow: () => {
@@ -179,14 +235,37 @@ function start(): void {
       settings.update({ compactHidden: visible ? others : [...others, id] });
       broadcast();
     },
+    setShowAccount: (on) => {
+      settings.update({ showAccount: on });
+      broadcast();
+    },
+    setLocked: (on) => {
+      settings.update({ locked: on });
+      applyLocked(win, on);
+      log.info(on ? 'Locked (click-through)' : 'Unlocked');
+      showOverlay();
+      broadcast();
+    },
     setAlwaysOnTop: (on) => {
       settings.update({ alwaysOnTop: on });
       applyAlwaysOnTop(win, on);
       updateTray();
     },
+    setScale: (scale) => {
+      if (scale === settings.get().scale) return;
+      settings.update({ scale });
+      win.webContents.setZoomFactor(scale);
+      fit(true);
+      updateTray();
+    },
     setOpacity: (opacity) => {
       settings.update({ opacity });
       broadcast();
+    },
+    setTheme: (theme) => {
+      settings.update({ theme });
+      nativeTheme.themeSource = theme;
+      updateTray();
     },
     setRefreshInterval: (seconds) => {
       settings.update({ refreshIntervalSec: seconds });
@@ -196,11 +275,11 @@ function start(): void {
     moveToDisplay: (displayId) => {
       const display = screen.getAllDisplays().find((d) => d.id === displayId);
       if (display) moveToDisplay(win, display);
-      if (!win.isVisible()) actions.toggleWindow();
+      showOverlay();
     },
     resetPosition: () => {
       resetPosition(win);
-      if (!win.isVisible()) actions.toggleWindow();
+      showOverlay();
     },
     setLaunchAtLogin: (on) => {
       let actual = on;
@@ -220,6 +299,21 @@ function start(): void {
       log.info(`Source mode → ${mode}`);
       broadcast();
       service.sourcesChanged();
+    },
+    setNotifyAt: (threshold, on) => {
+      const others = settings.get().notifyAt.filter((t) => t !== threshold);
+      settings.update({ notifyAt: on ? [...others, threshold] : others });
+      updateTray();
+    },
+    setNotifyReset: (on) => {
+      settings.update({ notifyReset: on });
+      updateTray();
+    },
+    testNotification: () => notifier.test(),
+    setShortcutsEnabled: (on) => {
+      settings.update({ shortcutsEnabled: on });
+      applyShortcuts();
+      broadcast();
     },
     openClaudeCode: () => {
       if (Date.now() - lastClaudeCodeLaunch < 5000) return; // a double click opens one window, not two
@@ -246,6 +340,8 @@ function start(): void {
         loginItemAvailable: loginItem.available,
         weeklyMeters: (service.snapshot?.meters ?? []).filter((m) => m.group === 'weekly'),
         statusKind: service.status.kind,
+        shortcuts,
+        notificationsSupported: notifier.supported,
       },
       actions,
     );
@@ -260,14 +356,33 @@ function start(): void {
     updateTray();
   }
 
-  let lastCachedAt: string | null = null;
+  function applyShortcuts(): void {
+    const current = settings.get();
+    shortcuts = registerShortcuts(
+      // Screenshot runs never grab keys (they may run next to the real app).
+      { enabled: current.shortcutsEnabled && !cli.screenshot, toggle: current.toggleShortcut, lock: current.lockShortcut },
+      { toggle: () => actions.toggleWindow(), lock: () => actions.setLocked(!settings.get().locked) },
+      log.write,
+    );
+  }
+  applyShortcuts();
+
+  // Every fresh snapshot: history, forecast, notifications, cache. Stale data (status not ok) is
+  // left alone.
+  let lastSeenAt: string | null = null;
   service.on('change', () => {
-    broadcast();
     const snapshot = service.snapshot;
-    if (!cli.mock && service.status.kind === 'ok' && snapshot && snapshot.fetchedAt !== lastCachedAt) {
-      lastCachedAt = snapshot.fetchedAt;
-      saveSnapshot(snapshotFile, snapshot);
+    if (service.status.kind === 'ok' && snapshot && snapshot.fetchedAt !== lastSeenAt) {
+      lastSeenAt = snapshot.fetchedAt;
+      history.add(snapshot);
+      forecast = history.forecasts(snapshot.meters);
+      if (!cli.screenshot) {
+        const { notifyAt, notifyReset } = settings.get();
+        notifier.check(snapshot, { thresholds: notifyAt, reset: notifyReset }, forecast);
+      }
+      if (!cli.mock) saveSnapshot(snapshotFile, snapshot);
     }
+    broadcast();
   });
 
   // --- IPC (only accepted from our own overlay page) -------------------------------------------
@@ -288,12 +403,34 @@ function start(): void {
   });
   ipcMain.on('window:resize', (event, width: unknown, height: unknown) => {
     if (!fromOverlay(event) || typeof width !== 'number' || typeof height !== 'number') return;
+    contentSize = { width, height };
     // Before the first show, a restored position keeps its top-left corner (see fitToContent).
-    fitToContent(win, width, height, shown || !restoredPosition);
+    fit(shown || !restoredPosition);
     if (!shown) showFirstTime();
   });
 
   // --- Window behaviour ---------------------------------------------------------------------------
+  /** Fits the window to the content at the current size setting (CSS pixels x zoom factor = DIPs). */
+  function fit(keepNearestEdge: boolean): void {
+    if (!contentSize) return;
+    const { scale } = settings.get();
+    fitToContent(win, contentSize.width * scale, contentSize.height * scale, keepNearestEdge);
+  }
+
+  // Ctrl/Cmd + plus / minus / 0 and Ctrl + mouse wheel step through the Size options, so the
+  // window always fits (plain page zoom would leave it cropped or with empty space).
+  win.webContents.on('before-input-event', (event, input) => {
+    const primary = process.platform === 'darwin' ? input.meta : input.control; // not Win+plus (Magnifier)
+    if (input.type !== 'keyDown' || !primary || input.alt) return;
+    const step = input.key === '+' || input.key === '=' ? 1 : input.key === '-' ? -1 : input.key === '0' ? 0 : null;
+    if (step === null) return;
+    event.preventDefault();
+    actions.setScale(step === 0 ? 1 : stepScale(settings.get().scale, step));
+  });
+  win.webContents.on('zoom-changed', (_event, direction) => {
+    actions.setScale(stepScale(settings.get().scale, direction === 'in' ? 1 : -1));
+  });
+
   function showFirstTime(): void {
     shown = true;
     win.showInactive();
@@ -341,9 +478,7 @@ function start(): void {
   powerMonitor.on('resume', refreshSoon);
   powerMonitor.on('unlock-screen', refreshSoon);
 
-  app.on('second-instance', () => {
-    if (!win.isVisible()) actions.toggleWindow();
-  });
+  app.on('second-instance', () => showOverlay());
   app.on('window-all-closed', () => {
     // Keep running in the tray.
   });
@@ -356,6 +491,7 @@ function start(): void {
     settings.flush();
     tray.destroy();
   });
+  app.on('will-quit', () => unregisterShortcuts());
 
   service.start();
 }

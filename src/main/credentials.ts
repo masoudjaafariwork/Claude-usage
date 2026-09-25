@@ -7,6 +7,7 @@ import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import type { AccountInfo } from '../shared/types';
 
 export interface ClaudeCredentials {
   accessToken: string;
@@ -71,20 +72,54 @@ function readFromKeychain(): Promise<ClaudeCredentials | null> {
   });
 }
 
-/**
- * Org UUID of Claude Code's account from its config file (`oauthAccount.organizationUuid` in
- * `.claude.json`) — non-secret; used to pick Claude Desktop samples of the same account.
- */
-export async function readClaudeCodeOrgUuid(): Promise<string | null> {
-  const override = process.env.CLAUDE_CONFIG_DIR?.trim();
+/** The account Claude Code is signed in to (`oauthAccount` in `.claude.json`; no secrets in it). */
+export interface ClaudeCodeAccount {
+  email: string | null;
+  name: string | null;
+  orgName: string | null;
+  orgUuid: string | null;
+}
+
+const nonEmpty = (v: unknown): string | null => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null);
+
+export function parseClaudeCodeAccount(text: string): ClaudeCodeAccount | null {
+  let data: unknown;
   try {
-    const data: unknown = JSON.parse(await readFile(join(override ? override : homedir(), '.claude.json'), 'utf8'));
-    const account = typeof data === 'object' && data !== null ? (data as Record<string, unknown>).oauthAccount : null;
-    const org = typeof account === 'object' && account !== null ? (account as Record<string, unknown>).organizationUuid : null;
-    return typeof org === 'string' && org !== '' ? org : null;
+    data = JSON.parse(text);
   } catch {
     return null;
   }
+  const account = typeof data === 'object' && data !== null ? (data as Record<string, unknown>).oauthAccount : null;
+  if (typeof account !== 'object' || account === null) return null;
+  const a = account as Record<string, unknown>;
+  const parsed: ClaudeCodeAccount = {
+    email: nonEmpty(a.emailAddress),
+    name: nonEmpty(a.displayName),
+    orgName: nonEmpty(a.organizationName),
+    orgUuid: nonEmpty(a.organizationUuid),
+  };
+  return Object.values(parsed).some((v) => v !== null) ? parsed : null;
+}
+
+/**
+ * Claude Code's account from its config file (`.claude.json` in CLAUDE_CONFIG_DIR or the home
+ * folder) — non-secret. Labels the data and picks Claude Desktop samples of the same org.
+ */
+export async function readClaudeCodeAccount(): Promise<ClaudeCodeAccount | null> {
+  const override = process.env.CLAUDE_CONFIG_DIR?.trim();
+  try {
+    return parseClaudeCodeAccount(await readFile(join(override ? override : homedir(), '.claude.json'), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/** What the overlay shows. A personal org's name ("<email>'s Organization") adds nothing, so it is left out. */
+export function accountInfo(account: ClaudeCodeAccount | null): AccountInfo | null {
+  if (!account || (account.email === null && account.name === null)) return null;
+  const { email, name, orgName } = account;
+  const personal = [email, name].some((who) => who !== null && orgName === `${who}'s Organization`);
+  return { email, name, organization: personal ? null : orgName };
 }
 
 export async function readCredentials(): Promise<ClaudeCredentials> {

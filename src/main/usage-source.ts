@@ -9,7 +9,7 @@
 //   - throws anything else (UsageHttpError, UsageParseError, network errors) for transient
 //     failures, which the service reports and backs off from.
 import type { SourceId, Status, UsageSnapshot } from '../shared/types';
-import { CredentialsNotFoundError, type ClaudeCredentials } from './credentials';
+import { CredentialsNotFoundError, accountInfo, type ClaudeCodeAccount, type ClaudeCredentials } from './credentials';
 import { UsageHttpError } from './usage-errors';
 import { formatPlan, parseUsage } from './usage-parse';
 
@@ -43,6 +43,8 @@ const EXPIRY_SKEW_MS = 60_000;
 export interface ClaudeCodeSourceDeps {
   readCredentials(): Promise<ClaudeCredentials>;
   fetchUsage(accessToken: string): Promise<unknown>;
+  /** The signed-in account (non-secret config), to label the data. */
+  readAccount?(): Promise<ClaudeCodeAccount | null>;
   now(): number;
 }
 
@@ -78,12 +80,14 @@ export class ClaudeCodeSource implements UsageSource {
       });
     }
 
+    // Read together with the token (Claude Code's `/login` rewrites both), before the request.
+    const account = accountInfo((await this.deps.readAccount?.()) ?? null);
     try {
       const raw = await this.deps.fetchUsage(credentials.accessToken);
       const plan = formatPlan(credentials.subscriptionType, credentials.rateLimitTier);
       const snapshot = parseUsage(raw, plan, new Date(this.deps.now()), 'claude-code');
       this.rejectedToken = null;
-      return snapshot;
+      return account ? { ...snapshot, account } : snapshot;
     } catch (err) {
       if (err instanceof UsageHttpError && (err.status === 401 || err.status === 403)) {
         this.rejectedToken = credentials.accessToken;

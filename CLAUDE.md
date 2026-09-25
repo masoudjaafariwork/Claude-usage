@@ -44,14 +44,17 @@ The book is local only: do **not** publish or republish it to claude.ai (owner's
 | `npm run make-icon` | Regenerate `build/icon.png` (committed) |
 
 Mock scenarios: `normal`, `warning`, `critical`, `expired`, `no-credentials`, `rate-limited`,
-`offline`, `loading`, `via-desktop`, `desktop-unavailable` (defined in `src/main/mock.ts`). Extra flags: `--compact`, `--expanded`,
-`--screenshot=<file>` (render, save PNG, quit). Mock runs use a separate userData dir.
+`offline`, `loading`, `via-desktop`, `desktop-unavailable`, `forecast`, `locked` (defined in `src/main/mock.ts`).
+Extra flags: `--compact`, `--expanded`, `--theme=<system|dark|light>`, `--scale=<0.9|1|1.15|1.3|1.5>`,
+`--screenshot=<file>` (render, save PNG, quit). Mock runs use a separate userData dir and keep
+notification records and usage history in memory; screenshot runs never notify or grab shortcuts.
 
 ## Architecture
 
 ```
 src/
   shared/types.ts        Type-only contracts between main, preload, renderer (no runtime values)
+  shared/format.ts       Time/text formatting for the renderer and notification text          [pure]
   main/                  Electron main process
     main.ts              Wiring: settings, service, window, tray, IPC, power/display events, CLI flags
     credentials.ts       READ-ONLY access to Claude Code's OAuth token (file / macOS Keychain)   [pure]
@@ -63,18 +66,23 @@ src/
     file-watch.ts        Debounced folder watch for one file name (survives atomic renames)       [pure]
     claude-code-launcher.ts  "Open Claude Code": VS Code URI → terminal `claude` → docs (D34)    [pure]
     usage-service.ts     Source selection (Auto/single), polling, backoff, status, emits 'change' [pure]
+    notifications-core.ts  75/90/100 % + reset notices: once per limit/threshold/window (D35)   [pure]
+    notifications.ts     Shows them (Electron Notification), records in notifications.json
+    pace.ts              24 h snapshot history (usage-history.json) + "at this pace" forecast   [pure]
+    shortcuts-core.ts    Global shortcut defaults, validation, labels                           [pure]
+    shortcuts.ts         globalShortcut registration (show/hide, lock/unlock)
     log.ts               Rotating log in app.getPath('logs'); every line goes through redact()     [pure]
     settings.ts          settings.json in userData (sanitized, atomic writes)                     [pure]
     login-item.ts        Launch at login per OS (Electron API on Win/macOS, XDG autostart on Linux)
     login-item-core.ts   Reconcile setting ↔ OS, Task Manager flag parsing, Linux .desktop entry  [pure]
     snapshot-cache.ts    last-usage.json — last good snapshot, shown as stale on startup
-    window.ts            Frameless transparent always-on-top window, fit-to-content, multi-monitor
+    window.ts            Frameless transparent always-on-top window, fit-to-content, multi-monitor, lock
     tray.ts / tray-icon.ts  Tray with a live progress ring drawn into a PNG at runtime  [tray-icon pure]
     menu.ts              Context menu shared by tray, ⋯ button and right-click
     mock.ts              Fake data sources for dev and screenshots                                [pure]
     fixtures/            Real API responses used by tests
   preload/preload.ts     contextBridge → window.overlay (OverlayApi)
-  renderer/              Sandboxed UI: index.html, styles.css, renderer.ts (DOM), format.ts [pure]
+  renderer/              Sandboxed UI: index.html, styles.css (dark + light theme vars), renderer.ts (DOM)
 scripts/                 build.mjs, test.mjs, start.mjs, screenshots.mjs, make-icon.mjs
 build/                   icon.png (generated, committed), installer.nsh (NSIS uninstall hook)
 .github/workflows/       release.yml — tag v* → build on 3 OSes → draft GitHub Release
@@ -83,7 +91,8 @@ docs/                    PROGRESS.md, BACKLOG.md (phase index), phases/ (one pla
 
 Data flow: `UsageService` (main) asks the sources in order — Auto: Claude Code (credentials → fetch
 → parse), then Claude Desktop's history — → emits `change` → main sends `AppState` to the renderer
-(`state:changed`) and updates the tray. A source throws `SourceUnavailableError` to hand over to the
+(`state:changed`) and updates the tray. Each fresh `ok` snapshot first goes into the history (pace
+forecast in `AppState.forecast`) and through the notification check. A source throws `SourceUnavailableError` to hand over to the
 next one; other errors are reported as they are (no fallback on network errors). The renderer sends back
 `usage:refresh`, `view:set-compact`, `window:resize` (content size), `menu:show`.
 
@@ -122,6 +131,10 @@ next one; other errors are reported as they are (no fallback on network errors).
   arrives as the window's `system-context-menu` event (handled in `main.ts`).
 - The window is sized by the renderer (`ResizeObserver` → `window:resize`); `fitToContent` keeps
   the edge nearest the screen border fixed, so a corner-parked overlay grows away from the corner.
+  The renderer reports CSS pixels; the window gets them × the Size zoom factor (a zoom change doesn't
+  fire the `ResizeObserver`, so `main.ts` re-fits from the last reported size).
+- Chromium stores a zoom level per page in `userData/Preferences` and prefers it to
+  `webPreferences.zoomFactor`; `main.ts` re-applies the Size setting on `did-navigate` (D38).
 - Screenshots are in physical pixels (125 % scaling → 1.25× the CSS size).
 - TypeScript 7 (native `tsc`) is used only for type-checking; esbuild does the bundling.
 - To stop a test run of the app, kill its own PID tree — not every `electron.exe`.
