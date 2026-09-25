@@ -71,6 +71,22 @@ function readFromKeychain(): Promise<ClaudeCredentials | null> {
   });
 }
 
+/**
+ * Org UUID of Claude Code's account from its config file (`oauthAccount.organizationUuid` in
+ * `.claude.json`) — non-secret; used to pick Claude Desktop samples of the same account.
+ */
+export async function readClaudeCodeOrgUuid(): Promise<string | null> {
+  const override = process.env.CLAUDE_CONFIG_DIR?.trim();
+  try {
+    const data: unknown = JSON.parse(await readFile(join(override ? override : homedir(), '.claude.json'), 'utf8'));
+    const account = typeof data === 'object' && data !== null ? (data as Record<string, unknown>).oauthAccount : null;
+    const org = typeof account === 'object' && account !== null ? (account as Record<string, unknown>).organizationUuid : null;
+    return typeof org === 'string' && org !== '' ? org : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function readCredentials(): Promise<ClaudeCredentials> {
   const found: ClaudeCredentials[] = [];
   if (process.platform === 'darwin') {

@@ -3,6 +3,7 @@
 import { Tray, nativeImage, type Menu, type NativeImage } from 'electron';
 import type { AppState, LimitMeter, Severity } from '../shared/types';
 import { ringPng } from './tray-icon';
+import { SOURCE_LABELS } from './usage-service';
 
 const TOOLTIP_MAX = 127; // Windows truncates longer tooltips.
 
@@ -48,7 +49,8 @@ export class TrayController {
   }
 
   private tooltip(state: AppState): string {
-    const lines = ['Claude Usage'];
+    const source = state.snapshot ? ` · via ${SOURCE_LABELS[state.snapshot.source]}` : '';
+    const lines = [`Claude Usage${source}`];
     for (const meter of state.snapshot?.meters ?? []) lines.push(`${meter.label}: ${Math.round(meter.percent)}%`);
     if (state.status.kind !== 'ok' && state.status.message) lines.push(state.status.message);
     const text = lines.join('\n');

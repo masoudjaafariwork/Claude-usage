@@ -2,7 +2,7 @@
 // The endpoint is undocumented and changes over time, so parsing is deliberately tolerant:
 // prefer the modern `limits[]` array, fall back to the legacy `five_hour` / `seven_day*` keys,
 // and never trust a field's type without checking it. Pure module — no Electron imports.
-import type { BreakdownRow, LimitMeter, Severity, SpendInfo, UsageSnapshot } from '../shared/types';
+import type { BreakdownRow, LimitMeter, Severity, SourceId, SpendInfo, UsageSnapshot } from '../shared/types';
 
 type Json = Record<string, unknown>;
 
@@ -193,7 +193,7 @@ export function formatPlan(subscriptionType: string | null, rateLimitTier: strin
   return multiplier && type === 'max' ? `${base} ${multiplier}×` : base;
 }
 
-export function parseUsage(raw: unknown, plan: string | null, fetchedAt: Date): UsageSnapshot {
+export function parseUsage(raw: unknown, plan: string | null, fetchedAt: Date, source: SourceId = 'claude-code'): UsageSnapshot {
   if (!isObject(raw)) throw new UsageParseError('Usage response is not a JSON object');
 
   let meters: LimitMeter[] = [];
@@ -216,5 +216,6 @@ export function parseUsage(raw: unknown, plan: string | null, fetchedAt: Date): 
     meters: sortMeters(meters),
     breakdown: parseBreakdown(raw),
     spend: parseSpend(raw),
+    source,
   };
 }

@@ -2,6 +2,7 @@
 // Pure module (Node fs only) so sanitizing can be unit-tested.
 import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
+import type { SourceMode } from '../shared/types';
 
 export interface Settings {
   /** Top-left corner of the overlay in screen DIPs; null = default spot on the primary display. */
@@ -13,6 +14,8 @@ export interface Settings {
   refreshIntervalSec: number;
   /** Start with the OS. Mirrors the OS login item; reconciled with it on startup (login-item-core.ts). */
   launchAtLogin: boolean;
+  /** Where usage comes from; 'auto' = Claude Code, then Claude Desktop. */
+  source: SourceMode;
 }
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
@@ -22,7 +25,10 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   opacity: 1,
   refreshIntervalSec: 180,
   launchAtLogin: false,
+  source: 'auto',
 };
+
+export const SOURCE_MODES: readonly SourceMode[] = ['auto', 'claude-code', 'claude-desktop'];
 
 export const REFRESH_INTERVAL_OPTIONS_SEC = [60, 120, 180, 300, 600] as const;
 export const OPACITY_OPTIONS = [1, 0.9, 0.8, 0.7, 0.6, 0.5] as const;
@@ -44,6 +50,7 @@ export function sanitizeSettings(raw: unknown): Settings {
       ? Math.min(MAX_REFRESH_SEC, Math.max(MIN_REFRESH_SEC, Math.round(r.refreshIntervalSec)))
       : DEFAULT_SETTINGS.refreshIntervalSec,
     launchAtLogin: typeof r.launchAtLogin === 'boolean' ? r.launchAtLogin : DEFAULT_SETTINGS.launchAtLogin,
+    source: SOURCE_MODES.includes(r.source as SourceMode) ? (r.source as SourceMode) : DEFAULT_SETTINGS.source,
   };
 }
 

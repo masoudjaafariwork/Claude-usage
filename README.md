@@ -23,8 +23,12 @@ Windows · macOS · Linux — Electron + TypeScript.
 - Compact pill mode for a minimal footprint.
 - Tray / menu-bar icon that shows a live ring for your most-constrained limit.
 - Refreshes every 3 minutes (1–10 min configurable), plus right after a limit resets.
+- Two data sources: **Claude Code**'s sign-in, and the **Claude desktop app**'s own usage history
+  as a fallback (no extra sign-in). Menu → *Source* picks *Auto*, *Claude Code only* or
+  *Claude Desktop only*; the footer and tray tooltip say where the numbers came from.
 - Optional **Launch at login**.
 - Keeps showing the last known data (clearly marked) when you're offline or the sign-in has expired.
+- A small diagnostic log with secrets removed (menu → *Open logs folder*).
 
 ## How it works
 
@@ -40,6 +44,17 @@ does.
 - If Claude Code's sign-in expires (after ~8 h without use), the overlay says so and recovers
   automatically once Claude Code renews it.
 
+**Claude desktop app (fallback).** While it runs, the Claude desktop app writes your plan usage to
+`plan-usage-history.json` in its own data folder about every 15 minutes. In *Auto* mode, when
+Claude Code's sign-in is missing or expired, the overlay shows the newest sample from that file if
+it is at most 20 minutes old ("via Claude Desktop · as of 14:32"). It only reads that one file — no
+sign-in, no network — and never touches the desktop app's own sign-in. The file has no reset
+times and no weekly split by app, so those parts are left out. The desktop app pauses its
+sampling while the computer is idle or locked.
+
+The overlay never offers a claude.ai sign-in of its own: Anthropic does not allow third-party apps
+to offer Claude.ai login or to store claude.ai session tokens.
+
 > The usage endpoint is not an official public API. It can change without notice. This project is
 > not affiliated with Anthropic.
 
@@ -47,8 +62,9 @@ does.
 
 - [Claude Code](https://docs.claude.com/en/docs/claude-code) signed in with a Claude Pro/Max/Team
   account — either the Claude Code extension for VS Code, or the `claude` command-line tool
-  (`claude`, then `/login`). The Claude desktop chat app alone is not enough: it keeps its sign-in
-  elsewhere.
+  (`claude`, then `/login`).
+- Or the Claude desktop app (Windows / macOS), running: the overlay then shows its recorded usage
+  (up to ~20 minutes old, without reset times).
 - Node.js 22+ only if you run from source.
 
 ## Install
@@ -106,8 +122,9 @@ npm start
 ```
 
 - **Move:** drag the card.
-- **Menu:** the ⋯ button, right-click, or the tray icon. The menu has compact mode, always on top,
-  opacity, refresh interval, move to display, reset position and quit.
+- **Menu:** the ⋯ button, right-click, or the tray icon. The menu has the data source, compact
+  mode, always on top, opacity, refresh interval, move to display, reset position, the settings
+  and logs folders, and quit.
 - **Tray:** on Windows/Linux, left-click toggles the overlay. On macOS, click the menu-bar icon.
 
 ## Development
@@ -116,7 +133,7 @@ npm start
 | --- | --- |
 | `npm start` | Build and run with real data |
 | `npm run start:mock` | Run with fake data |
-| `node scripts/start.mjs --mock=critical` | Other scenarios: `normal`, `warning`, `critical`, `expired`, `no-credentials`, `rate-limited`, `offline`, `loading` |
+| `node scripts/start.mjs --mock=critical` | Other scenarios: `normal`, `warning`, `critical`, `expired`, `no-credentials`, `rate-limited`, `offline`, `loading`, `via-desktop`, `desktop-unavailable` |
 | `npm run screenshot` | Render every mock scenario to `screenshots/` |
 | `npm run check` | Type-check and run unit tests |
 | `npm run dist` | Build installers for the current OS into `release/` (`dist:win`, `dist:mac`, `dist:linux` for one OS) |
@@ -133,11 +150,17 @@ Project guide for AI-assisted development: [CLAUDE.md](CLAUDE.md). Status and de
 
 ## Troubleshooting
 
+- **"Not signed in"** (Auto mode): sign in to Claude Code (below) or open the Claude desktop app.
 - **"Not signed in to Claude Code"**: sign in from the Claude Code panel in VS Code, or run
   `claude` in a terminal and use `/login`. If you set `CLAUDE_CONFIG_DIR` only in the VS Code
   extension's settings, the overlay can't see it; set it as a user environment variable instead.
 - **"Claude Code sign-in expired"**: open Claude Code (any session renews the token). The overlay
-  picks up the new token within a minute.
+  picks up the new token within a minute. In *Auto* mode an open Claude desktop app fills the gap.
+- **"No recent data from Claude Desktop"**: the desktop app isn't running, or the computer was idle
+  (it doesn't sample then). Open it and use it for a moment; the overlay picks the new sample up
+  within seconds.
+- **Anything else**: menu → *Open logs folder* → `claude-usage.log`. Tokens, cookies and e-mail
+  addresses are removed before anything is written, so the log is safe to share.
 - **"Can't reach Anthropic"**: requests use your system proxy settings. Check your connection or VPN.
 - **macOS Keychain prompt**: choose *Always Allow* so the overlay can read Claude Code's sign-in.
 - **Linux (GNOME)**: the tray icon needs the AppIndicator extension. On Wayland, always-on-top and

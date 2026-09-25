@@ -3,6 +3,11 @@
 
 export type Severity = 'normal' | 'warning' | 'critical';
 
+/** Where usage data comes from: Claude Code's token, or Claude Desktop's usage history (no sign-in). */
+export type SourceId = 'claude-code' | 'claude-desktop';
+/** 'auto' tries Claude Code first, then Claude Desktop. */
+export type SourceMode = 'auto' | SourceId;
+
 /** One usage limit as shown in Claude → Settings → Usage (e.g. "Current session", "Weekly · All models"). */
 export interface LimitMeter {
   /** Stable identifier, e.g. "session", "weekly_all", "weekly_scoped:fable". */
@@ -43,13 +48,19 @@ export interface UsageSnapshot {
   meters: LimitMeter[];
   breakdown: BreakdownRow[];
   spend: SpendInfo | null;
+  /** Where the data came from. Claude Desktop samples have no reset times (and no plan). */
+  source: SourceId;
 }
 
 export type StatusKind =
   | 'loading'
   | 'ok'
+  /** Nothing to read from (in Auto mode: no source is available at all). */
   | 'no-credentials'
+  /** Claude Code's token has expired or was rejected. */
   | 'token-expired'
+  /** Claude Desktop only: no recent sample in its usage history. */
+  | 'desktop-unavailable'
   | 'rate-limited'
   | 'network-error'
   | 'error';
@@ -74,6 +85,7 @@ export interface AppState {
   status: Status;
   refreshing: boolean;
   view: ViewSettings;
+  sourceMode: SourceMode;
 }
 
 /** API exposed to the renderer by the preload script as `window.overlay`. */

@@ -1,9 +1,14 @@
-// Tests for the small pure helpers: credentials parsing, settings sanitizing, Retry-After, PNG icons.
+// Tests for the small pure helpers: credentials parsing, settings sanitizing, snapshot cache,
+// Retry-After, PNG icons.
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { test } from 'node:test';
 import { inflateSync } from 'node:zlib';
 import { parseCredentials } from './credentials';
 import { DEFAULT_SETTINGS, sanitizeSettings } from './settings';
+import { loadSnapshot } from './snapshot-cache';
 import { encodePng, renderRing } from './tray-icon';
 import { parseRetryAfter } from './usage-errors';
 
@@ -36,6 +41,27 @@ test('sanitizeSettings fills defaults and clamps values', () => {
   assert.equal(s.refreshIntervalSec, 60);
   assert.equal(s.compact, true);
   assert.deepEqual(sanitizeSettings({ position: { x: 10.4, y: -20.6 } }).position, { x: 10, y: -21 });
+});
+
+test('sanitizeSettings keeps known source modes only', () => {
+  assert.equal(DEFAULT_SETTINGS.source, 'auto');
+  assert.equal(sanitizeSettings({ source: 'claude-desktop' }).source, 'claude-desktop');
+  assert.equal(sanitizeSettings({ source: 'claude-ai' }).source, 'auto');
+  assert.equal(sanitizeSettings({ source: 42 }).source, 'auto');
+});
+
+test('loadSnapshot treats snapshots cached before Phase 3 as Claude Code data', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'claude-usage-cache-'));
+  try {
+    const file = join(dir, 'last-usage.json');
+    const meter = { id: 'session', group: 'session', label: 'Current session', percent: 5, severity: 'normal', resetsAt: null, isActive: false };
+    writeFileSync(file, JSON.stringify({ fetchedAt: '2026-09-24T10:00:00.000Z', plan: 'Max 20×', meters: [meter], breakdown: [], spend: null }));
+    assert.equal(loadSnapshot(file)?.source, 'claude-code');
+    writeFileSync(file, JSON.stringify({ fetchedAt: '2026-09-24T10:00:00.000Z', plan: null, meters: [meter], source: 'claude-desktop' }));
+    assert.equal(loadSnapshot(file)?.source, 'claude-desktop');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test('parseRetryAfter handles seconds and HTTP dates', () => {

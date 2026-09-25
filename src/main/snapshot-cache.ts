@@ -1,7 +1,9 @@
 // Remembers the last successful snapshot on disk so the overlay shows (stale) data immediately
-// on startup, while offline, or while the Claude Code sign-in is expired.
-import type { UsageSnapshot } from '../shared/types';
+// on startup, while offline, or while no source is available.
+import type { SourceId, UsageSnapshot } from '../shared/types';
 import { readJson, writeJsonAtomic } from './settings';
+
+const SOURCES: readonly SourceId[] = ['claude-code', 'claude-desktop'];
 
 export function loadSnapshot(file: string): UsageSnapshot | null {
   const raw = readJson(file) as Partial<UsageSnapshot> | undefined;
@@ -12,6 +14,8 @@ export function loadSnapshot(file: string): UsageSnapshot | null {
     meters: raw.meters,
     breakdown: Array.isArray(raw.breakdown) ? raw.breakdown : [],
     spend: raw.spend ?? null,
+    // Snapshots cached before Phase 3 all came from Claude Code.
+    source: SOURCES.includes(raw.source as SourceId) ? (raw.source as SourceId) : 'claude-code',
   };
 }
 

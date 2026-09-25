@@ -29,9 +29,7 @@ the repo → pitfalls/OS differences → recap → quiz → exercise. Then updat
 (`c-changelog`), the phase list and `data-version`/`data-updated` on `#home`. Authoring conventions are
 in the comment at the top of the file (code in `<pre><code>` must be HTML-escaped).
 
-A private copy is published at <https://claude.ai/artifact/98foJ32py3eUtiGpQCsNVc> — republish it with the
-Artifact tool (`url` = that link) from a copy of the file without the `<!doctype html>`, `<html …>`,
-`<head>`, `</head>`, `<body>`, `</body>`, `</html>` lines (the artifact wraps its own skeleton).
+The book is local only: do **not** publish or republish it to claude.ai (owner's decision, 2026-09-25).
 
 ## Commands
 
@@ -46,7 +44,7 @@ Artifact tool (`url` = that link) from a copy of the file without the `<!doctype
 | `npm run make-icon` | Regenerate `build/icon.png` (committed) |
 
 Mock scenarios: `normal`, `warning`, `critical`, `expired`, `no-credentials`, `rate-limited`,
-`offline`, `loading` (defined in `src/main/mock.ts`). Extra flags: `--compact`, `--expanded`,
+`offline`, `loading`, `via-desktop`, `desktop-unavailable` (defined in `src/main/mock.ts`). Extra flags: `--compact`, `--expanded`,
 `--screenshot=<file>` (render, save PNG, quit). Mock runs use a separate userData dir.
 
 ## Architecture
@@ -60,7 +58,10 @@ src/
     usage-api.ts         net.fetch GET api.anthropic.com/api/oauth/usage
     usage-errors.ts      UsageHttpError, Retry-After parsing                                       [pure]
     usage-parse.ts       Raw JSON → UsageSnapshot (tolerant; limits[] first, legacy keys fallback) [pure]
-    usage-service.ts     Polling, backoff, status state machine, emits 'change'                   [pure]
+    usage-source.ts      UsageSource contract, SourceUnavailableError, ClaudeCodeSource           [pure]
+    desktop-source.ts    Claude Desktop's plan-usage-history.json: read, parse, watch (no network) [pure]
+    usage-service.ts     Source selection (Auto/single), polling, backoff, status, emits 'change' [pure]
+    log.ts               Rotating log in app.getPath('logs'); every line goes through redact()     [pure]
     settings.ts          settings.json in userData (sanitized, atomic writes)                     [pure]
     login-item.ts        Launch at login per OS (Electron API on Win/macOS, XDG autostart on Linux)
     login-item-core.ts   Reconcile setting ↔ OS, Task Manager flag parsing, Linux .desktop entry  [pure]
@@ -78,8 +79,10 @@ build/                   icon.png (generated, committed), installer.nsh (NSIS un
 docs/                    PROGRESS.md, BACKLOG.md (phase index), phases/ (one plan per phase), images/
 ```
 
-Data flow: `UsageService` (main) reads credentials → fetches → parses → emits `change` → main sends
-`AppState` to the renderer (`state:changed`) and updates the tray. The renderer sends back
+Data flow: `UsageService` (main) asks the sources in order — Auto: Claude Code (credentials → fetch
+→ parse), then Claude Desktop's history — → emits `change` → main sends `AppState` to the renderer
+(`state:changed`) and updates the tray. A source throws `SourceUnavailableError` to hand over to the
+next one; other errors are reported as they are (no fallback on network errors). The renderer sends back
 `usage:refresh`, `view:set-compact`, `window:resize` (content size), `menu:show`.
 
 `[pure]` modules must not import `electron`, so `npm test` can run them under plain Node.
@@ -100,7 +103,11 @@ Data flow: `UsageService` (main) reads credentials → fetches → parses → em
 5. **Cross-platform by default.** Consider Windows, macOS and Linux for every feature (tray click
    behaviour, Keychain, autostart, transparency, Wayland). Record gaps in `docs/PROGRESS.md`.
 6. **Dependencies:** no new runtime dependencies without asking the user; dev deps only if justified.
-7. **Severity colours live in three places** — keep them in sync: CSS vars in
+7. **No claude.ai sign-in in the app** (D28): Anthropic does not permit third-party apps to offer
+   Claude.ai login or to collect/store claude.ai session tokens — no embedded login window, no
+   browser-cookie reading, no pasted `sessionKey`. From Claude Desktop's folder read only
+   `plan-usage-history.json`; never its sign-in (D26).
+8. **Severity colours live in three places** — keep them in sync: CSS vars in
    `renderer/styles.css`, SVG gradients in `renderer/index.html`, `SEVERITY_RGB` in
    `main/tray-icon.ts`.
 

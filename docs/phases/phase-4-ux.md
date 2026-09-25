@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| **Status** | Planned |
+| **Status** | ⏭️ Next |
 | **Depends on** | Phase 1; Phase 2 recommended (Windows notifications work best from an installed app) |
 | **Size** | One Claude Code session (split in two if it grows) |
 

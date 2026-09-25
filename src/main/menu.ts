@@ -1,6 +1,13 @@
 // The context menu, shared by the tray icon, the overlay's ⋯ button and right-click.
 import { Menu, app, screen, type MenuItemConstructorOptions } from 'electron';
+import type { SourceMode } from '../shared/types';
 import { OPACITY_OPTIONS, REFRESH_INTERVAL_OPTIONS_SEC, type Settings } from './settings';
+
+const SOURCE_ITEMS: ReadonlyArray<{ mode: SourceMode; label: string }> = [
+  { mode: 'auto', label: 'Auto — Claude Code, then Claude Desktop' },
+  { mode: 'claude-code', label: 'Claude Code only' },
+  { mode: 'claude-desktop', label: 'Claude Desktop only' },
+];
 
 export interface MenuActions {
   toggleWindow(): void;
@@ -12,7 +19,9 @@ export interface MenuActions {
   moveToDisplay(displayId: number): void;
   resetPosition(): void;
   setLaunchAtLogin(on: boolean): void;
+  setSource(mode: SourceMode): void;
   openSettingsFolder(): void;
+  openLogsFolder(): void;
   showAbout(): void;
   quit(): void;
 }
@@ -31,6 +40,16 @@ export function buildMenu(settings: Readonly<Settings>, context: MenuContext, ac
   const template: MenuItemConstructorOptions[] = [
     { label: windowVisible ? 'Hide overlay' : 'Show overlay', click: () => actions.toggleWindow() },
     { label: 'Refresh now', click: () => actions.refresh() },
+    { type: 'separator' },
+    {
+      label: 'Source',
+      submenu: SOURCE_ITEMS.map(({ mode, label }) => ({
+        label,
+        type: 'radio' as const,
+        checked: settings.source === mode,
+        click: () => actions.setSource(mode),
+      })),
+    },
     { type: 'separator' },
     { label: 'Compact mode', type: 'checkbox', checked: settings.compact, click: (item) => actions.setCompact(item.checked) },
     { label: 'Always on top', type: 'checkbox', checked: settings.alwaysOnTop, click: (item) => actions.setAlwaysOnTop(item.checked) },
@@ -75,6 +94,7 @@ export function buildMenu(settings: Readonly<Settings>, context: MenuContext, ac
       click: (item) => actions.setLaunchAtLogin(item.checked),
     },
     { label: 'Open settings folder', click: () => actions.openSettingsFolder() },
+    { label: 'Open logs folder', click: () => actions.openLogsFolder() },
     { label: `About Claude Usage v${app.getVersion()}`, click: () => actions.showAbout() },
     { type: 'separator' },
     { label: 'Quit Claude Usage', click: () => actions.quit() },

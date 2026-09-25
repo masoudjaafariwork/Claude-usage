@@ -17,10 +17,14 @@ import {
   type IpcMainEvent,
   type IpcMainInvokeEvent,
 } from 'electron';
+import { mkdirSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import type { AppState } from '../shared/types';
-import { readCredentials } from './credentials';
+import type { AppState, SourceId, UsageSnapshot } from '../shared/types';
+import { readClaudeCodeOrgUuid, readCredentials } from './credentials';
+import { DesktopSource, desktopDataDirs, readDesktopHistory, watchDesktopHistory } from './desktop-source';
+import { RotatingLog, describeError } from './log';
 import { createLoginItem } from './login-item';
 import { reconcileLoginItem } from './login-item-core';
 import { buildMenu, type MenuActions } from './menu';
@@ -30,6 +34,7 @@ import { loadSnapshot, saveSnapshot } from './snapshot-cache';
 import { TrayController } from './tray';
 import { fetchUsageJson } from './usage-api';
 import { UsageService } from './usage-service';
+import { ClaudeCodeSource, type UsageSource } from './usage-source';
 import {
   APP_ICON_PATH,
   applyAlwaysOnTop,
@@ -83,6 +88,10 @@ function start(): void {
   if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
 
   const userData = app.getPath('userData');
+  // Electron's logs folder: userData/logs on Windows and Linux, ~/Library/Logs/Claude Usage on macOS.
+  // Mock runs keep theirs next to their own userData.
+  app.setAppLogsPath(cli.mock ? join(userData, 'logs') : undefined);
+  const log = new RotatingLog(app.getPath('logs'));
   const settings = new SettingsStore(join(userData, 'settings.json'), !cli.screenshot);
   if (cli.compact !== null) settings.update({ compact: cli.compact });
 
@@ -95,20 +104,45 @@ function start(): void {
       if (register) loginItem.set(true);
       if (launchAtLogin !== wanted) settings.update({ launchAtLogin });
     } catch (err) {
-      console.error('Launch at login sync failed:', err);
+      log.error(`Launch at login sync failed: ${describeError(err)}`);
     }
   }
 
   const snapshotFile = join(userData, 'last-usage.json');
-  const intervalSec = () => settings.get().refreshIntervalSec;
   const userAgent = `ClaudeUsage/${app.getVersion()} (${process.platform}; Electron ${process.versions.electron})`;
-  const source = cli.mock
-    ? createMockSource(cli.mock, intervalSec)
-    : {
-        deps: { readCredentials, fetchUsage: (token: string) => fetchUsageJson(token, userAgent), intervalSec },
-        initialSnapshot: loadSnapshot(snapshotFile),
-      };
-  const service = new UsageService(source.deps, source.initialSnapshot);
+  const desktopDirs = desktopDataDirs(process.platform, process.env, homedir());
+  let sources: Record<SourceId, UsageSource>;
+  let initialSnapshot: UsageSnapshot | null;
+  if (cli.mock) {
+    const mock = createMockSource(cli.mock);
+    sources = mock.sources;
+    initialSnapshot = mock.initialSnapshot;
+    settings.update({ source: mock.mode });
+  } else {
+    sources = {
+      'claude-code': new ClaudeCodeSource({
+        readCredentials,
+        fetchUsage: (token) => fetchUsageJson(token, userAgent, log.write),
+        now: Date.now,
+      }),
+      'claude-desktop': new DesktopSource({
+        readHistory: () => readDesktopHistory(desktopDirs),
+        preferredOrg: readClaudeCodeOrgUuid,
+        now: Date.now,
+      }),
+    };
+    initialSnapshot = loadSnapshot(snapshotFile);
+  }
+  log.info(
+    `Claude Usage ${app.getVersion()} starting (${process.platform}, Electron ${process.versions.electron}, ` +
+      `${app.isPackaged ? 'installed' : 'dev'}${cli.mock ? `, mock=${cli.mock}` : ''}, source=${settings.get().source})`,
+  );
+  const service = new UsageService(
+    { sources, mode: () => settings.get().source, intervalSec: () => settings.get().refreshIntervalSec, log: log.write },
+    initialSnapshot,
+  );
+  // Claude Desktop rewrites its history about every 15 min; pick new samples up right away.
+  const stopWatchingDesktop = cli.mock ? () => {} : watchDesktopHistory(desktopDirs, () => service.desktopHistoryChanged());
 
   const { win, restoredPosition } = createOverlayWindow(settings.get());
   let quitting = false;
@@ -119,6 +153,7 @@ function start(): void {
     status: service.status,
     refreshing: service.refreshing,
     view: { compact: settings.get().compact, opacity: settings.get().opacity },
+    sourceMode: settings.get().source,
   });
 
   const actions: MenuActions = {
@@ -161,13 +196,24 @@ function start(): void {
         loginItem.set(on);
         actual = loginItem.state() === 'on';
       } catch (err) {
-        console.error('Launch at login failed:', err);
+        log.error(`Launch at login failed: ${describeError(err)}`);
         actual = !on;
       }
       settings.update({ launchAtLogin: actual });
       updateTray();
     },
+    setSource: (mode) => {
+      if (mode === settings.get().source) return;
+      settings.update({ source: mode });
+      log.info(`Source mode → ${mode}`);
+      broadcast();
+      service.sourcesChanged();
+    },
     openSettingsFolder: () => void shell.openPath(userData),
+    openLogsFolder: () => {
+      mkdirSync(log.dir, { recursive: true });
+      void shell.openPath(log.dir);
+    },
     showAbout: () => void showAbout(),
     quit: () => app.quit(),
   };
@@ -271,6 +317,8 @@ function start(): void {
   });
   app.on('before-quit', () => {
     quitting = true;
+    log.info('Quitting');
+    stopWatchingDesktop();
     service.stop();
     settings.flush();
     tray.destroy();

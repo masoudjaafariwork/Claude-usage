@@ -1,7 +1,7 @@
 // Renders the overlay from AppState pushed by the main process.
 // The DOM is rebuilt on every state change (it is tiny); bar and ring animations continue from the
 // previously rendered values, so updates glide instead of jumping.
-import type { AppState, BreakdownRow, LimitMeter, OverlayApi, SpendInfo, StatusKind } from '../shared/types';
+import type { AppState, BreakdownRow, LimitMeter, OverlayApi, SourceId, SpendInfo, StatusKind } from '../shared/types';
 import { formatAgo, formatClock, formatDuration } from './format';
 
 declare global {
@@ -15,6 +15,7 @@ const root = document.getElementById('app') as HTMLElement;
 const TICK_MS = 30_000;
 /** Categorical colors for the "this week by app" split. */
 const SPLIT_COLORS = ['#d97757', '#8e9bff', '#5cc8e0', '#d9b77e', '#c38fd9'];
+const SOURCE_NAMES: Record<SourceId, string> = { 'claude-code': 'Claude Code', 'claude-desktop': 'Claude Desktop' };
 
 let state: AppState | null = null;
 /** Last rendered percentage per meter id — the starting point of the next animation. */
@@ -96,8 +97,9 @@ function hasReset(meter: LimitMeter, now: Date): boolean {
   return meter.resetsAt !== null && Date.parse(meter.resetsAt) <= now.getTime();
 }
 
-/** Two lines describing when a limit resets. */
-function resetLines(meter: LimitMeter, now: Date, stale: boolean): { main: string; sub: string } {
+/** Two lines describing when a limit resets. Claude Desktop's history has no reset times. */
+function resetLines(meter: LimitMeter, now: Date, stale: boolean, fromDesktop: boolean): { main: string; sub: string } {
+  if (fromDesktop) return { main: 'Reset time unknown', sub: 'Claude Desktop doesn’t record it' };
   if (!meter.resetsAt) {
     return meter.group === 'session'
       ? { main: 'No active session', sub: 'Starts with your next message' }
@@ -160,8 +162,8 @@ function header(st: AppState): HTMLElement {
   );
 }
 
-function hero(meter: LimitMeter, now: Date, stale: boolean): HTMLElement {
-  const { main, sub } = resetLines(meter, now, stale);
+function hero(meter: LimitMeter, now: Date, stale: boolean, fromDesktop: boolean): HTMLElement {
+  const { main, sub } = resetLines(meter, now, stale, fromDesktop);
   const ringBox = h('div', 'ring', ring(meter, 76, 8), h('div', 'ring-value', h('span', 'num', pct(meter.percent), h('small', null, '%'))));
   return h(
     'section',
@@ -171,9 +173,9 @@ function hero(meter: LimitMeter, now: Date, stale: boolean): HTMLElement {
   );
 }
 
-function meterRow(meter: LimitMeter, now: Date, stale: boolean): HTMLElement {
-  const { main, sub } = resetLines(meter, now, stale);
-  const line = [main, sub.replace(/^at /, '')].filter(Boolean).join(' · ');
+function meterRow(meter: LimitMeter, now: Date, stale: boolean, fromDesktop: boolean): HTMLElement {
+  const { main, sub } = resetLines(meter, now, stale, fromDesktop);
+  const line = fromDesktop ? main : [main, sub.replace(/^at /, '')].filter(Boolean).join(' · ');
   return h(
     'div',
     `meter sev-${meter.severity}${hasReset(meter, now) ? ' is-reset' : ''}`,
@@ -237,24 +239,38 @@ function retryText(st: AppState, now: Date): string {
 
 function bannerSpec(st: AppState, now: Date): BannerSpec | null {
   const code = (text: string) => h('code', null, text);
+  const auto = st.sourceMode === 'auto';
+  const signIn: Child[] = ['the Claude Code panel in VS Code, or run ', code('claude'), ' and use ', code('/login')];
   const specs: Partial<Record<StatusKind, () => BannerSpec>> = {
     'token-expired': () => ({
       tone: 'warn',
       icon: 'key',
       title: 'Claude Code sign-in expired',
-      body: ['Open Claude Code to renew it — the overlay recovers on its own.'],
-    }),
-    'no-credentials': () => ({
-      tone: 'warn',
-      icon: 'key',
-      title: 'Not signed in to Claude Code',
       body: [
-        'Sign in from the Claude Code panel in VS Code, or run ',
-        code('claude'),
-        ' and use ',
-        code('/login'),
-        '. The overlay picks it up automatically.',
+        auto
+          ? 'Open Claude Code to renew it, or keep the Claude desktop app open. The overlay recovers on its own.'
+          : 'Open Claude Code to renew it — the overlay recovers on its own.',
       ],
+    }),
+    'no-credentials': () =>
+      auto
+        ? {
+            tone: 'warn',
+            icon: 'key',
+            title: 'Not signed in',
+            body: ['Sign in to Claude Code (', ...signIn, '), or open the Claude desktop app. The overlay picks it up automatically.'],
+          }
+        : {
+            tone: 'warn',
+            icon: 'key',
+            title: 'Not signed in to Claude Code',
+            body: ['Sign in from ', ...signIn, '. The overlay picks it up automatically.'],
+          },
+    'desktop-unavailable': () => ({
+      tone: 'warn',
+      icon: 'clock',
+      title: 'No recent data from Claude Desktop',
+      body: [st.status.message ?? 'Open the Claude desktop app: it records usage about every 15 minutes while you use it.'],
     }),
     'rate-limited': () => ({ tone: 'warn', icon: 'clock', title: 'Usage API is rate-limiting', body: [retryText(st, now)] }),
     'network-error': () => ({
@@ -287,10 +303,15 @@ function dotClass(st: AppState): string {
 }
 
 function footerText(st: AppState, now: Date): string {
-  const fetchedAt = st.snapshot ? new Date(st.snapshot.fetchedAt) : null;
-  if (st.refreshing) return fetchedAt ? `Updating… · last ${formatAgo(fetchedAt, now)}` : 'Loading…';
-  if (!fetchedAt) return st.status.kind === 'loading' ? 'Loading…' : 'No data yet';
-  return isStale(st) ? `Last updated ${formatAgo(fetchedAt, now)}` : `Updated ${formatAgo(fetchedAt, now)}`;
+  const snap = st.snapshot;
+  if (!snap) return st.refreshing || st.status.kind === 'loading' ? 'Loading…' : 'No data yet';
+  const fetchedAt = new Date(snap.fetchedAt);
+  if (st.refreshing) return `Updating… · last ${formatAgo(fetchedAt, now)}`;
+  const via = `via ${SOURCE_NAMES[snap.source]}`;
+  if (isStale(st)) return `Last updated ${formatAgo(fetchedAt, now)} · ${via}`;
+  // Desktop samples are up to ~20 min old by design: say when, not just "updated".
+  if (snap.source === 'claude-desktop') return `${via} · as of ${formatClock(fetchedAt, now)}`;
+  return `Updated ${formatAgo(fetchedAt, now)} · ${via}`;
 }
 
 function skeleton(): HTMLElement {
@@ -309,10 +330,11 @@ function expandedView(st: AppState, now: Date): HTMLElement {
   const card = h('div', `card${stale ? ' stale' : ''}`, header(st));
   const snap = st.snapshot;
   if (snap) {
+    const fromDesktop = snap.source === 'claude-desktop';
     const session = snap.meters.find((m) => m.group === 'session');
     const others = snap.meters.filter((m) => m !== session);
-    if (session) card.append(hero(session, now, stale));
-    if (others.length > 0) card.append(h('section', 'section meters', ...others.map((m) => meterRow(m, now, stale))));
+    if (session) card.append(hero(session, now, stale, fromDesktop));
+    if (others.length > 0) card.append(h('section', 'section meters', ...others.map((m) => meterRow(m, now, stale, fromDesktop))));
     if (snap.breakdown.length > 0) card.append(breakdown(snap.breakdown));
     if (snap.spend?.enabled) card.append(spendRow(snap.spend));
   } else if (st.status.kind === 'loading') {
@@ -342,6 +364,7 @@ function compactStatusText(st: AppState): string {
     loading: 'Loading…',
     'no-credentials': 'Not signed in',
     'token-expired': 'Sign-in expired',
+    'desktop-unavailable': 'No Desktop data',
     'rate-limited': 'Rate limited',
     'network-error': 'Offline',
     error: 'Error',

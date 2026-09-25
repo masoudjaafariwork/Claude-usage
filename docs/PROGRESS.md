@@ -8,14 +8,14 @@ Living record of where the project stands. Update it at the end of every session
 | --- | --- |
 | [1 — MVP overlay](phases/phase-1-mvp-overlay.md) | ✅ Done (2026-09-24) |
 | [2 — Packaging, app icon, launch at login](phases/phase-2-packaging.md) | ✅ Done (2026-09-24) |
-| [3 — Fallback data sources (claude.ai sign-in, Claude Desktop) & diagnostics](phases/phase-3-fallback-source.md) | ⏭️ Next |
-| [4 — UX: notifications, click-through, shortcut, pace forecast](phases/phase-4-ux.md) | Planned |
+| [3 — Fallback data source (Claude Desktop), source selection & diagnostics](phases/phase-3-fallback-source.md) | ✅ Done (2026-09-25) — claude.ai sign-in dropped (D28) |
+| [4 — UX: notifications, click-through, shortcut, pace forecast](phases/phase-4-ux.md) | ⏭️ Next |
 | [5 — App auto-update](phases/phase-5-auto-update.md) | Planned |
 
 Each phase has its own plan file in [`phases/`](phases/) (scope, notes, acceptance criteria,
 ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLOG.md).
 
-## What works today (Phases 1–2)
+## What works today (Phases 1–3)
 
 - Frameless, transparent, always-on-top overlay; drag anywhere; position remembered; stays reachable
   when monitors change; "Move to display" menu for multi-monitor setups.
@@ -29,7 +29,16 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
   errors, `Retry-After` on 429, refresh on wake/unlock, manual refresh.
 - Stale data handling: last snapshot cached to disk and shown (desaturated, with banner) on startup,
   offline, rate-limited or expired sign-in.
-- Dev tooling: mock scenarios, screenshot mode, 34 unit tests.
+- Dev tooling: mock scenarios, screenshot mode, 61 unit tests.
+- **Data sources (Phase 3):** menu → *Source*: *Auto* (Claude Code; when its sign-in is missing,
+  expired or rejected, the newest Claude Desktop sample ≤ 20 min old), *Claude Code only*,
+  *Claude Desktop only*. Claude Desktop's `plan-usage-history.json` is read-only, needs no sign-in
+  and no network, and is re-read as soon as Desktop rewrites it (folder watch). Footer and tray
+  tooltip show "via Claude Code" / "via Claude Desktop · as of HH:MM".
+- **Diagnostics:** `claude-usage.log` in Electron's logs folder (`userData/logs` on Windows/Linux,
+  `~/Library/Logs/Claude Usage` on macOS; 512 KB + one old file) with start, HTTP
+  statuses, status changes, source switches and errors; secrets redacted before writing; menu →
+  *Open logs folder*.
 - Verified on Windows 11 with real data (Max 20× account). Idle memory ≈ 100 MB per Electron process.
 - **Installers** (`npm run dist*`, electron-builder → `release/`): Windows per-user NSIS installer +
   portable exe (x64); macOS dmg x64 + arm64 (ad-hoc signed); Linux AppImage + deb (x64). App icon
@@ -66,10 +75,15 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D21 | Package author / deb maintainer: Masoud Jaafari <masoudjaafariwork@gmail.com> | User's choice (2026-09-24). |
 | D22 | Windows file description = product name (`build.extraMetadata.description`); the long text only in `build.linux.description` | Task Manager → Startup apps shows the exe's description as the app name. |
 | D23 | The first `fitToContent` after start keeps a restored position's top-left; edge anchoring only for live resizes and the default corner | Anchoring the first fit moved the overlay (content height − 280) px on every start in the lower half of a display. |
-| D24 | Keep a Persian, teacher-style Electron book at `D:\Clade usage\electron-book.html` (outside the repo) and update it after every phase; private artifact copy on claude.ai | The owner is learning Electron through this project and wants a complete book by the end. Outside the repo because it is personal learning material, not project documentation (which stays English). |
-| D26 | Never read Claude Desktop's own sign-in (`config.json` → `oauth:tokenCache*`, encrypted with Electron safeStorage). Desktop-only users are served by Phase 3: its non-secret `plan-usage-history.json` and a claude.ai sign-in inside our app | Decrypting another app's protected token is what credential stealers do (antivirus flags, a macOS Keychain prompt for Claude's key), breaks whenever Desktop changes its storage, and carries the same rotation risk as D3. |
+| D24 | Keep a Persian, teacher-style Electron book at `D:\Clade usage\electron-book.html` (outside the repo) and update it after every phase; local only — since 2026-09-25 no claude.ai artifact copy (owner's choice) | The owner is learning Electron through this project and wants a complete book by the end. Outside the repo because it is personal learning material, not project documentation (which stays English). |
+| D26 | Never read Claude Desktop's own sign-in (`config.json` → `oauth:tokenCache*`, encrypted with Electron safeStorage). Desktop-only users are served by Phase 3 through its non-secret `plan-usage-history.json` (the claude.ai sign-in once planned here was dropped, D28) | Decrypting another app's protected token is what credential stealers do (antivirus flags, a macOS Keychain prompt for Claude's key), breaks whenever Desktop changes its storage, and carries the same rotation risk as D3. |
 | D25 | Product renamed **Claude Usage Overlay → Claude Usage** (package `claude-usage`, appId `com.masoudjaafari.claude-usage`, userData `%APPDATA%\Claude Usage`), version 0.2.0 | User's choice: shorter, matches the repo and the in-app title. Done right after the v0.1.0 prerelease (1 download, the owner's). A new appId makes it a separate app — uninstall 0.1.0 first; settings don't carry over (no migration code for a name that lived one day). |
 | D27 | License **GPL-3.0-only → MIT** (`LICENSE`, `package.json`, lockfile, README, About dialog) | User's choice (2026-09-25): simplest and most common licence in the JS/Electron ecosystem; the owner accepts closed-source forks. Switched while the owner is still the sole author, so no contributor consent was needed. |
+| D28 | **No claude.ai sign-in in the app** — no embedded login window, no sign-in through the user's browser, no browser-cookie reading, no pasted `sessionKey`. Phase 3's claude.ai source was dropped | Anthropic's Claude Code docs (*Legal and compliance → Authentication and credential use*, read 2026-09-25): third-party developers may not "offer Claude.ai login into their own applications" nor "collect, store, or intermediate Claude.ai credentials or session tokens". The owner's alternative (log in via the normal browser) can't hand a session to another app anyway. Owner chose to continue without it (2026-09-25). |
+| D29 | Sources: **Auto** = Claude Code, then Claude Desktop's history; plus *Claude Code only* / *Claude Desktop only* (`settings.source`). Auto falls back only when a source is *unavailable* (`SourceUnavailableError`: no sign-in, expired, rejected, no recent sample) — network / 429 / 5xx / parse errors are reported, not hidden. Desktop samples count when ≤ 20 min old and, in Auto, not older than the data shown | Falling back is normal operation, not an error. Desktop can't be fresher than a failing API, and showing older data as "ok" would hide real problems. 20 min ≈ Desktop's 15-min cadence + slack. |
+| D30 | Claude Desktop's `xu` (extra-usage utilization) is not shown | Desktop records it even while extra usage is switched off (the owner's history has `xu: 100` with extra usage disabled) and the sample has no `is_enabled`, so a row would mislead. |
+| D31 | Log file `claude-usage.log` in `app.getPath('logs')` (after `app.setAppLogsPath()`: `userData/logs` on Windows/Linux, `~/Library/Logs/Claude Usage` on macOS), 512 KB + one rotated file; logs the HTTP status of every request, status/source changes (not identical polls) and errors; every line goes through `redact()` (Bearer, `sk-ant-…`, cookie headers, secret `name=value`, JSON token fields, JWTs, e-mails; UUIDs cut to 8 chars) | Makes problems diagnosable while staying safe to share; ~25 days of history at the default interval. |
+| D32 | Desktop org preference: `oauthAccount.organizationUuid` from Claude Code's `.claude.json` (in `CLAUDE_CONFIG_DIR` or home), read only when the history has several orgs | Non-secret config; picks the same account's samples when someone is in a personal and a team org. |
 
 ## Usage API notes (observed 2026-09-24)
 
@@ -96,12 +110,41 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
   (`fh` = five_hour, `sd` = seven_day, …). No reset times. Planned as a source in Phase 3.
 - Its own sign-in lives encrypted in `config.json` (`oauth:tokenCache`, `oauth:tokenCacheV2`) — off
   limits (D26). A `planUsageLastTrayOpenAt` key suggests Desktop shows plan usage in its own tray.
+- Re-checked 2026-09-25 in Desktop's code (Appx 2.7032.0.0, `app.asar` → `.vite/build`): it fetches
+  `{mainWindowUrl}/api/organizations/{org}/usage` with `net.fetch` in its default session (its
+  claude.ai cookies), every 15 min (5 min after tray use), adds `?skip_spend=1` except about once
+  an hour, and skips polls while the computer is idle ≥ 10 min or locked. The whole feature is
+  behind a server-side flag, and a second flag can pause polling when its tray menu wasn't opened
+  recently. It appends at most one sample per 270 s per org and keeps 30 days; full key map:
+  `fh`, `sd`, `so`, `oa`, `cw`, `om`, `op`, `sn` + `xu` (extra-usage utilization). The file is
+  written atomically (temp + rename). Org = `lastActiveOrg` cookie (fallback `/api/bootstrap` →
+  `account.memberships[].organization.uuid`).
+
+## claude.ai web API notes (observed 2026-09-25; not used — D28)
+
+Kept for the record in case Anthropic ever offers an official way.
+
+- `GET https://claude.ai/api/organizations/{orgUuid}/usage[?skip_spend=1]` returns the same shape
+  as `/api/oauth/usage` (legacy `five_hour`/`seven_day*` + `extra_usage` + `limits[]`, per
+  Desktop's schema). Auth = the `sessionKey` cookie. Org list: `GET /api/organizations`.
+- Signed out / invalid session: **403** JSON `permission_error`, `error_code:
+  "account_session_invalid"` (not 401). `/api/bootstrap` answers 200 `{"account": null, …}`.
+- Cloudflare: through the VPN used here, requests without cookies sometimes got **403 HTML "Just a
+  moment…" + `cf-mitigated: challenge`**; after one page load set `__cf_bm`, API calls passed. A
+  hidden window never solved the challenge on the login page (30 s); a visible one did.
 
 ## Known issues / limitations
 
 - **Sign-in expiry:** if Claude Code isn't used for ~8 h its token expires and the overlay shows
-  "sign-in expired" (with the last data) until Claude Code renews it. Phase 3 adds a claude.ai
-  fallback source.
+  "sign-in expired" (with the last data) until Claude Code renews it — unless Claude Desktop runs:
+  then Auto shows Desktop's samples (≤ 20 min old, no reset times, no weekly split, no plan name).
+- **Claude Desktop source limits:** Desktop only samples while it runs, the computer isn't idle or
+  locked, and a server-side flag allows it; Anthropic can change or remove the file at any time.
+  macOS and Linux paths untested.
+- **Anthropic's credential-use rule and D2:** the same docs section that rules out a claude.ai
+  sign-in (D28) says subscription OAuth is meant for Claude Code and Anthropic's own apps. Reading
+  Claude Code's token for a read-only usage request neither offers a login nor stores the token,
+  but it is a grey zone of that rule. The owner was told on 2026-09-25; D2 is unchanged.
 - Only tested on Windows 11 so far; macOS (Keychain prompt → "Always Allow") and Linux (tray on
   GNOME needs the AppIndicator extension; Wayland may ignore always-on-top/positioning) untested.
   The macOS/Linux packages and their launch-at-login code are only built by CI, never run.
@@ -109,8 +152,10 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 - Builds are unsigned: SmartScreen warns on Windows; macOS isn't notarized (Open Anyway / `xattr`).
 - Sign-in source: the `claude` CLI and the Claude Code VS Code extension (which bundles its own
   Claude Code binary) both write `~/.claude/.credentials.json` / the Keychain item, so either works.
-  The Claude desktop app alone does not (Phase 3 adds its usage history and a claude.ai sign-in). A
+  The Claude desktop app alone gives no sign-in, only its usage history (Phase 3). A
   `CLAUDE_CONFIG_DIR` set only in the extension's settings is invisible to the overlay.
+- Screenshot mode (`--screenshot`) captures 1.5 s after the first show: with real data over a slow
+  VPN the card may still be loading. Mock scenarios are unaffected.
 - v0.1.0 was published (prerelease) as *Claude Usage Overlay*. On Windows, 0.2.0 installs next to
   it instead of replacing it; the README tells 0.1.0 users to uninstall it first.
 - Uninstalling keeps `%APPDATA%\Claude Usage` (settings incl. `launchAtLogin`), so a
@@ -184,3 +229,19 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 - Relicensed the project from GPL-3.0-only to MIT (D27): `LICENSE` text, `license` in
   `package.json` / `package-lock.json`, README "License" section, About dialog.
 - Electron book v1.2: license rows and the About code sample updated; changelog entry added.
+
+### 2026-09-25 — Session 6: Phase 3 (Claude Desktop source, source selection, logs)
+
+- Research: claude.ai's usage endpoint and org lookup (from Claude Desktop's own code), its
+  signed-out and Cloudflare answers (probes from Electron), Desktop's sampling rules. Owner chose
+  cookie encryption, click-to-verify for Cloudflare and a live sample first.
+- While a probe sign-in window was open, the owner asked for sign-in in the normal browser
+  instead; checking that led to Anthropic's credential-use rule, which forbids a claude.ai sign-in
+  in third-party apps. Stopped, closed the probe (no sign-in happened), deleted its data, asked:
+  owner chose to continue without claude.ai (D28). The claude.ai code written so far was removed.
+- Built the Claude Desktop source, source selection (Auto / Claude Code / Claude Desktop), the
+  redacted rotating log, new banners/footer/tray text and two mock scenarios (D29–D32).
+  61 tests pass; screenshots reviewed; verified live on Windows (Claude Code and Desktop numbers
+  identical).
+- Electron book v1.3: Phase 3 chapters (local only, D24).
+- Next: Phase 4 — `docs/phases/phase-4-ux.md`.

@@ -7,7 +7,18 @@ import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ALL = ['normal', 'warning', 'critical', 'expired', 'no-credentials', 'rate-limited', 'offline', 'loading'];
+const ALL = [
+  'normal',
+  'warning',
+  'critical',
+  'expired',
+  'no-credentials',
+  'rate-limited',
+  'offline',
+  'loading',
+  'via-desktop',
+  'desktop-unavailable',
+];
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const [outArg, ...scenarioArgs] = process.argv.slice(2);

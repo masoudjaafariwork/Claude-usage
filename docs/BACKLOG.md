@@ -10,8 +10,8 @@ technical notes, acceptance criteria, a manual test checklist, a ready-to-paste 
 | --- | --- | --- | --- |
 | 1 | MVP overlay | ✅ Done (2026-09-24) | [phase-1-mvp-overlay.md](phases/phase-1-mvp-overlay.md) |
 | 2 | Packaging, app icon, launch at login | ✅ Done (2026-09-24) | [phase-2-packaging.md](phases/phase-2-packaging.md) |
-| 3 | Fallback data sources (claude.ai sign-in, Claude Desktop) & diagnostics | ⏭️ Next | [phase-3-fallback-source.md](phases/phase-3-fallback-source.md) |
-| 4 | UX: notifications, click-through, shortcut, size, pace forecast | Planned | [phase-4-ux.md](phases/phase-4-ux.md) |
+| 3 | Fallback data source (Claude Desktop), source selection & diagnostics — claude.ai sign-in dropped (D28) | ✅ Done (2026-09-25) | [phase-3-fallback-source.md](phases/phase-3-fallback-source.md) |
+| 4 | UX: notifications, click-through, shortcut, size, pace forecast | ⏭️ Next | [phase-4-ux.md](phases/phase-4-ux.md) |
 | 5 | App auto-update | Planned | [phase-5-auto-update.md](phases/phase-5-auto-update.md) |
 
 **Running a phase:** open a new Claude Code session in this repo, open the phase file, copy the
@@ -51,8 +51,9 @@ Phases table in docs/BACKLOG.md. Don't implement anything yet — show me the pl
 
 Move an idea into a phase file (with the "Plan a new phase" prompt) when it's time to build it.
 
-- Multiple accounts (several `CLAUDE_CONFIG_DIR`s / claude.ai accounts) with a switcher.
-- Weekly usage history sparkline (Claude Desktop already keeps 30 days of samples, see Phase 3).
+- Multiple accounts (several `CLAUDE_CONFIG_DIR`s) with a switcher. (No claude.ai sign-ins — D28.)
+- Weekly usage history sparkline (Claude Desktop's `plan-usage-history.json` keeps 30 days of
+  samples; `desktop-source.ts` already parses it).
 - Other providers (e.g. Codex) side by side.
 - Persian (fa) UI with RTL layout and a language setting.
 - "Hide from screen capture" option (`win.setContentProtection`) for screen sharing.

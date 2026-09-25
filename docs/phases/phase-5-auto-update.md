@@ -41,7 +41,7 @@ Code-signing purchase/setup, delta updates, beta channels.
 - The **portable exe** and the **deb** package cannot auto-update; show "download" instead.
 - Updates install on quit (`autoInstallOnAppQuit`) or immediately via the menu item
   (`quitAndInstall`); make sure settings are flushed first.
-- Log updater events to the Phase 3 log file (if it exists).
+- Log updater events to the Phase 3 log (`log.ts`, `app.getPath('logs')`).
 - Test with two real versions (e.g. 0.3.0 → 0.3.1) published as releases; the user publishes them.
 
 ## Acceptance criteria

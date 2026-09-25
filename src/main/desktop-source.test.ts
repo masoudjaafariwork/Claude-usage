@@ -1,0 +1,169 @@
+import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { test } from 'node:test';
+import {
+  DESKTOP_HISTORY_FILE,
+  DESKTOP_MAX_AGE_MS,
+  DesktopSource,
+  desktopDataDirs,
+  desktopSnapshot,
+  latestSample,
+  parseDesktopHistory,
+  readDesktopHistory,
+  watchDesktopHistory,
+} from './desktop-source';
+import realHistory from './fixtures/desktop-history-2026-09.json';
+import { SourceUnavailableError } from './usage-source';
+
+const REAL_TEXT = JSON.stringify(realHistory);
+/** Newest sample in the fixture: 2026-09-25T14:49:52Z, { fh: 13, sd: 84, xu: 100 }. */
+const REAL_NEWEST = 1790347792698;
+const MIN = 60_000;
+
+test('parses a real v2 history (Claude Desktop 2.7032) sample by sample', () => {
+  const samples = parseDesktopHistory(REAL_TEXT);
+  assert.equal(samples.length, 12);
+  assert.deepEqual(samples.at(-1), { t: REAL_NEWEST, org: '00000000-0000-4000-8000-000000000001', u: { fh: 13, sd: 84, xu: 100 } });
+});
+
+test('parses v1 files (no org, values on the sample, null allowed) and ignores junk', () => {
+  const v1 = JSON.stringify({ version: 1, samples: [{ t: 1000, fh: 12, sd: null }, { t: 'x' }, null, { t: 2000, fh: 5, sd: 40 }] });
+  assert.deepEqual(parseDesktopHistory(v1), [
+    { t: 1000, org: null, u: { fh: 12 } },
+    { t: 2000, org: null, u: { fh: 5, sd: 40 } },
+  ]);
+  assert.deepEqual(parseDesktopHistory('not json'), []);
+  assert.deepEqual(parseDesktopHistory('{"version":3}'), []);
+});
+
+test('latestSample prefers the known org, else the newest sample overall', () => {
+  const samples = [
+    { t: 1, org: 'a', u: { fh: 1 } },
+    { t: 3, org: 'b', u: { fh: 3 } },
+    { t: 2, org: 'a', u: { fh: 2 } },
+  ];
+  assert.equal(latestSample(samples, 'a')?.t, 2);
+  assert.equal(latestSample(samples, null)?.t, 3);
+  assert.equal(latestSample(samples, 'unknown')?.t, 3);
+  assert.equal(latestSample([], 'a'), null);
+});
+
+test('maps Desktop keys to the API meter ids; no reset times, xu and codenames ignored', () => {
+  const snap = desktopSnapshot({ t: REAL_NEWEST, org: null, u: { fh: 3, sd: 91, so: 40, sn: 10, xu: 100, cw: 5, om: 7 } });
+  assert.ok(snap);
+  assert.deepEqual(
+    snap.meters.map((m) => [m.id, m.label, m.percent, m.severity, m.resetsAt]),
+    [
+      ['session', 'Current session', 3, 'normal', null],
+      ['weekly_all', 'Weekly · All models', 91, 'critical', null],
+      ['weekly_scoped:opus', 'Weekly · Opus', 40, 'normal', null],
+      ['weekly_scoped:sonnet', 'Weekly · Sonnet', 10, 'normal', null],
+    ],
+  );
+  assert.equal(snap.source, 'claude-desktop');
+  assert.equal(snap.fetchedAt, new Date(REAL_NEWEST).toISOString());
+  assert.equal(snap.spend, null);
+  assert.equal(desktopSnapshot({ t: 1, org: null, u: { xu: 100 } }), null);
+});
+
+function source(history: string | null, now: number, preferredOrg: string | null = null) {
+  let orgLookups = 0;
+  const src = new DesktopSource({
+    readHistory: async () => history,
+    preferredOrg: async () => {
+      orgLookups++;
+      return preferredOrg;
+    },
+    now: () => now,
+  });
+  return { src, orgLookups: () => orgLookups };
+}
+
+async function unavailableKind(promise: Promise<unknown>): Promise<string> {
+  try {
+    await promise;
+  } catch (err) {
+    assert.ok(err instanceof SourceUnavailableError, String(err));
+    return err.status.kind;
+  }
+  assert.fail('expected SourceUnavailableError');
+}
+
+test('a sample up to 20 min old is used; older means Desktop is not running', async () => {
+  const fresh = source(REAL_TEXT, REAL_NEWEST + 12 * MIN);
+  const snap = await fresh.src.fetch({ shownFetchedAt: null });
+  assert.deepEqual(snap.meters.map((m) => m.percent), [13, 84]);
+  assert.equal(fresh.orgLookups(), 0, 'one org in the file: no need to look up the preferred one');
+
+  const stale = source(REAL_TEXT, REAL_NEWEST + DESKTOP_MAX_AGE_MS + 1);
+  assert.equal(await unavailableKind(stale.src.fetch({ shownFetchedAt: null })), 'desktop-unavailable');
+});
+
+test('no history file → unavailable', async () => {
+  assert.equal(await unavailableKind(source(null, REAL_NEWEST).src.fetch({ shownFetchedAt: null })), 'desktop-unavailable');
+});
+
+test('never replaces newer data from another source with an older sample', async () => {
+  const { src } = source(REAL_TEXT, REAL_NEWEST + 5 * MIN);
+  assert.equal(await unavailableKind(src.fetch({ shownFetchedAt: REAL_NEWEST + 60_000 })), 'desktop-unavailable');
+  assert.ok(await src.fetch({ shownFetchedAt: REAL_NEWEST - 60_000 }));
+});
+
+test('with several orgs, the samples of Claude Code’s org win even when another org is newer', async () => {
+  const history = JSON.stringify({
+    version: 2,
+    samples: [
+      { t: 1000, org: 'mine', u: { fh: 11, sd: 22 } },
+      { t: 2000, org: 'team', u: { fh: 99, sd: 99 } },
+    ],
+  });
+  const { src, orgLookups } = source(history, 3000, 'mine');
+  const snap = await src.fetch({ shownFetchedAt: null });
+  assert.equal(snap.meters[0]?.percent, 11);
+  assert.equal(orgLookups(), 1);
+});
+
+test('desktopDataDirs covers MSIX, Squirrel, macOS and Linux community builds', () => {
+  const env = { LOCALAPPDATA: 'C:\\Users\\u\\AppData\\Local', APPDATA: 'C:\\Users\\u\\AppData\\Roaming' };
+  assert.deepEqual(desktopDataDirs('win32', env, 'C:\\Users\\u'), [
+    'C:\\Users\\u\\AppData\\Local\\Packages\\Claude_pzs8sxrjxfjjc\\LocalCache\\Roaming\\Claude',
+    'C:\\Users\\u\\AppData\\Roaming\\Claude',
+  ]);
+  assert.deepEqual(desktopDataDirs('darwin', {}, '/Users/u'), ['/Users/u/Library/Application Support/Claude']);
+  assert.deepEqual(desktopDataDirs('linux', {}, '/home/u'), ['/home/u/.config/Claude']);
+});
+
+test('readDesktopHistory reads the first folder that has the file', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'claude-usage-desktop-'));
+  try {
+    const missing = join(root, 'missing');
+    const present = join(root, 'present');
+    mkdirSync(present);
+    writeFileSync(join(present, DESKTOP_HISTORY_FILE), REAL_TEXT);
+    assert.equal(await readDesktopHistory([missing, present]), REAL_TEXT);
+    assert.equal(await readDesktopHistory([missing]), null);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('watchDesktopHistory fires (debounced) when Desktop atomically replaces the file', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'claude-usage-watch-'));
+  let calls = 0;
+  const stop = watchDesktopHistory([join(root, 'missing'), root], () => calls++, 50);
+  try {
+    // Like Desktop's writeFileAtomic: write a temp file, then rename it over the history file.
+    for (let i = 0; i < 3; i++) {
+      writeFileSync(join(root, 'tmp.json'), REAL_TEXT);
+      renameSync(join(root, 'tmp.json'), join(root, DESKTOP_HISTORY_FILE));
+    }
+    writeFileSync(join(root, 'unrelated.json'), '{}');
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    assert.equal(calls, 1);
+  } finally {
+    stop();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
