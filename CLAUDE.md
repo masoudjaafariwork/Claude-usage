@@ -60,6 +60,8 @@ src/
     usage-parse.ts       Raw JSON → UsageSnapshot (tolerant; limits[] first, legacy keys fallback) [pure]
     usage-source.ts      UsageSource contract, SourceUnavailableError, ClaudeCodeSource           [pure]
     desktop-source.ts    Claude Desktop's plan-usage-history.json: read, parse, watch (no network) [pure]
+    file-watch.ts        Debounced folder watch for one file name (survives atomic renames)       [pure]
+    claude-code-launcher.ts  "Open Claude Code": VS Code URI → terminal `claude` → docs (D34)    [pure]
     usage-service.ts     Source selection (Auto/single), polling, backoff, status, emits 'change' [pure]
     log.ts               Rotating log in app.getPath('logs'); every line goes through redact()     [pure]
     settings.ts          settings.json in userData (sanitized, atomic writes)                     [pure]

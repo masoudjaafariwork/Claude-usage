@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { formatAgo, formatClock, formatDuration } from './format';
+import type { LimitMeter } from '../shared/types';
+import { compactMeters, formatAgo, formatClock, formatDuration } from './format';
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;
@@ -31,4 +32,28 @@ test('formatAgo', () => {
   assert.equal(ago(25 * MIN), '25 min ago');
   assert.equal(ago(2 * HOUR + 10 * MIN), '2h ago');
   assert.equal(ago(3 * DAY), '3d ago');
+});
+
+test('compactMeters shows the session and every weekly limit that is not hidden', () => {
+  const meter = (id: string, group: LimitMeter['group'], label: string, percent: number): LimitMeter => ({
+    id,
+    group,
+    label,
+    percent,
+    severity: 'normal',
+    resetsAt: null,
+    isActive: false,
+  });
+  const meters = [
+    meter('session', 'session', 'Current session', 11),
+    meter('weekly_all', 'weekly', 'Weekly · All models', 83),
+    meter('weekly_scoped:fable', 'weekly', 'Weekly · Fable', 37),
+  ];
+  const labels = (hidden: string[]) => compactMeters(meters, hidden).map((item) => `${item.label} ${item.meter.percent}`);
+  // A per-model limit lower than the all-models one still shows (it used to be hidden).
+  assert.deepEqual(labels([]), ['Session 11', 'Week 83', 'Fable 37']);
+  assert.deepEqual(labels(['weekly_scoped:fable']), ['Session 11', 'Week 83']);
+  assert.deepEqual(labels(['weekly_all']), ['Session 11', 'Fable 37']);
+  // The session ring can't be hidden.
+  assert.deepEqual(labels(['session', 'weekly_all', 'weekly_scoped:fable']), ['Session 11']);
 });

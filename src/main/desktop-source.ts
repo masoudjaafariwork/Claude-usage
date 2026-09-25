@@ -4,10 +4,10 @@
 // server-side feature flag is on) and appends one sample per poll.
 // It is another app's internal file: parse tolerantly, never write to Desktop's folder, never read
 // any other file there — its sign-in in particular is off limits (D26). Pure module.
-import { watch, type FSWatcher } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { posix, win32 } from 'node:path';
 import type { LimitMeter, UsageSnapshot } from '../shared/types';
+import { watchFileInDirs } from './file-watch';
 import { severityFor } from './usage-parse';
 import { SourceUnavailableError, type FetchContext, type UsageSource } from './usage-source';
 
@@ -55,30 +55,11 @@ export async function readDesktopHistory(dirs: readonly string[]): Promise<strin
 }
 
 /**
- * Calls `onChange` (debounced) when Desktop rewrites its history file. Watches the folders, not
- * the file: Desktop replaces the file atomically, which would orphan a watcher on the file itself.
- * Folders that don't exist are skipped. Returns a function that stops watching.
+ * Calls `onChange` (debounced) when Desktop rewrites its history file (atomically, so the folders
+ * are watched — see file-watch.ts). Returns a function that stops watching.
  */
 export function watchDesktopHistory(dirs: readonly string[], onChange: () => void, debounceMs = 1500): () => void {
-  const watchers: FSWatcher[] = [];
-  let timer: NodeJS.Timeout | null = null;
-  for (const dir of dirs) {
-    try {
-      const watcher = watch(dir, { persistent: false }, (_event, file) => {
-        if (file !== null && file.toString() !== DESKTOP_HISTORY_FILE) return;
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(onChange, debounceMs);
-      });
-      watcher.on('error', () => watcher.close());
-      watchers.push(watcher);
-    } catch {
-      // Folder missing or not watchable: the regular polls still read the file.
-    }
-  }
-  return () => {
-    if (timer) clearTimeout(timer);
-    for (const watcher of watchers) watcher.close();
-  };
+  return watchFileInDirs(dirs, DESKTOP_HISTORY_FILE, onChange, debounceMs);
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);

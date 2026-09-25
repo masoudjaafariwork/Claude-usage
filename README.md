@@ -10,7 +10,7 @@ Windows · macOS · Linux — Electron + TypeScript.
   <img src="docs/images/overlay-expanded.png" alt="Expanded overlay" width="300">
   <img src="docs/images/overlay-stale.png" alt="Overlay showing stale data with a sign-in banner" width="300">
 </p>
-<p><img src="docs/images/overlay-compact.png" alt="Compact overlay" width="330"></p>
+<p><img src="docs/images/overlay-compact.png" alt="Compact overlay" width="355"></p>
 
 <sub>Screenshots use mock data.</sub>
 
@@ -20,7 +20,8 @@ Windows · macOS · Linux — Electron + TypeScript.
   **Move to display** sends it to another monitor.
 - Session ring with reset countdown, weekly bars, per-model limits, weekly split by app
   (Claude Code / Chats / Cowork …), and extra-usage credits when enabled.
-- Compact pill mode for a minimal footprint.
+- Compact pill mode for a minimal footprint: the session plus the weekly limits you pick (menu →
+  *Compact mode shows*; all are on by default), with its own refresh button.
 - Tray / menu-bar icon that shows a live ring for your most-constrained limit.
 - Refreshes every 3 minutes (1–10 min configurable), plus right after a limit resets.
 - Two data sources: **Claude Code**'s sign-in, and the **Claude desktop app**'s own usage history
@@ -123,8 +124,8 @@ npm start
 
 - **Move:** drag the card.
 - **Menu:** the ⋯ button, right-click, or the tray icon. The menu has the data source, compact
-  mode, always on top, opacity, refresh interval, move to display, reset position, the settings
-  and logs folders, and quit.
+  mode and which limits it shows, always on top, opacity, refresh interval, move to display, reset
+  position, the settings and logs folders, and quit.
 - **Tray:** on Windows/Linux, left-click toggles the overlay. On macOS, click the menu-bar icon.
 
 ## Development
@@ -154,8 +155,10 @@ Project guide for AI-assisted development: [CLAUDE.md](CLAUDE.md). Status and de
 - **"Not signed in to Claude Code"**: sign in from the Claude Code panel in VS Code, or run
   `claude` in a terminal and use `/login`. If you set `CLAUDE_CONFIG_DIR` only in the VS Code
   extension's settings, the overlay can't see it; set it as a user environment variable instead.
-- **"Claude Code sign-in expired"**: open Claude Code (any session renews the token). The overlay
-  picks up the new token within a minute. In *Auto* mode an open Claude desktop app fills the gap.
+- **"Claude Code sign-in expired"**: click **Open Claude Code** in the banner (or the menu). It opens
+  a new Claude Code tab in VS Code — or, without the VS Code extension, a terminal running `claude` —
+  and Claude Code renews its own token when it starts; the overlay notices within seconds. You don't
+  need to type anything. In *Auto* mode an open Claude desktop app fills the gap meanwhile.
 - **"No recent data from Claude Desktop"**: the desktop app isn't running, or the computer was idle
   (it doesn't sample then). Open it and use it for a moment; the overlay picks the new sample up
   within seconds.

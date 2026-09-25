@@ -22,8 +22,10 @@ import { writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { AppState, SourceId, UsageSnapshot } from '../shared/types';
-import { readClaudeCodeOrgUuid, readCredentials } from './credentials';
+import { gatherLaunchFacts, launchClaudeCode, planClaudeCodeLaunch } from './claude-code-launcher';
+import { claudeConfigDir, readClaudeCodeOrgUuid, readCredentials } from './credentials';
 import { DesktopSource, desktopDataDirs, readDesktopHistory, watchDesktopHistory } from './desktop-source';
+import { watchFileInDirs } from './file-watch';
 import { RotatingLog, describeError } from './log';
 import { createLoginItem } from './login-item';
 import { reconcileLoginItem } from './login-item-core';
@@ -143,6 +145,11 @@ function start(): void {
   );
   // Claude Desktop rewrites its history about every 15 min; pick new samples up right away.
   const stopWatchingDesktop = cli.mock ? () => {} : watchDesktopHistory(desktopDirs, () => service.desktopHistoryChanged());
+  // Claude Code rewrites its credentials file when it renews its token: recover in seconds, not 60 s.
+  const stopWatchingCredentials = cli.mock
+    ? () => {}
+    : watchFileInDirs([claudeConfigDir()], '.credentials.json', () => service.credentialsChanged());
+  let lastClaudeCodeLaunch = 0;
 
   const { win, restoredPosition } = createOverlayWindow(settings.get());
   let quitting = false;
@@ -152,7 +159,7 @@ function start(): void {
     snapshot: service.snapshot,
     status: service.status,
     refreshing: service.refreshing,
-    view: { compact: settings.get().compact, opacity: settings.get().opacity },
+    view: { compact: settings.get().compact, opacity: settings.get().opacity, compactHidden: settings.get().compactHidden },
     sourceMode: settings.get().source,
   });
 
@@ -165,6 +172,11 @@ function start(): void {
     refresh: () => service.refreshNow(),
     setCompact: (compact) => {
       settings.update({ compact });
+      broadcast();
+    },
+    setCompactMeterVisible: (id, visible) => {
+      const others = settings.get().compactHidden.filter((hidden) => hidden !== id);
+      settings.update({ compactHidden: visible ? others : [...others, id] });
       broadcast();
     },
     setAlwaysOnTop: (on) => {
@@ -209,6 +221,14 @@ function start(): void {
       broadcast();
       service.sourcesChanged();
     },
+    openClaudeCode: () => {
+      if (Date.now() - lastClaudeCodeLaunch < 5000) return; // a double click opens one window, not two
+      lastClaudeCodeLaunch = Date.now();
+      const plan = planClaudeCodeLaunch(gatherLaunchFacts(process.platform, process.env, homedir()));
+      launchClaudeCode(plan, (url) => shell.openExternal(url), log.write).catch((err: unknown) =>
+        log.warn(`Open Claude Code failed: ${describeError(err)}`),
+      );
+    },
     openSettingsFolder: () => void shell.openPath(userData),
     openLogsFolder: () => {
       mkdirSync(log.dir, { recursive: true });
@@ -219,7 +239,16 @@ function start(): void {
   };
 
   const menu = () =>
-    buildMenu(settings.get(), { windowVisible: win.isVisible(), loginItemAvailable: loginItem.available }, actions);
+    buildMenu(
+      settings.get(),
+      {
+        windowVisible: win.isVisible(),
+        loginItemAvailable: loginItem.available,
+        weeklyMeters: (service.snapshot?.meters ?? []).filter((m) => m.group === 'weekly'),
+        statusKind: service.status.kind,
+      },
+      actions,
+    );
   const tray = new TrayController(() => actions.toggleWindow());
 
   function updateTray(): void {
@@ -253,6 +282,9 @@ function start(): void {
   });
   ipcMain.on('menu:show', (event) => {
     if (fromOverlay(event)) menu().popup({ window: win });
+  });
+  ipcMain.on('claude-code:open', (event) => {
+    if (fromOverlay(event)) actions.openClaudeCode();
   });
   ipcMain.on('window:resize', (event, width: unknown, height: unknown) => {
     if (!fromOverlay(event) || typeof width !== 'number' || typeof height !== 'number') return;
@@ -319,6 +351,7 @@ function start(): void {
     quitting = true;
     log.info('Quitting');
     stopWatchingDesktop();
+    stopWatchingCredentials();
     service.stop();
     settings.flush();
     tray.destroy();

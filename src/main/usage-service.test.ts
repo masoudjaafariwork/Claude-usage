@@ -265,3 +265,39 @@ test('a new Desktop sample is picked up at once only when Desktop is (or may bec
   assert.equal(onClaudeCode.counts.fetches, fetches, 'no extra API request while Claude Code is the source');
   onClaudeCode.svc.stop();
 });
+
+test('a rewritten credentials file brings Claude Code back at once — but never skips a backoff', async () => {
+  // Expired → Claude Code renews its token → recovered without waiting for the 60 s re-check.
+  let current = creds({ expiresAt: NOW - 1 });
+  const expired = service({ mode: 'claude-code', readCredentials: async () => current });
+  expired.svc.start();
+  await settle();
+  assert.equal(expired.svc.status.kind, 'token-expired');
+  current = creds({ accessToken: 'renewed' });
+  expired.svc.credentialsChanged();
+  await settle();
+  assert.equal(expired.svc.status.kind, 'ok');
+  expired.svc.stop();
+
+  // Auto on Claude Desktop's numbers → switches back to Claude Code.
+  let auto = creds({ expiresAt: NOW - 1 });
+  const onDesktop = service({ readCredentials: async () => auto, desktopAgeMs: 3 * MIN });
+  onDesktop.svc.start();
+  await settle();
+  assert.equal(onDesktop.svc.snapshot?.source, 'claude-desktop');
+  auto = creds({ accessToken: 'renewed' });
+  onDesktop.svc.credentialsChanged();
+  await settle();
+  assert.equal(onDesktop.svc.snapshot?.source, 'claude-code');
+  onDesktop.svc.stop();
+
+  // Offline: a credentials change must not trigger an extra request inside the backoff.
+  const offline = service({ fetchUsage: async () => Promise.reject(new Error('net::ERR_INTERNET_DISCONNECTED')) });
+  offline.svc.start();
+  await settle();
+  const fetches = offline.counts.fetches;
+  offline.svc.credentialsChanged();
+  await settle();
+  assert.equal(offline.counts.fetches, fetches);
+  offline.svc.stop();
+});

@@ -2,7 +2,7 @@
 // The DOM is rebuilt on every state change (it is tiny); bar and ring animations continue from the
 // previously rendered values, so updates glide instead of jumping.
 import type { AppState, BreakdownRow, LimitMeter, OverlayApi, SourceId, SpendInfo, StatusKind } from '../shared/types';
-import { formatAgo, formatClock, formatDuration } from './format';
+import { compactMeters, formatAgo, formatClock, formatDuration } from './format';
 
 declare global {
   interface Window {
@@ -144,7 +144,8 @@ function bar(meter: { id: string; percent: number }): HTMLElement {
   return h('div', 'bar', fill);
 }
 
-function header(st: AppState): HTMLElement {
+/** Refresh button; spins while a fetch runs (and briefly after a click, even if the fetch is throttled). */
+function refreshButton(st: AppState): HTMLButtonElement {
   const refresh = button('refresh', 'Refresh now', (btn) => {
     api.refresh();
     btn.classList.add('spinning');
@@ -153,12 +154,21 @@ function header(st: AppState): HTMLElement {
     }, 1200);
   });
   if (st.refreshing) refresh.classList.add('spinning');
+  return refresh;
+}
 
+function header(st: AppState): HTMLElement {
   return h(
     'header',
     'head',
     h('div', 'brand', logo(), h('span', 'title', 'Claude Usage'), st.snapshot?.plan ? h('span', 'plan', st.snapshot.plan) : null),
-    h('div', 'actions', refresh, button('collapse', 'Compact view', () => api.setCompact(true)), button('menu', 'Menu', () => api.showMenu())),
+    h(
+      'div',
+      'actions',
+      refreshButton(st),
+      button('collapse', 'Compact view', () => api.setCompact(true)),
+      button('menu', 'Menu', () => api.showMenu()),
+    ),
   );
 }
 
@@ -230,7 +240,11 @@ interface BannerSpec {
   icon: IconName;
   title: string;
   body: Child[];
+  action?: { label: string; run: () => void };
 }
+
+/** Claude Code renews its own sign-in when it starts; the overlay never touches the token (D3). */
+const OPEN_CLAUDE_CODE = { label: 'Open Claude Code', run: () => api.openClaudeCode() };
 
 function retryText(st: AppState, now: Date): string {
   const next = st.status.nextAttemptAt ? Date.parse(st.status.nextAttemptAt) : NaN;
@@ -251,6 +265,7 @@ function bannerSpec(st: AppState, now: Date): BannerSpec | null {
           ? 'Open Claude Code to renew it, or keep the Claude desktop app open. The overlay recovers on its own.'
           : 'Open Claude Code to renew it — the overlay recovers on its own.',
       ],
+      action: OPEN_CLAUDE_CODE,
     }),
     'no-credentials': () =>
       auto
@@ -259,12 +274,14 @@ function bannerSpec(st: AppState, now: Date): BannerSpec | null {
             icon: 'key',
             title: 'Not signed in',
             body: ['Sign in to Claude Code (', ...signIn, '), or open the Claude desktop app. The overlay picks it up automatically.'],
+            action: OPEN_CLAUDE_CODE,
           }
         : {
             tone: 'warn',
             icon: 'key',
             title: 'Not signed in to Claude Code',
             body: ['Sign in from ', ...signIn, '. The overlay picks it up automatically.'],
+            action: OPEN_CLAUDE_CODE,
           },
     'desktop-unavailable': () => ({
       tone: 'warn',
@@ -287,11 +304,18 @@ function bannerSpec(st: AppState, now: Date): BannerSpec | null {
 function banner(st: AppState, now: Date): HTMLElement | null {
   const spec = bannerSpec(st, now);
   if (!spec) return null;
+  let action: HTMLButtonElement | null = null;
+  if (spec.action) {
+    const { label, run } = spec.action;
+    action = h('button', 'banner-action', label);
+    action.type = 'button';
+    action.addEventListener('click', run);
+  }
   return h(
     'div',
     `banner ${spec.tone}`,
     icon(spec.icon),
-    h('div', null, h('div', 'banner-title', spec.title), h('div', 'banner-body', ...spec.body)),
+    h('div', null, h('div', 'banner-title', spec.title), h('div', 'banner-body', ...spec.body), action),
   );
 }
 
@@ -346,19 +370,6 @@ function expandedView(st: AppState, now: Date): HTMLElement {
   return card;
 }
 
-/** Session, weekly (all models), and any scoped weekly limit that is currently higher. */
-function compactMeters(meters: LimitMeter[]): Array<{ meter: LimitMeter; label: string }> {
-  const session = meters.find((m) => m.group === 'session');
-  const weeklyAll = meters.find((m) => m.id === 'weekly_all');
-  const floor = weeklyAll?.percent ?? -1;
-  const scoped = meters.filter((m) => m.group === 'weekly' && m !== weeklyAll && m.percent > floor);
-  return [
-    ...(session ? [{ meter: session, label: 'Session' }] : []),
-    ...(weeklyAll ? [{ meter: weeklyAll, label: 'Week' }] : []),
-    ...scoped.map((meter) => ({ meter, label: meter.label.replace(/^Weekly · /, '') })),
-  ];
-}
-
 function compactStatusText(st: AppState): string {
   const texts: Partial<Record<StatusKind, string>> = {
     loading: 'Loading…',
@@ -374,7 +385,7 @@ function compactStatusText(st: AppState): string {
 
 function compactView(st: AppState): HTMLElement {
   const card = h('div', `card compact${isStale(st) ? ' stale' : ''}`);
-  const items = st.snapshot ? compactMeters(st.snapshot.meters) : [];
+  const items = st.snapshot ? compactMeters(st.snapshot.meters, st.view.compactHidden) : [];
   if (items.length > 0) {
     items.forEach(({ meter, label }, i) => {
       if (i > 0) card.append(h('span', 'vsep'));
@@ -390,7 +401,14 @@ function compactView(st: AppState): HTMLElement {
   } else {
     card.append(logo(), h('span', 'compact-msg', compactStatusText(st)));
   }
-  card.append(h('div', 'tail', h('span', dotClass(st)), button('expand', 'Expand', () => api.setCompact(false))));
+  card.append(
+    h(
+      'div',
+      'tail',
+      h('span', dotClass(st)),
+      h('div', 'actions', refreshButton(st), button('expand', 'Expand', () => api.setCompact(false))),
+    ),
+  );
   card.title = st.status.message ?? '';
   return card;
 }

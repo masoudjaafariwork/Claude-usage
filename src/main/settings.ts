@@ -8,6 +8,8 @@ export interface Settings {
   /** Top-left corner of the overlay in screen DIPs; null = default spot on the primary display. */
   position: { x: number; y: number } | null;
   compact: boolean;
+  /** Weekly meter ids (e.g. "weekly_all", "weekly_scoped:fable") hidden from the compact pill. */
+  compactHidden: string[];
   alwaysOnTop: boolean;
   /** Overlay opacity, 0.3–1. */
   opacity: number;
@@ -21,6 +23,7 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
   position: null,
   compact: false,
+  compactHidden: [],
   alwaysOnTop: true,
   opacity: 1,
   refreshIntervalSec: 180,
@@ -37,6 +40,13 @@ const MAX_REFRESH_SEC = 3600;
 
 const isFiniteNumber = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
+/** Unique, non-empty, reasonably short strings; anything else is dropped. */
+function sanitizeIdList(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  const ids = v.filter((id): id is string => typeof id === 'string' && id.length > 0 && id.length <= 100);
+  return [...new Set(ids)].slice(0, 50);
+}
+
 export function sanitizeSettings(raw: unknown): Settings {
   const r = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
   const pos = r.position as Record<string, unknown> | null | undefined;
@@ -44,6 +54,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     position:
       pos && isFiniteNumber(pos.x) && isFiniteNumber(pos.y) ? { x: Math.round(pos.x), y: Math.round(pos.y) } : null,
     compact: typeof r.compact === 'boolean' ? r.compact : DEFAULT_SETTINGS.compact,
+    compactHidden: sanitizeIdList(r.compactHidden),
     alwaysOnTop: typeof r.alwaysOnTop === 'boolean' ? r.alwaysOnTop : DEFAULT_SETTINGS.alwaysOnTop,
     opacity: isFiniteNumber(r.opacity) ? Math.min(1, Math.max(0.3, r.opacity)) : DEFAULT_SETTINGS.opacity,
     refreshIntervalSec: isFiniteNumber(r.refreshIntervalSec)

@@ -111,6 +111,17 @@ export class UsageService extends EventEmitter<{ change: [] }> {
     }
   }
 
+  /**
+   * Claude Code rewrote its credentials file (it renewed its token, or signed in or out). Look again
+   * when that can help: Claude Code is unavailable, or Auto is showing Claude Desktop's numbers.
+   * Not while rate-limited or offline — that would skip the backoff.
+   */
+  credentialsChanged(): void {
+    const mode = this.deps.mode();
+    const onDesktop = this.status.kind === 'ok' && this.snapshot?.source === 'claude-desktop';
+    if (mode !== 'claude-desktop' && (onDesktop || UNAVAILABLE_KINDS.has(this.status.kind))) this.sourcesChanged();
+  }
+
   /** Re-plan the next automatic poll, e.g. after the interval setting changed. */
   reschedule(): void {
     if (this.running && !this.refreshing && this.status.kind === 'ok') this.schedule(this.nextOkDelaySec());

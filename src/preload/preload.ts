@@ -13,6 +13,7 @@ const api: OverlayApi = {
   setCompact: (compact) => ipcRenderer.send('view:set-compact', compact),
   resize: (width, height) => ipcRenderer.send('window:resize', width, height),
   showMenu: () => ipcRenderer.send('menu:show'),
+  openClaudeCode: () => ipcRenderer.send('claude-code:open'),
 };
 
 contextBridge.exposeInMainWorld('overlay', api);

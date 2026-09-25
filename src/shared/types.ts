@@ -77,6 +77,8 @@ export interface Status {
 export interface ViewSettings {
   compact: boolean;
   opacity: number;
+  /** Meter ids left out of the compact pill (the session ring always shows). */
+  compactHidden: string[];
 }
 
 export interface AppState {
@@ -97,4 +99,6 @@ export interface OverlayApi {
   /** Ask the main process to fit the window to the rendered content (CSS pixels). */
   resize(width: number, height: number): void;
   showMenu(): void;
+  /** Open the user's Claude Code (VS Code or a terminal) so it renews its own sign-in. */
+  openClaudeCode(): void;
 }

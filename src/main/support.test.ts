@@ -50,6 +50,15 @@ test('sanitizeSettings keeps known source modes only', () => {
   assert.equal(sanitizeSettings({ source: 42 }).source, 'auto');
 });
 
+test('sanitizeSettings keeps compactHidden as a list of unique ids', () => {
+  assert.deepEqual(DEFAULT_SETTINGS.compactHidden, []);
+  assert.deepEqual(sanitizeSettings({ compactHidden: 'weekly_all' }).compactHidden, []);
+  assert.deepEqual(
+    sanitizeSettings({ compactHidden: ['weekly_all', 7, '', 'weekly_scoped:fable', 'weekly_all', 'x'.repeat(101)] }).compactHidden,
+    ['weekly_all', 'weekly_scoped:fable'],
+  );
+});
+
 test('loadSnapshot treats snapshots cached before Phase 3 as Claude Code data', () => {
   const dir = mkdtempSync(join(tmpdir(), 'claude-usage-cache-'));
   try {

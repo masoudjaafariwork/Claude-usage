@@ -1,4 +1,5 @@
 // Pure time/text formatting helpers for the overlay (unit-tested in format.test.ts).
+import type { LimitMeter } from '../shared/types';
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -41,4 +42,14 @@ export function formatAgo(past: Date, now: Date): string {
   if (seconds < 3600) return `${Math.round(seconds / 60)} min ago`;
   if (seconds < 86_400) return `${Math.floor(seconds / 3600)}h ago`;
   return `${Math.floor(seconds / 86_400)}d ago`;
+}
+
+/** Rings of the compact pill with their short labels: the session always, then each weekly limit not in `hidden`. */
+export function compactMeters(meters: readonly LimitMeter[], hidden: readonly string[]): Array<{ meter: LimitMeter; label: string }> {
+  const session = meters.find((m) => m.group === 'session');
+  const weekly = meters.filter((m) => m.group === 'weekly' && !hidden.includes(m.id));
+  return [
+    ...(session ? [{ meter: session, label: 'Session' }] : []),
+    ...weekly.map((meter) => ({ meter, label: meter.id === 'weekly_all' ? 'Week' : meter.label.replace(/^Weekly · /, '') })),
+  ];
 }

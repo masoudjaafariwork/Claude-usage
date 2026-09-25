@@ -467,6 +467,34 @@ body {
   font-size: 10.5px;
 }
 
+/* Clickable inside the drag region, so it must opt out of dragging (see CLAUDE.md gotchas). */
+.banner-action {
+  -webkit-app-region: no-drag;
+  margin-top: 7px;
+  padding: 4px 10px;
+  border: 1px solid rgba(217, 119, 87, 0.4);
+  border-radius: 7px;
+  background: var(--brand-soft);
+  color: var(--brand-hi);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+
+.banner-action:hover {
+  background: rgba(217, 119, 87, 0.26);
+  border-color: rgba(217, 119, 87, 0.6);
+}
+
+.banner-action:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+
 /* ---- Footer -------------------------------------------------------------------------------- */
 
 .foot {

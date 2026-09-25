@@ -21,7 +21,8 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
   when monitors change; "Move to display" menu for multi-monitor setups.
 - Expanded card: session ring with reset countdown, weekly limits (all models + per-model) as bars,
   "this week, by app" split, extra-usage row when enabled, status banner, footer freshness.
-- Compact pill: session + weekly (+ any per-model weekly that is higher) mini rings.
+- Compact pill: session + every weekly limit (all models, per-model) as mini rings; menu →
+  *Compact mode shows* hides any weekly one (D33). Refresh and expand buttons on the right.
 - Tray icon: live ring of the most constrained limit, tooltip with all limits, same menu as the card
   (show/hide, refresh, compact, always-on-top, opacity, refresh interval, move to display, reset
   position, quit). macOS shows the percentage next to the menu-bar icon.
@@ -29,7 +30,7 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
   errors, `Retry-After` on 429, refresh on wake/unlock, manual refresh.
 - Stale data handling: last snapshot cached to disk and shown (desaturated, with banner) on startup,
   offline, rate-limited or expired sign-in.
-- Dev tooling: mock scenarios, screenshot mode, 61 unit tests.
+- Dev tooling: mock scenarios, screenshot mode, 63 unit tests.
 - **Data sources (Phase 3):** menu → *Source*: *Auto* (Claude Code; when its sign-in is missing,
   expired or rejected, the newest Claude Desktop sample ≤ 20 min old), *Claude Code only*,
   *Claude Desktop only*. Claude Desktop's `plan-usage-history.json` is read-only, needs no sign-in
@@ -47,6 +48,11 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
   the Windows uninstaller removes it. The menu also has *Open settings folder* and *About*.
 - **Release workflow:** pushing a `v*` tag builds on all three OSes and creates a draft GitHub
   Release (not run yet).
+- **Open Claude Code** (banner button on "sign-in expired" / "not signed in", plus a menu item in
+  those states): opens the user's own Claude Code — a new Claude Code tab in VS Code
+  (`vscode://anthropic.claude-code/open`) when the extension is installed, else a terminal running
+  `claude`, else the setup page. Claude Code renews its own token when it starts; the overlay
+  watches `.credentials.json` and recovers within seconds (D34).
 
 ## Decisions
 
@@ -84,6 +90,8 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D30 | Claude Desktop's `xu` (extra-usage utilization) is not shown | Desktop records it even while extra usage is switched off (the owner's history has `xu: 100` with extra usage disabled) and the sample has no `is_enabled`, so a row would mislead. |
 | D31 | Log file `claude-usage.log` in `app.getPath('logs')` (after `app.setAppLogsPath()`: `userData/logs` on Windows/Linux, `~/Library/Logs/Claude Usage` on macOS), 512 KB + one rotated file; logs the HTTP status of every request, status/source changes (not identical polls) and errors; every line goes through `redact()` (Bearer, `sk-ant-…`, cookie headers, secret `name=value`, JSON token fields, JWTs, e-mails; UUIDs cut to 8 chars) | Makes problems diagnosable while staying safe to share; ~25 days of history at the default interval. |
 | D32 | Desktop org preference: `oauthAccount.organizationUuid` from Claude Code's `.claude.json` (in `CLAUDE_CONFIG_DIR` or home), read only when the history has several orgs | Non-secret config; picks the same account's samples when someone is in a personal and a team org. |
+| D33 | Compact pill = session ring (always) + every weekly limit, each of which can be hidden from menu → *Compact mode shows* (`settings.compactHidden`: meter ids, default `[]`). Replaces the Phase 1 rule "per-model weekly only when higher than all models" | The owner missed the Fable ring (37 % < 83 % all models) and asked for a choice, both on by default (2026-09-25). A *hidden* list (not a *shown* list) keeps new per-model limits visible by default. |
+| D34 | Expired / missing Claude Code sign-in → **Open Claude Code** button (user's click only). Order: VS Code with the Claude Code extension (`vscode://anthropic.claude-code/open`, also `vscode-insiders`), else a terminal with `claude` (Windows `cmd /c start … cmd /k`, macOS `open -a Terminal`, Linux first of x-terminal-emulator / gnome-terminal / konsole / xfce4-terminal / xterm), else the setup docs. No prompt is sent. The folder of `.credentials.json` is watched so a renewed token is picked up at once (not while rate-limited or offline) | Owner's idea (2026-09-25): let Claude Code renew its own token. Claude Code refreshes an expired token when a session starts in a trusted folder and coordinates refreshes between its processes with a lock (read in its code, v2.1.282), so D3 holds. `claude auth status` does not refresh (it only reads the file); running `claude -p` automatically would send real prompts and was rejected. |
 
 ## Usage API notes (observed 2026-09-24)
 
@@ -138,6 +146,10 @@ Kept for the record in case Anthropic ever offers an official way.
 - **Sign-in expiry:** if Claude Code isn't used for ~8 h its token expires and the overlay shows
   "sign-in expired" (with the last data) until Claude Code renews it — unless Claude Desktop runs:
   then Auto shows Desktop's samples (≤ 20 min old, no reset times, no weekly split, no plan name).
+  The banner's **Open Claude Code** button starts Claude Code, which renews the token itself (D34).
+  Not yet verified with a really expired token: whether a new VS Code tab renews it without a
+  message (the terminal route does, per Claude Code's code). On macOS the token lives in the
+  Keychain, so the file watch doesn't fire there and recovery takes up to 60 s.
 - **Claude Desktop source limits:** Desktop only samples while it runs, the computer isn't idle or
   locked, and a server-side flag allows it; Anthropic can change or remove the file at any time.
   macOS and Linux paths untested.
@@ -245,3 +257,30 @@ Kept for the record in case Anthropic ever offers an official way.
   identical).
 - Electron book v1.3: Phase 3 chapters (local only, D24).
 - Next: Phase 4 — `docs/phases/phase-4-ux.md`.
+
+### 2026-09-25 — Session 7: compact pill choices and refresh button
+
+- The owner asked why the installed app's compact pill had no Fable ring: the Phase 1 rule showed a
+  per-model limit only when it was higher than *All models* (real data: Fable 37 %, all 83 %).
+- New menu submenu *Compact mode shows*: *Current session (always)* plus one checkbox per weekly
+  limit in the current data, all on by default (D33). `compactMeters()` moved to the pure
+  `renderer/format.ts` with a test; `sanitizeSettings` test for `compactHidden`.
+- The compact pill got the refresh button (shared `refreshButton()` with the expanded header).
+- README: compact screenshot re-rendered, features and menu text updated. 63 tests pass;
+  screenshots reviewed. Done in the same working tree while the Phase 3 session was finishing;
+  Phase 3 was committed separately first.
+- Electron book v1.4: new section on menus built from data + a changelog entry.
+
+### 2026-09-25 — Session 8: "Open Claude Code" button
+
+- The owner asked whether Claude Code itself could renew its token so the overlay keeps working.
+  Checked Claude Code 2.1.282: `claude auth status` only reads the file; a session start refreshes
+  an expired token (trusted folder) and refreshes are lock-coordinated between processes; the VS
+  Code extension's URI `/open` opens a new Claude Code tab.
+- Built the **Open Claude Code** banner button + conditional menu item (`claude-code-launcher.ts`:
+  pure plan + PATH / extension detection; VS Code → terminal → docs) and a watch on Claude Code's
+  `.credentials.json` (`file-watch.ts`, shared with the Desktop history watch) so a renewed token
+  is used within seconds (D34). Windows new-window launch verified with a harmless command; plan
+  resolution on this machine: VS Code route. 71 tests pass; screenshots reviewed.
+- Done in the same working tree as session 7's uncommitted compact-view change.
+- Electron book v1.5: new chapter on opening other programs.
