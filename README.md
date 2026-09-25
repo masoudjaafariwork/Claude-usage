@@ -208,8 +208,9 @@ installer through the `latest.yml`, `latest-mac.yml` and `latest-linux.yml` file
    **draft** release (10–15 minutes; *Actions* tab).
 4. On GitHub → *Releases*, open the draft and check the files: `Claude-Usage-Setup-<v>.exe`,
    `Claude-Usage-<v>-Portable.exe`, two `.dmg`, the `.AppImage`, the `.deb` and **`latest.yml`,
-   `latest-mac.yml`, `latest-linux.yml`**. Edit the notes if you like, leave **Set as a
-   pre-release** unticked and keep **Set as the latest release** ticked, then **Publish release**.
+   `latest-mac.yml`, `latest-linux.yml`**. Edit the notes if you like, keep **Release label**
+   on **None** (not *Pre-release*), then **Publish release**. GitHub marks the newest normal release
+   as *Latest* by itself.
 5. Installed copies find it within 6 hours, or at once via *Check for updates*.
 
 Never delete or replace files of a published release: running copies may be downloading them, and
