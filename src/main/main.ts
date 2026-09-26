@@ -40,6 +40,7 @@ import { gatherLaunchFacts, launchClaudeCode, planClaudeCodeLaunch } from './cla
 import { accountInfo, readClaudeCodeAccount, readCredentials, type ClaudeCodeAccount } from './credentials';
 import { DesktopSource, desktopDataDirs, readDesktopHistory, watchDesktopHistory } from './desktop-source';
 import { watchFileInDirs } from './file-watch';
+import { HoverWatch } from './hover';
 import { RotatingLog, describeError } from './log';
 import { createLoginItem } from './login-item';
 import { reconcileLoginItem } from './login-item-core';
@@ -273,6 +274,25 @@ function start(): void {
   /** True while the user drags the overlay (Windows; see the 'will-move' handler). */
   let dragging = false;
 
+  // A see-through overlay turns fully opaque while the cursor is over it (D57). Windows and Linux
+  // compare physical pixels: with displays at different scale factors, the DIP bounds of a window
+  // lying across two of them don't line up with the cursor's DIP position.
+  const physical = process.platform !== 'darwin';
+  const hover = new HoverWatch({
+    cursor: () => (physical ? screen.dipToScreenPoint(screen.getCursorScreenPoint()) : screen.getCursorScreenPoint()),
+    bounds: () => (physical ? screen.dipToScreenRect(win, win.getBounds()) : win.getBounds()),
+    onChange: (hovered) => {
+      if (!win.isDestroyed()) win.webContents.send('hover:changed', hovered);
+    },
+  });
+  /** Watches only while it matters: see-through, visible, clickable (locked stays as set); never in screenshots. */
+  const updateHover = () => {
+    const { opacity, locked } = settings.get();
+    hover.setActive(!cli.screenshot && !win.isDestroyed() && win.isVisible() && !locked && opacity < 1);
+  };
+  win.on('show', updateHover);
+  win.on('hide', updateHover);
+
   const state = (): AppState => {
     const current = settings.get();
     return {
@@ -322,6 +342,7 @@ function start(): void {
     setLocked: (on) => {
       settings.update({ locked: on });
       applyLocked(win, on);
+      updateHover();
       log.info(on ? 'Locked (click-through)' : 'Unlocked');
       showOverlay();
       broadcast();
@@ -340,6 +361,8 @@ function start(): void {
     },
     setOpacity: (opacity) => {
       settings.update({ opacity });
+      hover.holdUntilLeave(); // the menu opens over the overlay: show the new value right away
+      updateHover();
       broadcast();
     },
     setTheme: (theme) => {
@@ -688,6 +711,7 @@ function start(): void {
     log.info('Quitting');
     stopWatchingDesktop();
     stopWatchingCredentials();
+    hover.setActive(false);
     service.stop();
     updater.stop();
     settings.flush();

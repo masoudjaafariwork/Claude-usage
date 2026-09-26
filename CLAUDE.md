@@ -70,6 +70,7 @@ src/
     usage-source.ts      UsageSource contract, SourceUnavailableError, ClaudeCodeSource           [pure]
     desktop-source.ts    Claude Desktop's plan-usage-history.json: read, parse, watch (no network) [pure]
     file-watch.ts        Debounced folder watch for one file name (survives atomic renames)       [pure]
+    hover.ts             Opaque on hover: polls cursor vs window bounds while see-through (D57)   [pure]
     claude-code-launcher.ts  "Open Claude Code": VS Code URI → terminal `claude` → docs (D34, D53) [pure]
     usage-service.ts     Source selection (Auto/single), polling, backoff, status, emits 'change' [pure]
     notifications-core.ts  75/90/100 % + reset notices: once per limit/threshold/window (D35)   [pure]
@@ -101,7 +102,7 @@ docs/                    PROGRESS.md, BACKLOG.md (phase index), phases/ (one pla
 
 Data flow: `UsageService` (main) asks the sources in order — Auto: Claude Code (credentials → fetch
 → parse), then Claude Desktop's history — → emits `change` → main sends `AppState` to the renderer
-(`state:changed`) and updates the tray. Each fresh `ok` snapshot first goes into the history (pace
+(`state:changed`) and updates the tray; while Opacity < 100 % it also pushes `hover:changed` (D57). Each fresh `ok` snapshot first goes into the history (pace
 forecast in `AppState.forecast`) and through the notification check. A source throws `SourceUnavailableError` to hand over to the
 next one; other errors are reported as they are (no fallback on network errors). The renderer sends back
 `usage:refresh`, `view:set-compact`, `window:resize` (content size), `menu:show`.

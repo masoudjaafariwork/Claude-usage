@@ -131,6 +131,8 @@ export interface AppState {
 export interface OverlayApi {
   getState(): Promise<AppState>;
   onState(listener: (state: AppState) => void): () => void;
+  /** The cursor entered or left a see-through overlay: it is shown fully opaque meanwhile (D57). */
+  onHover(listener: (hovered: boolean) => void): () => void;
   refresh(): void;
   setCompact(compact: boolean): void;
   /** Ask the main process to fit the window to the rendered content (CSS pixels). */

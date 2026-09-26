@@ -71,6 +71,9 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
   recent trend reaches 100 % before the reset; from a 24 h snapshot history
   (`userData/usage-history.json`), no extra requests (D39).
 - **Theme:** menu → *Theme* → System / Dark (default) / Light (D40).
+- **Opaque on hover:** with menu → *Opacity* below 100 %, the overlay fades to fully opaque while
+  the cursor is over it (0.2 s) and back 0.3 s after the cursor leaves (0.45 s). Not while locked;
+  a new Opacity value shows at once even with the cursor on the overlay (D57).
 - **Account:** which account the numbers belong to, in both views — the expanded card has a line
   under the title (initials avatar + e-mail, a team org's name below), the compact pill a small
   second line with just the e-mail under the rings. From Claude Code's `.claude.json`; Claude
@@ -151,6 +154,7 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D54 | **Before any data, the card shows the selected account** (`AppState.selectedAccount`, read from its `.claude.json`); a snapshot's own account still wins (D41). For an added folder the "sign-in expired" banner drops the Claude Desktop hint and "not signed in" says to use `/login` in the Claude Code that *Open Claude Code* starts; the compact pill shows the e-mail line under a status message too | The first real screenshot of Revaal (expired, nothing cached) showed a banner but not whose sign-in had expired. |
 | D55 | **Version 1.1.0** for Phase 6 (a minor release: new feature, nothing breaks) | Semantic Versioning, as D49. It is also the first real test of the updater (1.0.0 → 1.1.0). |
 | D56 | **"Update ready" dot.** While the update item is at the top of the menu (`UpdateMenuItem.prominent`: *Restart to update* or *Update available — open download page*), a coral dot (`--brand`) marks the way to it: top-right on the ⋯ button, on the compact pill's expand button (the pill has no ⋯), on the lock badge (locked: the menu is in the tray), on the tray icon (a corner dot with a transparent gap, drawn into the PNG like the ring), and as the menu item's icon. `AppState.updateReady`; the updater's change now broadcasts to the overlay. It stays until the update is installed (no "seen" state). Mock scenario `update-ready` | Owner's report (2026-09-26): *Check for updates* downloaded 1.1.0, but nothing on the overlay said so; the *Restart to update* line at the top of the menu was only found by looking closely. The owner designed the two dots (⋯ and the menu item); the pill, lock badge and tray icon are the other ways into the same menu. The notification (D47) is easy to miss. A persistent dot matches what it stands for: the update is still waiting. |
+| D57 | **Opaque on hover.** While Opacity is below 100 %, the overlay is visible and not locked, the main process compares the cursor with the window's bounds every 100 ms (`hover.ts`; Windows / Linux in physical pixels via `screen.dipToScreenPoint` / `dipToScreenRect`, macOS in points) and sends `hover:changed` to the page on a change. The page puts the opacity on `#app` (it outlives the re-rendered card), and `#app.hovered` is opaque: fade in 0.2 s, fade out 0.45 s after a 0.3 s pause; the transitions start one frame after the first render (`.fades`). A locked (click-through) overlay doesn't react. After an Opacity change the cursor counts as away until it leaves the overlay once. No polling at 100 %, while hidden or in screenshot runs | Owner's request (2026-09-26): read a see-through overlay without changing the setting, with a smooth change. The page can't see the cursor: on Windows the drag region (the whole card) swallows mouse events, so `:hover` and `mouseenter` never fire there (Gotchas). One cursor read per 100 ms is negligible and needs no OS-specific hooks. Physical pixels because on mixed-scale displays (the owner's 125 % + 100 %) a window lying across two displays has DIP bounds scaled by one display's factor, the cursor by the other's. Locked means "work with what's underneath"; turning opaque there would hide what the user is about to click. The menu pops up over the overlay, so without the hold a new Opacity value would only show after moving away. The pause before fading out keeps a cursor that only passes by from making it flicker. Without `.fades` a see-through overlay started opaque and faded (measured) — the page draws `#app` before the first state arrives. |
 | D49 | **Version 1.0.0** for the first release with the updater (0.2.0 → 1.0.0; no 0.3.x). The real-release updater test becomes 1.0.0 → 1.0.1. README says openly that only Windows 11 is tested; macOS and Linux builds are CI-built but never run | Owner's choice (2026-09-26): all planned phases are done. Recommended first was 0.3.0 → 0.3.1 for the test and 1.0.0 once it passed; the owner preferred 1.0.0 now. Technically the same: a broken updater in the first updater version needs one manual install either way. |
 
 ## Usage API notes (observed 2026-09-24)
@@ -249,6 +253,11 @@ Kept for the record in case Anthropic ever offers an official way.
 - `is_active` from the API is parsed but not shown (meaning unclear).
 - Opacity, size, theme, notifications and refresh interval are only adjustable from the menu (no
   settings window); the shortcut keys only in `settings.json` (`toggleShortcut`, `lockShortcut`).
+- **Opaque on hover (D57):** verified on Windows 11 only (mock run, cursor moved by a script,
+  brightness sampled every ~50 ms). On Wayland an app can't read the cursor position outside its
+  own windows, so the hover may not be seen there; macOS and Linux untested. A locked overlay stays
+  at its opacity (by design). The overlay is a rectangle for the check, so its rounded corners count
+  as "on it".
 - **Phase 4, platform caveats (only Windows 11 tested):**
   - *Notifications:* on Windows they show under the app's name only when a Start-menu shortcut
     carries the AppUserModelId (the installer creates it). In dev they worked on this machine
@@ -615,3 +624,23 @@ Kept for the record in case Anthropic ever offers an official way.
   the tray PNG reviewed; the native menu with its icon was built without errors in a mock run but
   not seen on screen. 138 tests.
 - Electron book v2.3: the dot in the auto-update chapter (menu item icons, badges drawn into PNGs).
+
+### 2026-09-26 — Session 17: opaque on hover
+
+- The owner asked for a see-through overlay (Opacity < 100 %) to turn fully opaque while the mouse
+  is over it, preferably with a smooth change.
+- `:hover` can't work on Windows (the drag region swallows mouse events), so the main process polls
+  the cursor against the window bounds while it matters — new pure `hover.ts` (`HoverWatch`,
+  4 tests) — and pushes `hover:changed`; the page fades `#app` with CSS transitions (D57). The
+  opacity moved from the card (rebuilt on every render, which cut transitions off) to `#app`, so a
+  new value from the menu fades in too.
+- Found while measuring the start: a see-through overlay appeared opaque and then faded to its
+  opacity (the page lays out `#app` before the first state arrives). Transitions now start one
+  frame after the first render (`.fades`); measured again: straight to its opacity.
+- Verified on Windows 11 in a mock run with its own `--user-data-dir` and Opacity 50 %: cursor moved
+  onto the overlay by a script, the overlay's mean brightness sampled every ~50 ms — 34.2 → 40.2
+  within ~0.3 s of entering (poll + fade), held 0.3 s after leaving, then back to 34.2 in ~0.4 s
+  through in-between values. Screenshots (`normal`, `locked`, `forecast`) unchanged; the README
+  images are unaffected (the look at rest is the same). 142 tests.
+- Electron book v2.4: a section on hover without mouse events (cursor polling, main → renderer
+  push, CSS transitions).

@@ -39,6 +39,8 @@ Windows · macOS · Linux — Electron + TypeScript.
 - **Global shortcuts**: `Ctrl+Alt+U` shows/hides the overlay, `Ctrl+Alt+Shift+U` locks/unlocks it
   (`⌘⌥U` / `⌘⌥⇧U` on macOS).
 - **Size** 90–150 % and a **Light** theme besides the default dark one (menu → *Size*, *Theme*).
+- **Opacity** 50–100 %: a see-through overlay fades to fully opaque while the mouse is over it, and
+  back when the mouse leaves.
 - Refreshes every 3 minutes (1–10 min configurable), plus right after a limit resets.
 - Two data sources: **Claude Code**'s sign-in, and the **Claude desktop app**'s own usage history
   as a fallback (no extra sign-in). Menu → *Source* picks *Auto*, *Claude Code only* or

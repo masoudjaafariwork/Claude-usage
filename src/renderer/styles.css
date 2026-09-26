@@ -98,6 +98,23 @@ body {
    screen edge (the OS won't move a window's top above the screen, D42). Hence no drop shadow. */
 #app {
   width: max-content;
+  /* Menu → Opacity (set from renderer.ts). */
+  opacity: var(--opacity, 1);
+}
+
+/* The cursor is over the overlay (main tracks it, D57). */
+#app.hovered {
+  opacity: 1;
+}
+
+/* Fades only from the second frame on (renderer.ts adds .fades), so a see-through overlay doesn't
+   start opaque. Fading back waits a moment: a cursor that only passes by doesn't make it flicker. */
+#app.fades {
+  transition: opacity 0.45s ease 0.3s;
+}
+
+#app.fades.hovered {
+  transition: opacity 0.2s ease-out;
 }
 
 /* ---- Card ---------------------------------------------------------------------------------- */
@@ -112,7 +129,6 @@ body {
   box-shadow: var(--card-shadow);
   overflow: hidden;
   -webkit-app-region: drag;
-  transition: opacity 0.2s;
 }
 
 /* Soft brand glow in the top-left corner. */

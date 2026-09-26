@@ -542,7 +542,9 @@ function render(): void {
   const now = new Date();
   pendingAnimations = [];
   const card = state.view.compact ? compactView(state) : expandedView(state, now);
-  card.style.opacity = String(state.view.opacity);
+  // On #app, which outlives the card, so the fade to a new value (or on hover) isn't cut off.
+  root.style.setProperty('--opacity', String(state.view.opacity));
+  if (!root.classList.contains('fades')) requestAnimationFrame(() => root.classList.add('fades'));
   root.replaceChildren(card);
   fitWindow();
 
@@ -591,6 +593,9 @@ api.onState((next) => {
   state = next;
   render();
 });
+
+// Fully opaque while the cursor is over a see-through overlay; main tracks the cursor (D57).
+api.onHover((hovered) => root.classList.toggle('hovered', hovered));
 
 void api.getState().then((initial) => {
   if (initial && !state) {
