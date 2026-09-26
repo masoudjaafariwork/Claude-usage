@@ -49,7 +49,7 @@ The book is local only: do **not** publish or republish it to claude.ai (owner's
 | `npm run make-icon` | Regenerate `build/icon.png` (committed) |
 
 Mock scenarios: `normal`, `warning`, `critical`, `expired`, `no-credentials`, `rate-limited`,
-`offline`, `loading`, `via-desktop`, `desktop-unavailable`, `forecast`, `locked`, `other-account` (defined in `src/main/mock.ts`).
+`offline`, `loading`, `via-desktop`, `desktop-unavailable`, `forecast`, `locked`, `other-account`, `update-ready` (defined in `src/main/mock.ts`).
 Extra flags: `--compact`, `--expanded`, `--theme=<system|dark|light>`, `--scale=<0.9|1|1.15|1.3|1.5>`,
 `--screenshot=<file>` (render, save PNG, quit). Mock runs use a separate userData dir and keep
 notification records and usage history in memory; screenshot runs never notify or grab shortcuts.

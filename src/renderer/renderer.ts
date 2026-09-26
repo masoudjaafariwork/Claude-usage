@@ -148,10 +148,24 @@ function bar(meter: { id: string; percent: number }): HTMLElement {
 
 /** Shown instead of the buttons while locked: clicks go through the overlay, so buttons would be useless. */
 function lockBadge(st: AppState): HTMLElement {
-  const badge = h('span', 'lock-badge', icon('lock'));
+  const badge = updateDot(st, h('span', 'lock-badge', icon('lock')));
   const unlock = st.view.unlockShortcut ? `the tray icon or ${st.view.unlockShortcut}` : 'the tray icon';
-  badge.title = `Locked: clicks go through the overlay. Unlock from ${unlock}.`;
+  badge.title = `Locked: clicks go through the overlay. Unlock from ${unlock}.${st.updateReady ? ' An update is ready (tray menu).' : ''}`;
   return badge;
+}
+
+/**
+ * A coral dot on the way to the menu while an update waits there (D56): the ⋯ button, the compact
+ * pill's expand button (the pill has no ⋯) and the lock badge. The menu item has the same dot.
+ */
+function updateDot<T extends HTMLElement>(st: AppState, el: T, label?: string): T {
+  if (!st.updateReady) return el;
+  el.classList.add('has-dot');
+  if (label) {
+    el.title = label;
+    el.setAttribute('aria-label', label);
+  }
+  return el;
 }
 
 /** "At this pace: limit in ~1h 20m" when the forecast says 100 % comes before the reset. */
@@ -249,7 +263,7 @@ function header(st: AppState): HTMLElement {
           'actions',
           refreshButton(st),
           button('collapse', 'Compact view', () => api.setCompact(true)),
-          button('menu', 'Menu', () => api.showMenu()),
+          updateDot(st, button('menu', 'Menu', () => api.showMenu()), 'Menu — an update is ready'),
         ),
   );
 }
@@ -505,7 +519,14 @@ function compactView(st: AppState): HTMLElement {
       'div',
       'tail',
       h('span', dotClass(st)),
-      st.view.locked ? lockBadge(st) : h('div', 'actions', refreshButton(st), button('expand', 'Expand', () => api.setCompact(false))),
+      st.view.locked
+        ? lockBadge(st)
+        : h(
+            'div',
+            'actions',
+            refreshButton(st),
+            updateDot(st, button('expand', 'Expand', () => api.setCompact(false)), 'Expand — an update is ready (menu)'),
+          ),
     ),
   );
   const account = compactAccountLine(st);

@@ -52,7 +52,7 @@ import { registerShortcuts, unregisterShortcuts } from './shortcuts';
 import { shortcutLabel, type ShortcutsStatus } from './shortcuts-core';
 import { loadSnapshot, saveSnapshot } from './snapshot-cache';
 import { TrayController } from './tray';
-import { updateMode } from './update-core';
+import { updateMode, type UpdateMenuItem } from './update-core';
 import { Updater } from './updater';
 import { fetchUsageJson } from './usage-api';
 import { UsageService } from './usage-service';
@@ -170,6 +170,8 @@ function start(): void {
   let sources: Record<SourceId, UsageSource>;
   let initialSnapshot: UsageSnapshot | null;
   let initialHistory: HistoryPoint[] = [];
+  /** Mock runs: pretend an update is ready (`update-ready` scenario), so the dot can be screenshotted. */
+  let mockUpdate: UpdateMenuItem | null = null;
   if (cli.mock) {
     const mock = createMockSource(cli.mock);
     sources = mock.sources;
@@ -183,6 +185,7 @@ function start(): void {
       claudeCodeDir: mock.folder?.dir ?? null,
     });
     if (mock.folder) accounts.set(mock.folder.dir, mock.folder.account);
+    if (mock.updateReady) mockUpdate = { label: 'Restart to update to v9.9.9', enabled: true, action: null, prominent: true };
   } else {
     sources = {
       'claude-code': new ClaudeCodeSource({
@@ -240,7 +243,7 @@ function start(): void {
     }),
     currentVersion: app.getVersion(),
     log: log.write,
-    onChange: () => updateTray(),
+    onChange: () => broadcast(), // the overlay shows a dot while an update waits (D56)
     notify: (notice) => notifier.show(notice, notice.opensDownloadPage ? () => updater.openDownloadPage() : undefined),
     openUrl: (url) => void shell.openExternal(url),
     beforeInstall: () => settings.flush(),
@@ -287,6 +290,7 @@ function start(): void {
       sourceMode: current.source,
       selectedAccount: accountInfo(accounts.get(current.claudeCodeDir) ?? null),
       addedAccount: current.claudeCodeDir !== null,
+      updateReady: (mockUpdate ?? updater.menuItem).prominent,
       forecast: service.status.kind === 'ok' ? forecast : {},
     };
   };
@@ -442,7 +446,7 @@ function start(): void {
         statusKind: service.status.kind,
         shortcuts,
         notificationsSupported: notifier.supported,
-        update: updater.menuItem,
+        update: mockUpdate ?? updater.menuItem,
       },
       actions,
     );

@@ -11,6 +11,8 @@ export const SEVERITY_RGB: Record<Severity, Rgb> = {
   warning: [245, 181, 68],
   critical: [242, 85, 90],
 };
+/** Claude coral, as --brand in renderer/styles.css: the "update ready" dot. */
+export const BRAND_RGB: Rgb = [217, 119, 87];
 const TRACK_RGB: Rgb = [140, 140, 140];
 const TRACK_ALPHA = 0.55;
 
@@ -66,10 +68,59 @@ export interface RingOptions {
   severity: Severity;
   /** Draw the progress arc faded, for stale data. */
   dim?: boolean;
+  /** A coral dot in the top-right corner: an update is ready (D56). */
+  badge?: boolean;
+}
+
+/**
+ * Paints an anti-aliased filled circle over `out` (RGBA, `size` × `size`), source-over. `ring`
+ * (optional) paints a transparent gap of that width around it first, so the dot stands apart
+ * from whatever is under it.
+ */
+function paintDot(out: Uint8Array, size: number, cx: number, cy: number, radius: number, rgb: Rgb, ring = 0): void {
+  const samples = 4;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      let inDot = 0;
+      let inGap = 0;
+      for (let sy = 0; sy < samples; sy++) {
+        for (let sx = 0; sx < samples; sx++) {
+          const r = Math.hypot(x + (sx + 0.5) / samples - cx, y + (sy + 0.5) / samples - cy);
+          if (r <= radius) inDot++;
+          else if (r <= radius + ring) inGap++;
+        }
+      }
+      if (inDot === 0 && inGap === 0) continue;
+      const n = samples * samples;
+      const i = (y * size + x) * 4;
+      // The gap erases what is under it; the dot is painted over the rest.
+      const keep = 1 - (inDot + inGap) / n;
+      const under = (out[i + 3]! / 255) * keep;
+      const dot = inDot / n;
+      const alpha = dot + under;
+      if (alpha === 0) {
+        out.fill(0, i, i + 4);
+        continue;
+      }
+      for (let c = 0; c < 3; c++) out[i + c] = Math.round((rgb[c]! * dot + out[i + c]! * under) / alpha);
+      out[i + 3] = Math.round(Math.min(1, alpha) * 255);
+    }
+  }
+}
+
+/** A coral dot centred in a `size` × `size` square (menu item icon for "Restart to update"). */
+export function renderDot(size: number): Uint8Array {
+  const out = new Uint8Array(size * size * 4);
+  paintDot(out, size, size / 2, size / 2, size * 0.25, BRAND_RGB);
+  return out;
+}
+
+export function dotPng(size: number): Buffer {
+  return encodePng(size, size, renderDot(size));
 }
 
 /** Renders an anti-aliased progress ring (clockwise from 12 o'clock) as RGBA pixels. */
-export function renderRing(size: number, { percent, severity, dim = false }: RingOptions): Uint8Array {
+export function renderRing(size: number, { percent, severity, dim = false, badge = false }: RingOptions): Uint8Array {
   const out = new Uint8Array(size * size * 4);
   const center = size / 2;
   const outer = size / 2 - size * 0.05;
@@ -105,6 +156,7 @@ export function renderRing(size: number, { percent, severity, dim = false }: Rin
       out[i + 3] = Math.round(Math.min(1, alpha) * 255);
     }
   }
+  if (badge) paintDot(out, size, size * 0.78, size * 0.22, size * 0.2, BRAND_RGB, size * 0.07);
   return out;
 }
 

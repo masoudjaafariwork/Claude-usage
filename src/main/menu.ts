@@ -1,11 +1,26 @@
 // The context menu, shared by the tray icon, the overlay's ⋯ button and right-click.
-import { Menu, app, screen, type MenuItemConstructorOptions } from 'electron';
+import { Menu, app, nativeImage, screen, type MenuItemConstructorOptions, type NativeImage } from 'electron';
 import type { SourceMode, StatusKind } from '../shared/types';
 import type { AccountMenuEntry } from './claude-accounts';
 import { NOTIFY_THRESHOLDS } from './notifications-core';
 import { OPACITY_OPTIONS, REFRESH_INTERVAL_OPTIONS_SEC, SCALE_OPTIONS, type Settings, type ThemeSetting } from './settings';
 import { shortcutLabel, type ShortcutState, type ShortcutsStatus } from './shortcuts-core';
+import { dotPng } from './tray-icon';
 import type { UpdateMenuItem } from './update-core';
+
+let updateDot: NativeImage | null = null;
+
+/** The coral dot beside "Restart to update" — the same dot as on the ⋯ button and the tray icon (D56). */
+function updateDotIcon(): NativeImage {
+  if (!updateDot) {
+    updateDot = nativeImage.createEmpty();
+    for (const scaleFactor of [1, 2]) {
+      const size = 16 * scaleFactor;
+      updateDot.addRepresentation({ scaleFactor, width: size, height: size, buffer: dotPng(size) });
+    }
+  }
+  return updateDot;
+}
 
 const SOURCE_ITEMS: ReadonlyArray<{ mode: SourceMode; label: string }> = [
   { mode: 'auto', label: 'Auto — Claude Code, then Claude Desktop' },
@@ -87,6 +102,7 @@ export function buildMenu(settings: Readonly<Settings>, context: MenuContext, ac
   const updateItem: MenuItemConstructorOptions = {
     label: update.label,
     enabled: update.enabled,
+    ...(update.prominent ? { icon: updateDotIcon() } : {}),
     click: () => {
       if (update.action === 'check') actions.checkForUpdates();
       else if (update.action === 'install') actions.installUpdate();

@@ -9,7 +9,7 @@ import { inflateSync } from 'node:zlib';
 import { accountInfo, parseClaudeCodeAccount, parseCredentials } from './credentials';
 import { DEFAULT_SETTINGS, sanitizeSettings, stepScale } from './settings';
 import { loadSnapshot } from './snapshot-cache';
-import { encodePng, renderRing } from './tray-icon';
+import { BRAND_RGB, encodePng, renderDot, renderRing } from './tray-icon';
 import { parseRetryAfter } from './usage-errors';
 
 test('parseCredentials extracts the Claude Code OAuth block', () => {
@@ -197,4 +197,18 @@ test('renderRing fills the arc clockwise from 12 o’clock', () => {
   assert.ok(onTrack[0] === onTrack[1] && onTrack[3]! > 0, `expected grey track pixel, got ${onTrack}`);
   // Center is transparent.
   assert.equal(at(16, 16)[3], 0);
+});
+
+test('the update dot (D56): coral in the menu icon, and in the tray ring’s corner with a gap around it', () => {
+  const size = 32;
+  const pixel = (px: Uint8Array, x: number, y: number) => [...px.subarray((y * size + x) * 4, (y * size + x) * 4 + 4)];
+  const dot = renderDot(size);
+  assert.deepEqual(pixel(dot, 16, 16), [...BRAND_RGB, 255], 'centre: coral');
+  assert.equal(pixel(dot, 2, 2)[3], 0, 'corner: transparent');
+
+  const plain = renderRing(size, { percent: 100, severity: 'normal' });
+  const badged = renderRing(size, { percent: 100, severity: 'normal', badge: true });
+  assert.deepEqual(pixel(badged, 25, 7), [...BRAND_RGB, 255], 'the dot sits top-right');
+  assert.ok(pixel(plain, 17, 5)[3]! > 200 && pixel(badged, 17, 5)[3]! < 64, 'the ring is cut away around it');
+  assert.deepEqual(pixel(badged, 3, 16), pixel(plain, 3, 16), 'the rest of the ring is untouched');
 });

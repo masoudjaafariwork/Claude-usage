@@ -186,13 +186,14 @@ The app looks for a new version on the
 starts and then every 6 hours (a small file from github.com; nothing is sent about you).
 
 - **Windows installer and Linux AppImage:** the new version downloads in the background and is
-  checked against its SHA-512 hash. When it is ready you get one notification and the menu starts
-  with **Restart to update to v…**. Click it to update now, or just keep going — it installs
+  checked against its SHA-512 hash. When it is ready you get one notification, a small coral dot
+  appears on the ⋯ button (and on the tray icon), and the menu starts with **Restart to update to
+  v…**, marked with the same dot. Click it to update now, or just keep going — it installs
   quietly the next time you quit. Settings and position stay as they are.
 - **macOS, the Windows portable exe and the deb package:** these can't replace themselves (the
   macOS app isn't signed with an Apple Developer ID; the portable exe isn't installed; a deb belongs
-  to your package manager). You get a notification, and the menu starts with **Update available
-  (v…) — open download page**.
+  to your package manager). You get a notification, the same coral dot appears, and the menu starts
+  with **Update available (v…) — open download page**.
 - **Check for updates** (menu, next to *About*) checks right away and tells you the outcome in a
   notification: up to date, downloading, or why the check failed.
 - Versions before 1.0.0 have no updater: install 1.0.0 once by hand (it replaces 0.2.0 and keeps
@@ -224,7 +225,7 @@ npm start
 | --- | --- |
 | `npm start` | Build and run with real data |
 | `npm run start:mock` | Run with fake data |
-| `node scripts/start.mjs --mock=critical` | Other scenarios: `normal`, `warning`, `critical`, `expired`, `no-credentials`, `rate-limited`, `offline`, `loading`, `via-desktop`, `desktop-unavailable`, `forecast`, `locked`, `other-account`; add `--theme=light` or `--scale=1.5` to try those |
+| `node scripts/start.mjs --mock=critical` | Other scenarios: `normal`, `warning`, `critical`, `expired`, `no-credentials`, `rate-limited`, `offline`, `loading`, `via-desktop`, `desktop-unavailable`, `forecast`, `locked`, `other-account`, `update-ready`; add `--theme=light` or `--scale=1.5` to try those |
 | `npm run screenshot` | Render every mock scenario (plus light-theme and size variants) to `screenshots/` |
 | `npm run screenshot:readme` | Re-render the screenshots at the top of this README (`docs/images/`) |
 | `npm run check` | Type-check and run unit tests |

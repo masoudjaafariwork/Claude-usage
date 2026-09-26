@@ -16,7 +16,7 @@ export class TrayController {
   private iconKey = '';
 
   constructor(onClick: () => void) {
-    this.tray = new Tray(this.icon(null, 'normal', false));
+    this.tray = new Tray(this.icon(null, 'normal', false, false));
     this.tray.setToolTip('Claude Usage');
     // On macOS any click opens the context menu; elsewhere a left click toggles the overlay.
     if (process.platform !== 'darwin') this.tray.on('click', onClick);
@@ -25,10 +25,10 @@ export class TrayController {
   update(state: AppState, menu: Menu): void {
     const top = state.snapshot ? mostConstrained(state.snapshot.meters) : null;
     const stale = state.status.kind !== 'ok' && state.status.kind !== 'loading';
-    const key = `${top?.percent ?? 'none'}|${top?.severity ?? ''}|${stale}`;
+    const key = `${top?.percent ?? 'none'}|${top?.severity ?? ''}|${stale}|${state.updateReady}`;
     if (key !== this.iconKey) {
       this.iconKey = key;
-      this.tray.setImage(this.icon(top?.percent ?? null, top?.severity ?? 'normal', stale));
+      this.tray.setImage(this.icon(top?.percent ?? null, top?.severity ?? 'normal', stale, state.updateReady));
     }
     if (process.platform === 'darwin') this.tray.setTitle(top ? `${Math.round(top.percent)}%` : '');
     this.tray.setToolTip(this.tooltip(state));
@@ -39,11 +39,12 @@ export class TrayController {
     this.tray.destroy();
   }
 
-  private icon(percent: number | null, severity: Severity, dim: boolean): NativeImage {
+  /** The ring; with `badge`, a coral dot in the corner says an update is ready (D56). */
+  private icon(percent: number | null, severity: Severity, dim: boolean, badge: boolean): NativeImage {
     const image = nativeImage.createEmpty();
     for (const scaleFactor of [1, 2]) {
       const size = 16 * scaleFactor;
-      image.addRepresentation({ scaleFactor, width: size, height: size, buffer: ringPng(size, { percent, severity, dim }) });
+      image.addRepresentation({ scaleFactor, width: size, height: size, buffer: ringPng(size, { percent, severity, dim, badge }) });
     }
     return image;
   }

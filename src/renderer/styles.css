@@ -231,6 +231,26 @@ body {
   height: 13px;
 }
 
+/* An update waits in the menu (D56): a coral dot in the top-right corner of the way there. */
+.icon-btn.has-dot,
+.lock-badge.has-dot {
+  position: relative;
+}
+
+.icon-btn.has-dot::after,
+.lock-badge.has-dot::after {
+  content: '';
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--brand);
+  box-shadow: 0 0 0 1.5px var(--card-top);
+  pointer-events: none;
+}
+
 /* ---- Account ------------------------------------------------------------------------------- */
 
 /* Whose usage it is: a line under the title, the avatar centred under the logo. */

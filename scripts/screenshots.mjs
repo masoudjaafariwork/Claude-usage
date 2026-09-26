@@ -23,6 +23,7 @@ const ALL = [
   'forecast',
   'locked',
   'other-account',
+  'update-ready',
 ];
 
 /** Extra renders: file-name suffix → scenario + flags. */

@@ -116,6 +116,11 @@ export interface AppState {
   /** True when an added config folder is picked instead of the default account (Phase 6). */
   addedAccount: boolean;
   /**
+   * An update waits for the user (its menu item is at the top of the menu, D47): the ⋯ button, the
+   * compact pill's expand button, the lock badge and the tray icon show a coral dot (D56).
+   */
+  updateReady: boolean;
+  /**
    * "At this pace" forecast: meter id → ISO time when the limit reaches 100 %, only for limits
    * that would hit it before their reset (and only while the data is fresh).
    */

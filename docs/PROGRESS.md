@@ -10,7 +10,7 @@ Living record of where the project stands. Update it at the end of every session
 | [2 — Packaging, app icon, launch at login](phases/phase-2-packaging.md) | ✅ Done (2026-09-24) |
 | [3 — Fallback data source (Claude Desktop), source selection & diagnostics](phases/phase-3-fallback-source.md) | ✅ Done (2026-09-25) — claude.ai sign-in dropped (D28) |
 | [4 — UX: notifications, click-through, shortcut, size, pace forecast, theme](phases/phase-4-ux.md) | ✅ Done (2026-09-26) |
-| [5 — App auto-update](phases/phase-5-auto-update.md) | ✅ Done (2026-09-26) — first test with real releases (1.0.0 → 1.1.0) pending, by the owner |
+| [5 — App auto-update](phases/phase-5-auto-update.md) | ✅ Done (2026-09-26) — real release test: 1.0.0 found and downloaded 1.1.0 (owner, *Check for updates*) |
 | [6 — Several Claude Code accounts (config folders) with a switcher](phases/phase-6-accounts.md) | ✅ Done (2026-09-26) — released as 1.1.0 |
 
 Each phase has its own plan file in [`phases/`](phases/) (scope, notes, acceptance criteria,
@@ -80,7 +80,9 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
   on quit or via menu → *Restart to update to vX* (top of the menu, one notification when ready);
   macOS, the portable exe and the deb only notify and open the download page. Menu → *Check for
   updates* reports the outcome in a notification. Releases need `latest*.yml` (CI attaches them) and
-  must be published as normal releases, not pre-releases (D45–D48).
+  must be published as normal releases, not pre-releases (D45–D48). While an update waits, a coral
+  dot marks the ⋯ button (the compact pill's expand button, the lock badge), the tray icon and the
+  menu item itself (D56).
 - **Several Claude Code accounts (Phase 6):** menu → *Claude Code account* lists the default account
   and added config folders (one `CLAUDE_CONFIG_DIR` per account, e.g. one VS Code profile each) as
   "e-mail — folder"; *Add folder…* / *Remove folder*. One account is shown at a time, each with its
@@ -148,6 +150,7 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D53 | ***Open Claude Code* for an added folder** runs `claude` in a terminal with `CLAUDE_CONFIG_DIR` set (Windows / Linux: in the spawn environment; macOS: a `.command` script in the temp folder, because Terminal doesn't inherit it); the VS Code URI is skipped for it. `claude` = the command-line tool, else the binary bundled in the newest Claude Code extension (`~/.vscode*/extensions/anthropic.claude-code-*/resources/native-binary/claude[.exe]`) | `vscode://anthropic.claude-code/open` opens the default VS Code profile, i.e. the default account — it would renew the wrong token. A terminal with the folder set is what the account's own VS Code does. The bundled binary covers extension-only users. |
 | D54 | **Before any data, the card shows the selected account** (`AppState.selectedAccount`, read from its `.claude.json`); a snapshot's own account still wins (D41). For an added folder the "sign-in expired" banner drops the Claude Desktop hint and "not signed in" says to use `/login` in the Claude Code that *Open Claude Code* starts; the compact pill shows the e-mail line under a status message too | The first real screenshot of Revaal (expired, nothing cached) showed a banner but not whose sign-in had expired. |
 | D55 | **Version 1.1.0** for Phase 6 (a minor release: new feature, nothing breaks) | Semantic Versioning, as D49. It is also the first real test of the updater (1.0.0 → 1.1.0). |
+| D56 | **"Update ready" dot.** While the update item is at the top of the menu (`UpdateMenuItem.prominent`: *Restart to update* or *Update available — open download page*), a coral dot (`--brand`) marks the way to it: top-right on the ⋯ button, on the compact pill's expand button (the pill has no ⋯), on the lock badge (locked: the menu is in the tray), on the tray icon (a corner dot with a transparent gap, drawn into the PNG like the ring), and as the menu item's icon. `AppState.updateReady`; the updater's change now broadcasts to the overlay. It stays until the update is installed (no "seen" state). Mock scenario `update-ready` | Owner's report (2026-09-26): *Check for updates* downloaded 1.1.0, but nothing on the overlay said so; the *Restart to update* line at the top of the menu was only found by looking closely. The owner designed the two dots (⋯ and the menu item); the pill, lock badge and tray icon are the other ways into the same menu. The notification (D47) is easy to miss. A persistent dot matches what it stands for: the update is still waiting. |
 | D49 | **Version 1.0.0** for the first release with the updater (0.2.0 → 1.0.0; no 0.3.x). The real-release updater test becomes 1.0.0 → 1.0.1. README says openly that only Windows 11 is tested; macOS and Linux builds are CI-built but never run | Owner's choice (2026-09-26): all planned phases are done. Recommended first was 0.3.0 → 0.3.1 for the test and 1.0.0 once it passed; the owner preferred 1.0.0 now. Technically the same: a broken updater in the first updater version needs one manual install either way. |
 
 ## Usage API notes (observed 2026-09-24)
@@ -310,6 +313,9 @@ Kept for the record in case Anthropic ever offers an official way.
     (AppImage swap, deb notify) untested.
   - 0.2.0 and older have no updater: 1.0.0 has to be installed by hand once. v0.2.0 on GitHub is a
     pre-release without `latest.yml` — invisible to the updater, harmless.
+  - The dot beside the menu item is a `MenuItem.icon` (16 px PNG, 1× and 2×): the menu built
+    without errors in a mock run, but it wasn't seen in a real popup here — the owner checks it.
+    macOS and Linux menus/tray with the dot untested.
   - A Windows shutdown may end the app without a normal quit, so a downloaded update can wait until
     the user quits or clicks *Restart to update* (the "ready" notification says so). Installing on
     quit doesn't start the app again; *Restart to update* does.
@@ -591,6 +597,21 @@ Kept for the record in case Anthropic ever offers an official way.
   passed; job logs need admin rights, so not read here; all tests pass locally, also with
   `process.platform` faked as `darwin`). Likely cause: the `watchDesktopHistory` test waited a fixed
   400 ms for an `fs.watch` event, and macOS (FSEvents) reports late or in batches — it now waits
-  for the call (up to 5 s) with a 300 ms debounce. The owner re-runs the failed job.
+  for the call (up to 5 s) with a 300 ms debounce. The owner re-ran the failed job; it passed on the
+  third attempt (a flaky test, not a real failure), and 1.1.0 was published.
 - Electron book v2.2: a chapter on several accounts (single-instance `second-instance` argv,
   per-account state, the generation guard).
+
+### 2026-09-26 — Session 16 (continued): release 1.1.0, "update ready" dot
+
+- The first `v1.1.0` run failed on macOS (see above); re-runs passed on the third attempt. The
+  `watchDesktopHistory` test now waits for the event (not committed with 1.1.0).
+- The owner wrote the release notes from a draft given here and published 1.1.0; the installed
+  1.0.0 found and downloaded it through *Check for updates* — the first real updater run.
+- The owner then asked for a clearer signal: a coral dot on the ⋯ button and beside *Restart to
+  update*. Built both, plus the compact pill's expand button, the lock badge and the tray icon
+  (D56): `renderDot` / `badge` in `tray-icon.ts` (a source-over dot with a transparent gap, 1 test),
+  `.has-dot` in the renderer, `AppState.updateReady`, mock scenario `update-ready`. Screenshots and
+  the tray PNG reviewed; the native menu with its icon was built without errors in a mock run but
+  not seen on screen. 138 tests.
+- Electron book v2.3: the dot in the auto-update chapter (menu item icons, badges drawn into PNGs).

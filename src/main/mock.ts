@@ -23,6 +23,7 @@ export const MOCK_SCENARIOS = [
   'forecast',
   'locked',
   'other-account',
+  'update-ready',
 ] as const;
 export type MockScenario = (typeof MOCK_SCENARIOS)[number];
 
@@ -110,6 +111,8 @@ export interface MockSetup {
   history: HistoryPoint[];
   /** An added Claude Code account folder to show instead of the default account. */
   folder: { dir: string; account: ClaudeCodeAccount } | null;
+  /** Pretend a downloaded update waits for a restart (the coral dots, D56). */
+  updateReady: boolean;
 }
 
 /**
@@ -172,6 +175,7 @@ export function createMockSource(scenario: MockScenario): MockSetup {
       locked?: boolean;
       history?: HistoryPoint[];
       folder?: MockSetup['folder'];
+      updateReady?: boolean;
     } = {},
   ): MockSetup => ({
     sources: {
@@ -183,6 +187,7 @@ export function createMockSource(scenario: MockScenario): MockSetup {
     locked: options.locked ?? false,
     history: options.history ?? [],
     folder: options.folder ?? null,
+    updateReady: options.updateReady ?? false,
   });
   const withLevels = (levels: Levels, account = MOCK_ACCOUNT) =>
     claudeCode(() => delay(credentials, 0), () => delay(mockRawUsage(Date.now(), levels)), account);
@@ -233,5 +238,7 @@ export function createMockSource(scenario: MockScenario): MockSetup {
         },
         { folder: MOCK_FOLDER },
       );
+    case 'update-ready':
+      return setup({ 'claude-code': withLevels(LEVELS.normal) }, { updateReady: true });
   }
 }

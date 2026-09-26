@@ -71,8 +71,8 @@ Move an idea into a phase file (with the "Plan a new phase" prompt) when it's ti
 - Change the global shortcuts from the menu (today only in `settings.json`, D37); on Wayland,
   global shortcuts through the GlobalShortcuts portal.
 - A manual "build only" trigger (`workflow_dispatch`) for the release workflow, to test CI without a tag.
-- Updates: a menu switch to turn automatic checks off; a small "update ready" dot on the overlay's
-  ⋯ button; delta downloads (upload `*.blockmap`, drop `disableDifferentialDownload`); real macOS
+- Updates: a menu switch to turn automatic checks off (the "update ready" dot is done, D56); delta
+  downloads (upload `*.blockmap`, drop `disableDifferentialDownload`); real macOS
   auto-update once there is an Apple Developer ID (zip target + signing + notarization in CI);
   deb auto-update through electron-updater's `DebUpdater` (asks for the admin password).
 - Report the Electron login-item bug (paths with spaces) upstream; drop the `reg.exe` workaround
