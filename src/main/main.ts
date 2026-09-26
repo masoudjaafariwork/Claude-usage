@@ -6,6 +6,8 @@
 //   --screenshot=<file>    render, save a PNG of the overlay to <file>, then quit
 //   --compact / --expanded override the view mode for this run
 //   --theme=<system|dark|light>, --scale=<0.9|1|1.15|1.3|1.5> override theme and size (screenshots)
+//   --keep-occlusion       Windows: leave Chromium's window occlusion tracker on (to test the
+//                          blank-overlay watchdog, D60)
 // User option:
 //   --claude-config-dir=<folder|default>  show that Claude Code account (config folder); a running
 //                          copy switches to it (claude-accounts.ts)
@@ -41,6 +43,7 @@ import { accountInfo, readClaudeCodeAccount, readCredentials, type ClaudeCodeAcc
 import { DesktopSource, desktopDataDirs, readDesktopHistory, watchDesktopHistory } from './desktop-source';
 import { watchFileInDirs } from './file-watch';
 import { HoverWatch } from './hover';
+import { AttemptBudget, describeProcessGone, isCleanExit, relaunchOptions } from './recovery-core';
 import { RotatingLog, describeError } from './log';
 import { createLoginItem } from './login-item';
 import { reconcileLoginItem } from './login-item-core';
@@ -75,12 +78,14 @@ interface CliOptions {
   compact: boolean | null;
   theme: ThemeSetting | null;
   scale: number | null;
+  keepOcclusion: boolean;
 }
 
 function parseArgs(argv: string[]): CliOptions {
-  const options: CliOptions = { mock: null, screenshot: null, compact: null, theme: null, scale: null };
+  const options: CliOptions = { mock: null, screenshot: null, compact: null, theme: null, scale: null, keepOcclusion: false };
   for (const arg of argv) {
     if (arg === '--mock') options.mock = 'normal';
+    else if (arg === '--keep-occlusion') options.keepOcclusion = true;
     else if (arg.startsWith('--mock=')) {
       const scenario = arg.slice('--mock='.length);
       if (isMockScenario(scenario)) options.mock = scenario;
@@ -106,6 +111,14 @@ const APP_ID = 'com.masoudjaafari.claude-usage';
 
 // Mock runs get their own settings/cache so they never touch real data (and can run side by side).
 if (cli.mock) app.setPath('userData', join(app.getPath('userData'), 'mock-data'));
+
+// Windows: Chromium's native window occlusion tracker decides when a window is fully covered — by
+// another window, a full-screen capture overlay, the lock screen, a switched-off display — and then
+// hides the page and stops drawing it. When the "uncovered" step goes missing (seen twice after the
+// Snipping Tool's Win+Shift+S overlay), the overlay stays invisible although the window is shown,
+// and nothing but a restart brings it back. An always-on-top overlay gains nothing from the
+// tracker, so it is switched off (D60). Must be set before the app is ready.
+if (process.platform === 'win32' && !cli.keepOcclusion) app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -263,16 +276,21 @@ function start(): void {
     lock: { accelerator: settings.get().lockShortcut, registered: false },
   };
 
-  const { win, restoredPosition } = createOverlayWindow(settings.get());
-  // Chromium remembers a zoom level per page (userData/Preferences) and prefers it to
-  // webPreferences.zoomFactor, so apply the Size setting again as soon as the page is committed.
-  win.webContents.on('did-navigate', () => win.webContents.setZoomFactor(settings.get().scale));
+  // The overlay window. `let`: it is rebuilt in place after the GPU process dies and from menu →
+  // Reload overlay (recreateWindow below); every closure here reads the current one.
+  let { win, restoredPosition } = createOverlayWindow(settings.get());
   let quitting = false;
+  /** False until the renderer's first size report has fitted (and shown) the current window. */
   let shown = false;
+  /** Whether that first fit shows the window: at start always; a rebuilt window only if the old one was visible. */
+  let showWhenFitted = true;
   /** Last content size reported by the renderer, in CSS pixels (the window needs it × zoom factor). */
   let contentSize: { width: number; height: number } | null = null;
   /** True while the user drags the overlay (Windows; see the 'will-move' handler). */
   let dragging = false;
+  // Crash loops: the page is reloaded / the window rebuilt at most 3 times in 10 minutes.
+  const reloadBudget = new AttemptBudget(3, 10 * 60_000);
+  const rebuildBudget = new AttemptBudget(3, 10 * 60_000);
 
   // A see-through overlay turns fully opaque while the cursor is over it (D57). Windows and Linux
   // compare physical pixels: with displays at different scale factors, the DIP bounds of a window
@@ -290,8 +308,6 @@ function start(): void {
     const { opacity, locked } = settings.get();
     hover.setActive(!cli.screenshot && !win.isDestroyed() && win.isVisible() && !locked && opacity < 1);
   };
-  win.on('show', updateHover);
-  win.on('hide', updateHover);
 
   const state = (): AppState => {
     const current = settings.get();
@@ -318,11 +334,23 @@ function start(): void {
   const showOverlay = () => {
     if (!win.isVisible()) actions.toggleWindow();
   };
+  /** Shows the window and makes sure it can be seen: on a display, back on top, repainted. */
+  function showWindow(): void {
+    ensureOnScreen(win);
+    win.showInactive();
+    applyAlwaysOnTop(win, settings.get().alwaysOnTop); // a fresh HWND_TOPMOST: above windows that came later
+    win.webContents.invalidate();
+    log.info('Overlay shown');
+  }
 
   const actions: MenuActions = {
     toggleWindow: () => {
-      if (win.isVisible()) win.hide();
-      else win.showInactive();
+      if (win.isVisible()) {
+        win.hide();
+        log.info('Overlay hidden');
+      } else {
+        showWindow();
+      }
       updateTray();
     },
     refresh: () => service.refreshNow(),
@@ -383,6 +411,10 @@ function start(): void {
     resetPosition: () => {
       resetPosition(win);
       showOverlay();
+    },
+    restart: () => {
+      log.info('Restart from the menu');
+      relaunchApp();
     },
     setLaunchAtLogin: (on) => {
       let actual = on;
@@ -607,6 +639,9 @@ function start(): void {
   ipcMain.on('claude-code:open', (event) => {
     if (fromOverlay(event)) actions.openClaudeCode();
   });
+  ipcMain.on('page:visibility', (event, hidden: unknown) => {
+    if (fromOverlay(event) && typeof hidden === 'boolean') onPageVisibility(hidden);
+  });
   ipcMain.on('window:resize', (event, width: unknown, height: unknown) => {
     if (!fromOverlay(event) || typeof width !== 'number' || typeof height !== 'number') return;
     contentSize = { width, height };
@@ -623,79 +658,200 @@ function start(): void {
     fitToContent(win, contentSize.width * scale, contentSize.height * scale, keepNearestEdge);
   }
 
-  // Ctrl/Cmd + plus / minus / 0 and Ctrl + mouse wheel step through the Size options, so the
-  // window always fits (plain page zoom would leave it cropped or with empty space).
-  win.webContents.on('before-input-event', (event, input) => {
-    const primary = process.platform === 'darwin' ? input.meta : input.control; // not Win+plus (Magnifier)
-    if (input.type !== 'keyDown' || !primary || input.alt) return;
-    const step = input.key === '+' || input.key === '=' ? 1 : input.key === '-' ? -1 : input.key === '0' ? 0 : null;
-    if (step === null) return;
-    event.preventDefault();
-    actions.setScale(step === 0 ? 1 : stepScale(settings.get().scale, step));
-  });
-  win.webContents.on('zoom-changed', (_event, direction) => {
-    actions.setScale(stepScale(settings.get().scale, direction === 'in' ? 1 : -1));
-  });
-
   function showFirstTime(): void {
     shown = true;
-    win.showInactive();
+    if (showWhenFitted) win.showInactive();
     updateTray();
     if (cli.screenshot) void captureAndQuit(win, cli.screenshot);
   }
-  // Fallback in case the renderer never reports a size.
-  setTimeout(() => {
-    if (!shown) showFirstTime();
-  }, 2500);
 
-  // No resizing while the user drags the overlay. Crossing onto a display with another scale factor
-  // makes the renderer report a slightly different size mid-drag, and a setBounds then made the
-  // overlay jump back to where it crossed once it was dropped (D44). Fit after the drop instead.
-  // Windows sends 'will-move' throughout the drag and 'moved' once at its end; on macOS 'moved' is an
-  // alias of 'move', so there the flag only lasts one step; Linux sends neither.
-  win.on('will-move', () => {
-    dragging = true;
-  });
-  win.on('moved', () => {
-    dragging = false;
-    fit(true);
-  });
-
+  let firstShowTimer: NodeJS.Timeout | null = null;
   let moveTimer: NodeJS.Timeout | null = null;
-  win.on('move', () => {
-    if (moveTimer) clearTimeout(moveTimer);
-    moveTimer = setTimeout(() => {
-      const [x, y] = win.getPosition();
-      if (x !== undefined && y !== undefined) settings.update({ position: { x, y } });
-    }, 400);
-  });
 
-  // Right-clicking the drag area on Windows opens the native system menu; show ours instead.
-  win.on('system-context-menu', (event) => {
-    event.preventDefault();
-    menu().popup({ window: win });
-  });
+  /** Wires up the current window; called again for a rebuilt one (recreateWindow). */
+  function attachWindowHandlers(): void {
+    const target = win; // events of a window that was replaced meanwhile are ignored
 
-  // Alt+F4 & co. hide the overlay instead of leaving a window-less tray app.
-  win.on('close', (event) => {
-    if (quitting) return;
-    event.preventDefault();
-    win.hide();
+    // Chromium remembers a zoom level per page (userData/Preferences) and prefers it to
+    // webPreferences.zoomFactor, so apply the Size setting again as soon as the page is committed.
+    win.webContents.on('did-navigate', () => win.webContents.setZoomFactor(settings.get().scale));
+    win.on('show', updateHover);
+    win.on('hide', updateHover);
+
+    // Ctrl/Cmd + plus / minus / 0 and Ctrl + mouse wheel step through the Size options, so the
+    // window always fits (plain page zoom would leave it cropped or with empty space).
+    win.webContents.on('before-input-event', (event, input) => {
+      const primary = process.platform === 'darwin' ? input.meta : input.control; // not Win+plus (Magnifier)
+      if (input.type !== 'keyDown' || !primary || input.alt) return;
+      const step = input.key === '+' || input.key === '=' ? 1 : input.key === '-' ? -1 : input.key === '0' ? 0 : null;
+      if (step === null) return;
+      event.preventDefault();
+      actions.setScale(step === 0 ? 1 : stepScale(settings.get().scale, step));
+    });
+    win.webContents.on('zoom-changed', (_event, direction) => {
+      actions.setScale(stepScale(settings.get().scale, direction === 'in' ? 1 : -1));
+    });
+
+    // Fallback in case the renderer never reports a size.
+    if (firstShowTimer) clearTimeout(firstShowTimer);
+    firstShowTimer = setTimeout(() => {
+      if (!shown && win === target) showFirstTime();
+    }, 2500);
+
+    // No resizing while the user drags the overlay. Crossing onto a display with another scale factor
+    // makes the renderer report a slightly different size mid-drag, and a setBounds then made the
+    // overlay jump back to where it crossed once it was dropped (D44). Fit after the drop instead.
+    // Windows sends 'will-move' throughout the drag and 'moved' once at its end; on macOS 'moved' is an
+    // alias of 'move', so there the flag only lasts one step; Linux sends neither.
+    win.on('will-move', () => {
+      dragging = true;
+    });
+    win.on('moved', () => {
+      dragging = false;
+      fit(true);
+    });
+    win.on('move', () => {
+      if (moveTimer) clearTimeout(moveTimer);
+      moveTimer = setTimeout(() => {
+        if (win.isDestroyed()) return;
+        const [x, y] = win.getPosition();
+        if (x !== undefined && y !== undefined) settings.update({ position: { x, y } });
+      }, 400);
+    });
+
+    // Right-clicking the drag area on Windows opens the native system menu; show ours instead.
+    win.on('system-context-menu', (event) => {
+      event.preventDefault();
+      menu().popup({ window: win });
+    });
+
+    // Alt+F4 & co. hide the overlay instead of leaving a window-less tray app.
+    win.on('close', (event) => {
+      if (quitting) return;
+      event.preventDefault();
+      win.hide();
+      log.info('Overlay hidden (window closed)');
+      updateTray();
+    });
+
+    // The page's renderer process died (crash, out of memory, killed): a transparent window then
+    // shows nothing at all, and Electron doesn't reload by itself.
+    win.webContents.on('render-process-gone', (_event, details) => {
+      if (win !== target || quitting || isCleanExit(details)) return;
+      log.error(describeProcessGone('Overlay renderer', details));
+      if (!reloadBudget.take()) {
+        log.error('The overlay page keeps crashing; not reloading it again (quit and start the app)');
+        return;
+      }
+      log.info('Reloading the overlay page');
+      win.webContents.reload();
+    });
+    win.webContents.on('unresponsive', () => log.warn('The overlay page stopped responding'));
+    win.webContents.on('responsive', () => log.info('The overlay page responds again'));
+  }
+  attachWindowHandlers();
+
+  /**
+   * Replaces the overlay window with a new one at the same place, shown if the old one was: after
+   * the GPU process died (a transparent window can stay blank afterwards; hide/show doesn't repaint
+   * it) and from menu → Reload overlay, for an overlay that is "shown" but not on the screen. For
+   * the window this is what a restart does, without restarting the app (D60).
+   */
+  function recreateWindow(reason: string): void {
+    if (quitting || cli.screenshot || win.isDestroyed()) return;
+    log.warn(`Rebuilding the overlay window: ${reason}`);
+    const old = win;
+    const bounds = old.getBounds();
+    showWhenFitted = old.isVisible();
+    hover.setActive(false);
+    old.removeAllListeners(); // destroy() skips 'close' anyway; nothing else of the old window matters now
+    old.destroy();
+    ({ win, restoredPosition } = createOverlayWindow(settings.get(), bounds));
+    shown = false;
+    contentSize = null; // the new page reports its size, then the window is fitted and shown
+    attachWindowHandlers();
     updateTray();
-  });
+  }
 
-  const onDisplaysChanged = () => {
+  // One log line per burst: a monitor change fires 'display-metrics-changed' several times in a row.
+  let displaysLogTimer: NodeJS.Timeout | null = null;
+  const onDisplaysChanged = (what: string) => () => {
+    if (displaysLogTimer) clearTimeout(displaysLogTimer);
+    displaysLogTimer = setTimeout(() => log.info(`Displays changed (${what}): ${screen.getAllDisplays().length} display(s)`), 1000);
     ensureOnScreen(win);
     updateTray();
   };
-  screen.on('display-added', onDisplaysChanged);
-  screen.on('display-removed', onDisplaysChanged);
-  screen.on('display-metrics-changed', onDisplaysChanged);
+  screen.on('display-added', onDisplaysChanged('added'));
+  screen.on('display-removed', onDisplaysChanged('removed'));
+  screen.on('display-metrics-changed', onDisplaysChanged('metrics'));
+
+  // A helper process died. Chromium starts a new GPU process itself, but a transparent window can
+  // stay blank afterwards: rebuild the overlay window. Other helpers are only logged.
+  app.on('child-process-gone', (_event, details) => {
+    if (quitting || isCleanExit(details)) return;
+    log.warn(describeProcessGone(details.type, details));
+    if (details.type !== 'GPU') return;
+    if (!rebuildBudget.take()) {
+      log.error('The GPU process keeps dying; not rebuilding the overlay window again');
+      return;
+    }
+    setTimeout(() => recreateWindow('the GPU process died'), 1000);
+  });
+
+  // --- Blank-overlay watchdog (D60, Windows only) -----------------------------------------------
+  // The page reports "hidden" although the window is shown and on top: Chromium has stopped drawing
+  // the overlay (its occlusion tracker believes the window is covered). With the tracker off this
+  // shouldn't happen; if it does, a new window gets a fresh calculation, and when that one is hidden
+  // too the state is process-wide — then the app restarts itself (at most once per 30 min). macOS
+  // hides the page of a covered window by design and shows it again reliably, so no watchdog there.
+  let blankTimer: NodeJS.Timeout | null = null;
+  let lastBlankRebuild = 0;
+  let screenLocked = false;
+  const relaunchBudget = new AttemptBudget(1, 30 * 60_000);
+  function onPageVisibility(hidden: boolean): void {
+    if (blankTimer) clearTimeout(blankTimer);
+    blankTimer = null;
+    if (!hidden || process.platform !== 'win32') return;
+    blankTimer = setTimeout(() => {
+      blankTimer = null;
+      if (quitting || cli.screenshot || win.isDestroyed() || !win.isVisible() || !settings.get().alwaysOnTop || screenLocked) return;
+      log.error('The overlay page is hidden while its window is shown: Chromium stopped drawing the overlay');
+      if (Date.now() - lastBlankRebuild < 60_000) {
+        if (!relaunchBudget.take()) {
+          log.error('Still blank after a rebuild; not restarting again within 30 min (menu → Restart Claude Usage)');
+          return;
+        }
+        log.warn('Restarting the app');
+        relaunchApp();
+        return;
+      }
+      lastBlankRebuild = Date.now();
+      recreateWindow('the page is hidden while the window is shown');
+    }, 5000);
+  }
+
+  /** Starts the app again and quits; a downloaded update is installed on the way (it restarts too). */
+  function relaunchApp(): void {
+    if (updater.menuItem.action === 'install') {
+      updater.install();
+      return;
+    }
+    app.relaunch(relaunchOptions(process.env, process.platform));
+    app.quit();
+  }
 
   // Timers are unreliable across sleep; refresh once the network is likely back.
   const refreshSoon = () => setTimeout(() => service.refreshNow(), 5000);
   powerMonitor.on('resume', refreshSoon);
   powerMonitor.on('unlock-screen', refreshSoon);
+  powerMonitor.on('lock-screen', () => {
+    screenLocked = true;
+    log.info('Screen locked');
+  });
+  powerMonitor.on('unlock-screen', () => {
+    screenLocked = false;
+    log.info('Screen unlocked');
+  });
 
   // Started again (e.g. from an account's own .bat with --claude-config-dir): switch, then show.
   app.on('second-instance', (_event, argv, workingDirectory) => {

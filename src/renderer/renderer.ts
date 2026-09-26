@@ -597,6 +597,11 @@ api.onState((next) => {
 // Fully opaque while the cursor is over a see-through overlay; main tracks the cursor (D57).
 api.onHover((hovered) => root.classList.toggle('hovered', hovered));
 
+// Main compares this with the window: a hidden page in a shown window means Chromium stopped
+// drawing the overlay (D60).
+document.addEventListener('visibilitychange', () => api.pageVisibility(document.hidden));
+api.pageVisibility(document.hidden);
+
 void api.getState().then((initial) => {
   if (initial && !state) {
     state = initial;

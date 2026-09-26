@@ -6,13 +6,9 @@ numbers as *Claude → Settings → Usage* and refreshes them automatically. Put
 
 Windows · macOS · Linux — Electron + TypeScript.
 
-<p>
-  <img src="docs/images/overlay-expanded.png" alt="Expanded overlay with a pace forecast" width="312">
-  <img src="docs/images/overlay-stale.png" alt="Overlay showing stale data with a sign-in banner" width="312">
-</p>
-<p><img src="docs/images/overlay-compact.png" alt="Compact overlay" width="336"></p>
+<p><img src="docs/images/social-preview.png" alt="Claude Usage overlay — expanded card and compact pill" width="800"></p>
 
-<sub>Screenshots use mock data.</sub>
+<sub>Screenshot uses mock data.</sub>
 
 ## Features
 
@@ -267,6 +263,10 @@ Project guide for AI-assisted development: [CLAUDE.md](CLAUDE.md). Status and de
 ## Troubleshooting
 
 - **"Not signed in"** (Auto mode): sign in to Claude Code (below) or open the Claude desktop app.
+- **The overlay vanished and nothing brings it back** (tray click, *Show overlay*, the shortcut):
+  menu → *Restart Claude Usage*. Newer versions switch off Chromium's window-occlusion tracking on
+  Windows — it hid the overlay for good after a full-screen capture overlay such as Win+Shift+S —
+  and the app restarts itself if it still happens; the log says so.
 - **"Not signed in to Claude Code"**: sign in from the Claude Code panel in VS Code, or run
   `claude` in a terminal and use `/login`. If your Claude Code uses another config folder
   (`CLAUDE_CONFIG_DIR`, e.g. set in the VS Code extension's settings or a launch script), add that

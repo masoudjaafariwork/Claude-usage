@@ -54,7 +54,8 @@ The book is local only: do **not** publish or republish it to claude.ai (owner's
 Mock scenarios: `normal`, `warning`, `critical`, `expired`, `no-credentials`, `rate-limited`,
 `offline`, `loading`, `via-desktop`, `desktop-unavailable`, `forecast`, `locked`, `other-account`, `update-ready` (defined in `src/main/mock.ts`).
 Extra flags: `--compact`, `--expanded`, `--theme=<system|dark|light>`, `--scale=<0.9|1|1.15|1.3|1.5>`,
-`--screenshot=<file>` (render, save PNG, quit). Mock runs use a separate userData dir and keep
+`--screenshot=<file>` (render, save PNG, quit), `--keep-occlusion` (Windows: leave Chromium's window
+occlusion tracker on, to test the blank-overlay watchdog, D60). Mock runs use a separate userData dir and keep
 notification records and usage history in memory; screenshot runs never notify or grab shortcuts.
 
 ## Architecture
@@ -74,6 +75,7 @@ src/
     desktop-source.ts    Claude Desktop's plan-usage-history.json: read, parse, watch (no network) [pure]
     file-watch.ts        Debounced folder watch for one file name (survives atomic renames)       [pure]
     hover.ts             Opaque on hover: polls cursor vs window bounds while see-through (D57)   [pure]
+    recovery-core.ts     Crash-loop budget, relaunch target (portable exe / AppImage), process-gone text (D60) [pure]
     claude-code-launcher.ts  "Open Claude Code": VS Code URI → terminal `claude` → docs (D34, D53) [pure]
     usage-service.ts     Source selection (Auto/single), polling, backoff, status, emits 'change' [pure]
     notifications-core.ts  75/90/100 % + reset notices: once per limit/threshold/window (D35)   [pure]
@@ -109,7 +111,8 @@ Data flow: `UsageService` (main) asks the sources in order — Auto: Claude Code
 (`state:changed`) and updates the tray; while Opacity < 100 % it also pushes `hover:changed` (D57). Each fresh `ok` snapshot first goes into the history (pace
 forecast in `AppState.forecast`) and through the notification check. A source throws `SourceUnavailableError` to hand over to the
 next one; other errors are reported as they are (no fallback on network errors). The renderer sends back
-`usage:refresh`, `view:set-compact`, `window:resize` (content size), `menu:show`.
+`usage:refresh`, `view:set-compact`, `window:resize` (content size), `menu:show`, `page:visibility`
+(blank-overlay watchdog, D60).
 One Claude Code account (config folder, `settings.claudeCodeDir`) is read at a time; switching moves
 the credentials watch, cached snapshot, pace history and notification records to that account
 (`userData/accounts/<key>/` for added folders) and discards a request still running for the old one.

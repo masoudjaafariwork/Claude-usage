@@ -157,6 +157,7 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D57 | **Opaque on hover.** While Opacity is below 100 %, the overlay is visible and not locked, the main process compares the cursor with the window's bounds every 100 ms (`hover.ts`; Windows / Linux in physical pixels via `screen.dipToScreenPoint` / `dipToScreenRect`, macOS in points) and sends `hover:changed` to the page on a change. The page puts the opacity on `#app` (it outlives the re-rendered card), and `#app.hovered` is opaque: fade in 0.2 s, fade out 0.45 s after a 0.3 s pause; the transitions start one frame after the first render (`.fades`). A locked (click-through) overlay doesn't react. After an Opacity change the cursor counts as away until it leaves the overlay once. No polling at 100 %, while hidden or in screenshot runs | Owner's request (2026-09-26): read a see-through overlay without changing the setting, with a smooth change. The page can't see the cursor: on Windows the drag region (the whole card) swallows mouse events, so `:hover` and `mouseenter` never fire there (Gotchas). One cursor read per 100 ms is negligible and needs no OS-specific hooks. Physical pixels because on mixed-scale displays (the owner's 125 % + 100 %) a window lying across two displays has DIP bounds scaled by one display's factor, the cursor by the other's. Locked means "work with what's underneath"; turning opaque there would hide what the user is about to click. The menu pops up over the overlay, so without the hold a new Opacity value would only show after moving away. The pause before fading out keeps a cursor that only passes by from making it flicker. Without `.fades` a see-through overlay started opaque and faded (measured) — the page draws `#app` before the first state arrives. |
 | D58 | **Social preview from real renders.** `npm run social-preview` (`scripts/social-preview.mjs`) renders the overlay (`forecast` scenario, card + pill, dark theme, Size 115 %, scale factor 1) and lays it out next to the name, tagline, features and platforms in a 1280×640 offscreen Electron window → `docs/images/social-preview.png` (committed, ~450 KB; GitHub's limit is 1 MB). GitHub has no API for it: the owner uploads it in the repo's *Settings → General → Social preview*, again after every re-render (CLAUDE.md → Finish) | Link cards (Reddit, X, Slack, Discord, Telegram) show this image when the repo is shared; without it GitHub shows a generic card. Rendering the real UI keeps it true to the app and lets it follow UI changes like the README images (D43). Scale factor 1 on both steps makes the PNG exactly 1280×640 and the overlay renders 1:1 on any display (the owner's 125 % + 100 %). |
 | D59 | **Name stays "Claude Usage"** (D25); findability comes from the repo's About text, topics, README and links instead. About (set by hand): *"Always-on-top desktop widget for your Claude plan usage limits — 5-hour session, weekly and per-model limits with reset countdowns, pace forecast and alerts. Windows, macOS, Linux. Reads Claude Code's existing sign-in (read-only); no claude.ai login."* Topics (20, GitHub's maximum): claude, claude-code, claude-ai, anthropic, claude-usage, usage-tracker, usage-monitor, rate-limit, overlay, widget, desktop-widget, system-tray, menu-bar, always-on-top, electron, typescript, windows, macos, linux, cross-platform | Owner's choice (2026-09-26) after weighing a rename to "Claude Usage Widget": `claude-usage-widget` is already another Windows project's repo name, "widget" also means the OS widget boards, and a product rename moves userData and installer names. Description and topics survive a repo rename, so they didn't need to wait. The field of similar tools is crowded (10+ open-source trackers, mostly single-OS tray / menu-bar apps); what sets this one apart — floating overlay, one app for three OSes, several accounts, pace forecast, Claude Desktop fallback, read-only token — goes into every text. |
+| D60 | **Windows: Chromium's native window occlusion tracker is switched off** (`app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion')` before `ready`; `--keep-occlusion` keeps it on for tests) **and the app heals itself.** The page reports its Page-Visibility state (`page:visibility`); a page hidden for 5 s while its window is shown, always on top and the screen unlocked means Chromium stopped drawing the overlay → the window is rebuilt in place (`recreateWindow`: a new `BrowserWindow` at the old bounds, shown if the old one was), and if the new one is hidden too within a minute the state is process-wide → the app restarts itself (`app.relaunch`, once per 30 min). Also: a crashed renderer → `webContents.reload()`; a dead GPU process → window rebuilt (3 per 10 min each, `AttemptBudget`); menu → *Restart Claude Usage* (installs a downloaded update on the way; the portable exe and the AppImage relaunch their outer file); *Show overlay* also re-asserts always-on-top and schedules a repaint; show/hide, lock/unlock, display changes and process deaths are logged. Watchdog on Windows only | Owner's bug (2026-09-26, twice in one day): after a Win+Shift+S screenshot the overlay vanished; tray click, Show/Hide, Compact (a resize), Reset position (another display), Size and Lock did nothing; only a restart helped. The stuck app, inspected live: all processes alive, window `WS_VISIBLE` + topmost + not cloaked, nothing drawn. Chromium's tracker (`ui/aura/native_window_occlusion_tracker_win.cc`) marks a window OCCLUDED when a visible, opaque, non-tool, non-popup window covers it, on session lock and on display-off, and then hides the page and stops its frames — measured on a mock with a bordered topmost window over it: 62 → 0 frames/s and `visibilityState` hidden, 62 again when uncovered. The Snipping Tool's capture overlay covers every monitor; when the "uncovered" recalculation goes missing the window stays occluded for the process's lifetime — exactly the symptom — and the same flag is the known workaround in VS Code's and Codex's issue trackers (Electron's docs still say Windows doesn't track occlusion). An always-on-top overlay gains nothing from the tracker. The watchdog is insurance for a cause the flag doesn't cover; macOS hides an occluded page by design, so no watchdog there. Tool and popup windows were the trap in the first two reproduction attempts (the tracker ignores them). |
 | D49 | **Version 1.0.0** for the first release with the updater (0.2.0 → 1.0.0; no 0.3.x). The real-release updater test becomes 1.0.0 → 1.0.1. README says openly that only Windows 11 is tested; macOS and Linux builds are CI-built but never run | Owner's choice (2026-09-26): all planned phases are done. Recommended first was 0.3.0 → 0.3.1 for the test and 1.0.0 once it passed; the owner preferred 1.0.0 now. Technically the same: a broken updater in the first updater version needs one manual install either way. |
 
 ## Usage API notes (observed 2026-09-24)
@@ -336,6 +337,15 @@ Kept for the record in case Anthropic ever offers an official way.
     keep 2FA on.
   - Linux AppImage: the new file gets the new version in its name and the old one is deleted; a
     desktop shortcut made by hand to the old file breaks (launch at login is rewritten, D48).
+- **Blank overlay (D60):** the mechanism was reproduced (Chromium's occlusion tracker hides the
+  page of a covered window and stops its frames) and switched off; the exact missed "uncovered"
+  event after the Snipping Tool wasn't caught in the act. If the overlay ever vanishes again:
+  menu → *Restart Claude Usage*, then look at `claude-usage.log` — it now records show/hide,
+  lock/unlock, display changes, process deaths and the watchdog's steps. Verified on a mock:
+  tracker off → 62 frames/s while fully covered; `--keep-occlusion` → hidden page detected after
+  5 s and the window rebuilt. The restart step of the watchdog, `app.relaunch` for the portable
+  exe / AppImage (`PORTABLE_EXECUTABLE_FILE` / `APPIMAGE`) and *Restart Claude Usage* in a packaged
+  build weren't exercised. macOS / Linux: no tracker, watchdog off.
 
 ## Session log
 
@@ -668,3 +678,65 @@ Kept for the record in case Anthropic ever offers an official way.
   re-upload). README development table.
 - Electron book v2.5: a social-preview section in the mock / screenshot chapter (two roles in one
   file, the deadlock, offscreen rendering, forced scale factor), one quiz question, one exercise.
+
+### 2026-09-26 — Session 19: social preview replaces README screenshots
+
+- README: replaced the three individual overlay screenshots (overlay-expanded.png,
+  overlay-stale.png, overlay-compact.png) with the social-preview.png at width="800".
+  The social preview shows both the expanded card and compact pill together; single image,
+  cleaner top section.
+
+### 2026-09-26 — Session 20: the overlay that vanished (blank window after a screenshot)
+
+- Owner's report: after a screenshot the overlay disappears and nothing shows it again (tray
+  click, menu, shortcut); only a restart helps. It happened twice today (04:25 and 14:35 local,
+  Snipping Tool both times); the second time the stuck app was inspected live: main, renderer and
+  GPU processes alive, window `WS_VISIBLE` + topmost + not cloaked, in place on monitor 4, nothing
+  drawn; Compact (resize), Reset position, Size and Lock/unlock changed nothing (owner's test).
+  The log had nothing — show/hide weren't logged.
+- Ruled out first: renderer crash, GPU crash / driver reset (Event Log clean), off-screen
+  position, lock (click-through), opacity, cloaking, virtual desktops. Then read Chromium's
+  `native_window_occlusion_tracker_win.cc`: a covered window (or the whole session on lock /
+  display-off) is marked OCCLUDED, the page goes `hidden` and stops producing frames; recovery
+  needs a WinEvent (foreground, location, show/hide of a thumbnail window) to trigger a
+  recalculation. Electron's docs claim Windows doesn't do this — outdated.
+- Reproduction on a mock with `--remote-debugging-port` and a `Runtime.evaluate` frame counter:
+  two attempts showed nothing because the covering window was a WinForms tool window / borderless
+  popup (the tracker ignores `WS_EX_TOOLWINDOW` and `WS_POPUP`); a bordered topmost form gave
+  62 → 0 frames/s and `visibilityState` hidden, 62 again when removed. With the tracker off
+  (`disable-features=CalculateNativeWinOcclusion`) 62 frames/s while covered. The lock screen
+  didn't occlude a mock started *after* the lock (the flag is set by the WTS lock notification).
+- Built: the flag (D60), a Windows-only watchdog (page hidden 5 s while shown → rebuild the window
+  → restart the app), reload after a renderer crash, rebuild after a GPU death, `let win` +
+  `attachWindowHandlers()` / `recreateWindow()` in `main.ts`, `createOverlayWindow(settings,
+  previous?)`, menu → *Restart Claude Usage* (pending update → `quitAndInstall`; portable exe /
+  AppImage via their outer file), `showWindow()` (ensureOnScreen, re-assert always-on-top,
+  invalidate), logging of show/hide, lock/unlock, displays, process deaths. New pure
+  `recovery-core.ts` (`AttemptBudget`, `describeProcessGone`, `relaunchOptions`; 5 tests,
+  147 total). `--keep-occlusion` for testing.
+- Verified on mock runs: renderer killed → page reloaded; GPU process killed → window rebuilt (new
+  HWND, same bounds, page back); tracker off → covered page stays visible at 62 frames/s;
+  `--keep-occlusion` → "hidden while shown" logged after 5 s and the window rebuilt (the new
+  topmost window came up above the cover, so the restart step wasn't reached). GDI
+  `CopyFromScreen` doesn't capture DirectComposition windows (blank in every capture), so the
+  visual checks used the page's own frame counter.
+- Dead end recorded: `kApplyNativeOcclusionToCompositor` is off by default in Chromium 152, which
+  suggested the tracker was inactive for Electron — the frame counter proved otherwise.
+- README: troubleshooting entry. CLAUDE.md: flag, module. Electron book v2.6: new chapter
+  `c-blank-window` in the Phase 4 part.
+
+### 2026-09-26 — Session 21: competitor analysis and growth strategy (no code change)
+
+- Research session only; nothing in `src/` changed. Six sourced research notes (our own audit,
+  CLI/terminal tools, desktop menu-bar/tray/overlay apps, browser/IDE extensions, Anthropic's
+  first-party usage UI and policy, adoption drivers and demand) were written to
+  `D:\Clade usage\research_notes\تحلیل رقبای Claude Usage\`, and the Persian report to
+  `D:\Clade usage\reports\تحلیل رقبای Claude Usage.md` + `D:\Clade usage\competitor-analysis.html`
+  (all outside the repo, per the owner's request; not published).
+- Headline: the category leader is CodexBar (steipete; macOS; ~21.9 k stars on 2026-09-26; Windows
+  "not planned"). Our edges: the by-app weekly split, the Claude Desktop fallback source, a
+  read-only / no-login / no-telemetry cross-platform overlay. Our gaps: discoverability, unsigned
+  installers, macOS/Linux never run, no winget/Homebrew, no token-free sources (status line, WSL).
+- The report's roadmap (P0 discoverability + distinct brand → P1 Windows leadership → P2 mac/Linux
+  credibility → P3 depth → P4 Codex opt-in) marks each item as "in backlog", "new" or "revisit a
+  decision"; future phases should be cut from that table rather than re-derived.

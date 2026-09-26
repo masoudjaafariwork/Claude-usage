@@ -19,6 +19,7 @@ const api: OverlayApi = {
   resize: (width, height) => ipcRenderer.send('window:resize', width, height),
   showMenu: () => ipcRenderer.send('menu:show'),
   openClaudeCode: () => ipcRenderer.send('claude-code:open'),
+  pageVisibility: (hidden) => ipcRenderer.send('page:visibility', hidden),
 };
 
 contextBridge.exposeInMainWorld('overlay', api);

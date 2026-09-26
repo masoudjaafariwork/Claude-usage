@@ -140,4 +140,6 @@ export interface OverlayApi {
   showMenu(): void;
   /** Open the user's Claude Code (VS Code or a terminal) so it renews its own sign-in. */
   openClaudeCode(): void;
+  /** Whether the page is hidden (Page Visibility API): hidden while the window is shown means Chromium stopped drawing it (D60). */
+  pageVisibility(hidden: boolean): void;
 }

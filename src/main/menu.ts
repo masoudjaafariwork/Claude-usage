@@ -65,6 +65,8 @@ export interface MenuActions {
   installUpdate(): void;
   openUpdateDownloadPage(): void;
   showAbout(): void;
+  /** Start the app again (the one-click fix when the overlay stopped showing up, D60). */
+  restart(): void;
   quit(): void;
 }
 
@@ -281,6 +283,7 @@ export function buildMenu(settings: Readonly<Settings>, context: MenuContext, ac
     ...(update.prominent ? [] : [updateItem]),
     { label: `About Claude Usage v${app.getVersion()}`, click: () => actions.showAbout() },
     { type: 'separator' },
+    { label: 'Restart Claude Usage', click: () => actions.restart() },
     { label: 'Quit Claude Usage', click: () => actions.quit() },
   );
 

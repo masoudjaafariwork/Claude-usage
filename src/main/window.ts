@@ -38,10 +38,15 @@ export interface OverlayWindow {
   restoredPosition: boolean;
 }
 
-export function createOverlayWindow(settings: Readonly<Settings>): OverlayWindow {
-  const width = Math.round(INITIAL_SIZE.width * settings.scale);
-  const height = Math.round(INITIAL_SIZE.height * settings.scale);
-  const saved = settings.position;
+/**
+ * Creates the overlay window. With `previous` (the bounds of a window that is being rebuilt, see
+ * main.ts) it takes exactly that place; otherwise the saved position or the primary display's
+ * top-right corner, at the initial size until the renderer reports the content size.
+ */
+export function createOverlayWindow(settings: Readonly<Settings>, previous?: Rectangle): OverlayWindow {
+  const width = previous?.width ?? Math.round(INITIAL_SIZE.width * settings.scale);
+  const height = previous?.height ?? Math.round(INITIAL_SIZE.height * settings.scale);
+  const saved = previous ? { x: previous.x, y: previous.y } : settings.position;
   const restoredPosition = saved !== null && isReachable({ ...saved, width, height });
   const position = restoredPosition ? saved : topRightOf(screen.getPrimaryDisplay(), width);
 
