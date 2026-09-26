@@ -230,6 +230,7 @@ npm start
 | `node scripts/start.mjs --mock=critical` | Other scenarios: `normal`, `warning`, `critical`, `expired`, `no-credentials`, `rate-limited`, `offline`, `loading`, `via-desktop`, `desktop-unavailable`, `forecast`, `locked`, `other-account`, `update-ready`; add `--theme=light` or `--scale=1.5` to try those |
 | `npm run screenshot` | Render every mock scenario (plus light-theme and size variants) to `screenshots/` |
 | `npm run screenshot:readme` | Re-render the screenshots at the top of this README (`docs/images/`) |
+| `npm run social-preview` | Render the image link previews show for this repository (`docs/images/social-preview.png`; upload it in the repository's *Settings → Social preview*) |
 | `npm run check` | Type-check and run unit tests |
 | `npm run dist` | Build installers for the current OS into `release/` (`dist:win`, `dist:mac`, `dist:linux` for one OS) |
 | `npm run make-icon` | Regenerate the app icon `build/icon.png` |

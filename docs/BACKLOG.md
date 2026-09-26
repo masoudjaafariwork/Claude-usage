@@ -65,7 +65,12 @@ Move an idea into a phase file (with the "Plan a new phase" prompt) when it's ti
   into `window-core.ts` and unit-test it (the resize placement is there since D44).
 - Show which limit is binding (`is_active`) once its meaning is confirmed.
 - Code signing: a Windows certificate (no SmartScreen warning) and an Apple Developer ID with
-  notarization (no "Open Anyway" step).
+  notarization (no "Open Anyway" step). SignPath.io signs open-source Windows builds for free.
+- Findability (D59; About text, topics and social preview done): README top with a tagline in
+  search words, a GIF, badges and a short "why this one"; a GitHub Pages landing page (title, meta
+  description, Open Graph, JSON-LD `SoftwareApplication`, Google Search Console); winget and Scoop
+  manifests; PRs to awesome lists (awesome-claude-code, awesome-electron); launch posts
+  (r/ClaudeAI, r/ClaudeCode, Show HN, a dev.to article, a Persian one on Virgool).
 - arm64 builds for Windows and Linux.
 - Pace forecast in the compact pill and the tray tooltip (today only in the expanded card).
 - Change the global shortcuts from the menu (today only in `settings.json`, D37); on Wayland,

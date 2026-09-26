@@ -20,6 +20,7 @@
     "start:mock": "npm run build && node scripts/start.mjs --mock",
     "screenshot": "node scripts/screenshots.mjs",
     "screenshot:readme": "node scripts/screenshots.mjs --readme",
+    "social-preview": "node scripts/social-preview.mjs",
     "check": "npm run typecheck && npm test",
     "make-icon": "node scripts/make-icon.mjs",
     "dist": "npm run build && electron-builder --publish never",

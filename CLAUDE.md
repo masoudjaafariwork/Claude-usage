@@ -16,7 +16,9 @@ same numbers as Claude → Settings → Usage, refreshed automatically.
    compact pill, banners, colours, fonts, spacing, mock data of their scenarios — see
    `README_IMAGES` in `scripts/screenshots.mjs`), run `npm run screenshot:readme`, look at
    `docs/images/*.png` and ship them with the change (D43); README text that describes the UI and
-   the images' `width` attributes (the overlay's CSS width) must match too. Then update `docs/PROGRESS.md` (status, session-log entry, new decisions as D-numbers,
+   the images' `width` attributes (the overlay's CSS width) must match too. The GitHub social
+   preview shows the same card and pill: re-render it too (`npm run social-preview`), look at
+   `docs/images/social-preview.png` and tell the owner to upload it again (D58). Then update `docs/PROGRESS.md` (status, session-log entry, new decisions as D-numbers,
    known issues), the phase file (tick Scope items, set Status, fill in **Result**) and the phase
    table in `docs/BACKLOG.md`, and update the **Electron book** (next section). Commit only when the
    user asks — but whenever work is left for the user to commit, give them a ready-to-paste commit
@@ -43,6 +45,7 @@ The book is local only: do **not** publish or republish it to claude.ai (owner's
 | `npm run start:mock` | Run with fake data (`node scripts/start.mjs --mock=<scenario>` for others) |
 | `npm run screenshot -- [outDir] [scenario…]` | Render mock scenarios (expanded + compact) to PNGs (default `./screenshots/`) |
 | `npm run screenshot:readme` | Re-render the README images in `docs/images/` (committed) |
+| `npm run social-preview` | Render the 1280×640 GitHub social preview to `docs/images/social-preview.png` (committed; uploaded by hand in the repo's Settings) |
 | `npm run check` | Typecheck (main + renderer configs) and unit tests |
 | `npm run build` / `npm run watch` | esbuild bundle to `dist/` |
 | `npm run dist` / `dist:win` / `dist:mac` / `dist:linux` | Build + electron-builder installers into `release/` (never publishes) |
@@ -93,11 +96,12 @@ src/
     fixtures/            Real API responses used by tests
   preload/preload.ts     contextBridge → window.overlay (OverlayApi)
   renderer/              Sandboxed UI: index.html, styles.css (dark + light theme vars), renderer.ts (DOM)
-scripts/                 build.mjs, test.mjs, start.mjs, screenshots.mjs, make-icon.mjs
+scripts/                 build.mjs, test.mjs, start.mjs, screenshots.mjs, social-preview.mjs, make-icon.mjs
 build/                   icon.png (generated, committed), installer.nsh (NSIS uninstall hook)
 .github/workflows/       release.yml — tag v* → build on 3 OSes → draft GitHub Release
 docs/                    PROGRESS.md, BACKLOG.md (phase index), phases/ (one plan per phase),
-                         images/ (README screenshots, from `npm run screenshot:readme`)
+                         images/ (README screenshots, from `npm run screenshot:readme`; social
+                         preview, from `npm run social-preview`)
 ```
 
 Data flow: `UsageService` (main) asks the sources in order — Auto: Claude Code (credentials → fetch
