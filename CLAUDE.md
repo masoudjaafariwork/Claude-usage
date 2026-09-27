@@ -161,6 +161,10 @@ Claude Desktop's samples count only for the shown account's org (D51).
   last reported size). The window *is* the card — no transparent margin, hence no drop shadow — so
   the card can touch any screen edge (D42); `fitWindow()` stretches the card over the ≤ 2 px left
   by rounding to whole DIPs. Don't add padding to `#app` or an outer `box-shadow` to `.card`.
+- Windows: `setAlwaysOnTop(true, 'floating' … 'status')` puts the window behind the taskbar, and it
+  loses topmost whenever the taskbar isn't topmost. Always go through `applyAlwaysOnTop()`
+  (`'pop-up-menu'` on Windows, D61); check the real state with `GetWindowLongPtr(GWL_EXSTYLE)`
+  (`WS_EX_TOPMOST`), not `win.isAlwaysOnTop()`, which only echoes the last call.
 - Chromium stores a zoom level per page in `userData/Preferences` and prefers it to
   `webPreferences.zoomFactor`; `main.ts` re-applies the Size setting on `did-navigate` (D38).
 - Screenshots are in physical pixels (125 % scaling → 1.25× the CSS size).

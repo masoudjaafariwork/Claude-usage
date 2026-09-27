@@ -158,6 +158,7 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D58 | **Social preview from real renders.** `npm run social-preview` (`scripts/social-preview.mjs`) renders the overlay (`forecast` scenario, card + pill, dark theme, Size 115 %, scale factor 1) and lays it out next to the name, tagline, features and platforms in a 1280×640 offscreen Electron window → `docs/images/social-preview.png` (committed, ~450 KB; GitHub's limit is 1 MB). GitHub has no API for it: the owner uploads it in the repo's *Settings → General → Social preview*, again after every re-render (CLAUDE.md → Finish) | Link cards (Reddit, X, Slack, Discord, Telegram) show this image when the repo is shared; without it GitHub shows a generic card. Rendering the real UI keeps it true to the app and lets it follow UI changes like the README images (D43). Scale factor 1 on both steps makes the PNG exactly 1280×640 and the overlay renders 1:1 on any display (the owner's 125 % + 100 %). |
 | D59 | **Name stays "Claude Usage"** (D25); findability comes from the repo's About text, topics, README and links instead. About (set by hand): *"Always-on-top desktop widget for your Claude plan usage limits — 5-hour session, weekly and per-model limits with reset countdowns, pace forecast and alerts. Windows, macOS, Linux. Reads Claude Code's existing sign-in (read-only); no claude.ai login."* Topics (20, GitHub's maximum): claude, claude-code, claude-ai, anthropic, claude-usage, usage-tracker, usage-monitor, rate-limit, overlay, widget, desktop-widget, system-tray, menu-bar, always-on-top, electron, typescript, windows, macos, linux, cross-platform | Owner's choice (2026-09-26) after weighing a rename to "Claude Usage Widget": `claude-usage-widget` is already another Windows project's repo name, "widget" also means the OS widget boards, and a product rename moves userData and installer names. Description and topics survive a repo rename, so they didn't need to wait. The field of similar tools is crowded (10+ open-source trackers, mostly single-OS tray / menu-bar apps); what sets this one apart — floating overlay, one app for three OSes, several accounts, pace forecast, Claude Desktop fallback, read-only token — goes into every text. |
 | D60 | **Windows: Chromium's native window occlusion tracker is switched off** (`app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion')` before `ready`; `--keep-occlusion` keeps it on for tests) **and the app heals itself.** The page reports its Page-Visibility state (`page:visibility`); a page hidden for 5 s while its window is shown, always on top and the screen unlocked means Chromium stopped drawing the overlay → the window is rebuilt in place (`recreateWindow`: a new `BrowserWindow` at the old bounds, shown if the old one was), and if the new one is hidden too within a minute the state is process-wide → the app restarts itself (`app.relaunch`, once per 30 min). Also: a crashed renderer → `webContents.reload()`; a dead GPU process → window rebuilt (3 per 10 min each, `AttemptBudget`); menu → *Restart Claude Usage* (installs a downloaded update on the way; the portable exe and the AppImage relaunch their outer file); *Show overlay* also re-asserts always-on-top and schedules a repaint; show/hide, lock/unlock, display changes and process deaths are logged. Watchdog on Windows only | Owner's bug (2026-09-26, twice in one day): after a Win+Shift+S screenshot the overlay vanished; tray click, Show/Hide, Compact (a resize), Reset position (another display), Size and Lock did nothing; only a restart helped. The stuck app, inspected live: all processes alive, window `WS_VISIBLE` + topmost + not cloaked, nothing drawn. Chromium's tracker (`ui/aura/native_window_occlusion_tracker_win.cc`) marks a window OCCLUDED when a visible, opaque, non-tool, non-popup window covers it, on session lock and on display-off, and then hides the page and stops its frames — measured on a mock with a bordered topmost window over it: 62 → 0 frames/s and `visibilityState` hidden, 62 again when uncovered. The Snipping Tool's capture overlay covers every monitor; when the "uncovered" recalculation goes missing the window stays occluded for the process's lifetime — exactly the symptom — and the same flag is the known workaround in VS Code's and Codex's issue trackers (Electron's docs still say Windows doesn't track occlusion). An always-on-top overlay gains nothing from the tracker. The watchdog is insurance for a cause the flag doesn't cover; macOS hides an occluded page by design, so no watchdog there. Tool and popup windows were the trap in the first two reproduction attempts (the tracker ignores them). |
+| D61 | **Always-on-top level: `'pop-up-menu'` on Windows, `'floating'` elsewhere** (`applyAlwaysOnTop()` in `window.ts`, the only place that calls `setAlwaysOnTop`). On Windows the overlay is now a plain `HWND_TOPMOST` window, above the taskbar too | Owner's bug (2026-09-27, 1.2.0): with *Always on top* on, clicking another window put it over the overlay; hide/show didn't help. The live window had lost `WS_EX_TOPMOST` and sat directly behind `Shell_TrayWnd`. Electron on Windows moves a window of level `floating` … `status` behind the taskbar (`SetWindowPos(hwnd, taskbar)`) on every `setAlwaysOnTop` and every activation, and Win32 drops a topmost window's topmost status when it is placed after a non-topmost one. The primary taskbar wasn't topmost at the time (cause unknown; the secondary taskbars were). Measured in a standalone Electron 44 test on this machine: `floating` lost topmost at once (after show, activation and re-assert), `pop-up-menu` and `screen-saver` kept it; on Windows those two are the same. `pop-up-menu` is the lowest level Electron doesn't move behind the taskbar. macOS keeps `floating` (real window levels there; `pop-up-menu` would cover the Dock and menus), Linux ignores the level. |
 | D49 | **Version 1.0.0** for the first release with the updater (0.2.0 → 1.0.0; no 0.3.x). The real-release updater test becomes 1.0.0 → 1.0.1. README says openly that only Windows 11 is tested; macOS and Linux builds are CI-built but never run | Owner's choice (2026-09-26): all planned phases are done. Recommended first was 0.3.0 → 0.3.1 for the test and 1.0.0 once it passed; the owner preferred 1.0.0 now. Technically the same: a broken updater in the first updater version needs one manual install either way. |
 
 ## Usage API notes (observed 2026-09-24)
@@ -346,6 +347,15 @@ Kept for the record in case Anthropic ever offers an official way.
   5 s and the window rebuilt. The restart step of the watchdog, `app.relaunch` for the portable
   exe / AppImage (`PORTABLE_EXECUTABLE_FILE` / `APPIMAGE`) and *Restart Claude Usage* in a packaged
   build weren't exercised. macOS / Linux: no tracker, watchdog off.
+- **Always on top (D61):** versions up to 1.2.0 lose it on Windows whenever the taskbar isn't
+  topmost; the installed app keeps that bug until the next release is installed (toggling
+  *Always on top* or hide/show doesn't help there). Since D61 the overlay is also above the
+  taskbar, so parked over the taskbar it covers it (clicking the taskbar brings the taskbar up,
+  like any other topmost window). Why the owner's primary taskbar wasn't topmost is unknown. Another
+  topmost window (e.g. Task Manager with *Always on top*) can still cover the overlay when it is
+  clicked — Windows orders topmost windows by who came up last. Verified on Windows 11 only (mock
+  run: topmost after start and after activation while the taskbar wasn't topmost); macOS and Linux
+  unchanged and untested.
 
 ## Session log
 
@@ -740,3 +750,26 @@ Kept for the record in case Anthropic ever offers an official way.
 - The report's roadmap (P0 discoverability + distinct brand → P1 Windows leadership → P2 mac/Linux
   credibility → P3 depth → P4 Codex opt-in) marks each item as "in backlog", "new" or "revisit a
   decision"; future phases should be cut from that table rather than re-derived.
+
+### 2026-09-27 — Session 22: always on top lost behind the taskbar
+
+- Owner's report (1.2.0, Windows 11): *Always on top* is on, yet clicking another window that
+  overlaps the overlay puts that window over it. The log showed repeated hide/show, which didn't help.
+- Inspected the installed app live (`EnumWindows` + `GetWindowLongPtr(GWL_EXSTYLE)` from
+  PowerShell): the overlay window was visible, `alwaysOnTop: true` in `settings.json`, but without
+  `WS_EX_TOPMOST`, and the next window above it in the z-order was `Shell_TrayWnd` — the primary
+  taskbar, itself not topmost at that moment (the secondary taskbars were).
+- Cause: Electron on Windows places a window of level `floating` … `status` behind the taskbar
+  (`SetWindowPos(hwnd, taskbar)`) in `setAlwaysOnTop` and on every activation; Win32 drops the
+  topmost status of a window placed after a non-topmost one. `showWindow()`'s re-assert (D60) went
+  through the same path, hence no help from hide/show.
+- Standalone Electron test (scratch script, one small window per level, state read through
+  `GW_HWNDPREV` / `GWL_EXSTYLE`): `floating` → not topmost after show, after `focus()` and after a
+  re-assert; `pop-up-menu` and `screen-saver` → topmost in all three. A second test made a
+  `floating` window topmost from outside and then called `focus()`: topmost lost again
+  (`pop-up-menu` kept it) — activation alone is enough.
+- Fix (D61): `applyAlwaysOnTop()` uses `'pop-up-menu'` on Windows, `'floating'` on macOS/Linux.
+  Verified on a mock run of the fixed build: topmost after start and after activation, taskbar
+  still not topmost. `npm run check`: 147 tests pass. No UI change, so no screenshots.
+- README: troubleshooting entry. CLAUDE.md: gotcha. Electron book v2.7: new chapter
+  `c-always-on-top` after `c-blank-window`; the level section of `c-window` updated.

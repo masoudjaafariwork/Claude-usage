@@ -89,8 +89,18 @@ export function createOverlayWindow(settings: Readonly<Settings>, previous?: Rec
   return { win, restoredPosition };
 }
 
+/**
+ * Windows: Electron puts a window of level 'floating' … 'status' right behind the taskbar
+ * (`SetWindowPos(hwnd, taskbar)`) on every `setAlwaysOnTop` and every activation. When the taskbar
+ * itself isn't topmost at that moment (seen on Windows 11: the primary taskbar wasn't, the
+ * secondary ones were), a window placed behind it loses its topmost status, and the next click on
+ * another window covers the overlay (D61). 'pop-up-menu' and higher are plain HWND_TOPMOST.
+ * macOS keeps 'floating' (below the Dock and menus); Linux ignores the level.
+ */
+const ON_TOP_LEVEL = process.platform === 'win32' ? 'pop-up-menu' : 'floating';
+
 export function applyAlwaysOnTop(win: BrowserWindow, on: boolean): void {
-  if (on) win.setAlwaysOnTop(true, 'floating');
+  if (on) win.setAlwaysOnTop(true, ON_TOP_LEVEL);
   else win.setAlwaysOnTop(false);
 }
 

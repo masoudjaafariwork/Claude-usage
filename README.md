@@ -267,6 +267,8 @@ Project guide for AI-assisted development: [CLAUDE.md](CLAUDE.md). Status and de
   menu → *Restart Claude Usage*. Newer versions switch off Chromium's window-occlusion tracking on
   Windows — it hid the overlay for good after a full-screen capture overlay such as Win+Shift+S —
   and the app restarts itself if it still happens; the log says so.
+- **The overlay goes behind other windows although *Always on top* is on** (Windows): update.
+  Versions up to 1.2.0 lost their always-on-top state whenever the taskbar itself wasn't on top.
 - **"Not signed in to Claude Code"**: sign in from the Claude Code panel in VS Code, or run
   `claude` in a terminal and use `/login`. If your Claude Code uses another config folder
   (`CLAUDE_CONFIG_DIR`, e.g. set in the VS Code extension's settings or a launch script), add that
