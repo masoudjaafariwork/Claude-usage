@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| **Status** | ✅ Done (2026-09-28) |
+| **Status** | ✅ Done (2026-09-28) — released as 1.3.0 |
 | **Depends on** | Phase 6 (several Claude Code accounts) |
 | **Size** | One Claude Code session |
 
@@ -107,7 +107,7 @@ set its status, update docs/PROGRESS.md and docs/BACKLOG.md, and give me the man
 ## Result
 
 Done 2026-09-28 (session 23), in the same session as the plan. Decisions D62–D64 in
-`docs/PROGRESS.md`. Not released yet (a new feature: 1.3.0 by SemVer, owner's call).
+`docs/PROGRESS.md`. Released as 1.3.0 (a new feature: a minor version by SemVer, D65).
 
 ### What was built
 

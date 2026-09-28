@@ -12,7 +12,7 @@ Living record of where the project stands. Update it at the end of every session
 | [4 — UX: notifications, click-through, shortcut, size, pace forecast, theme](phases/phase-4-ux.md) | ✅ Done (2026-09-26) |
 | [5 — App auto-update](phases/phase-5-auto-update.md) | ✅ Done (2026-09-26) — real release test: 1.0.0 found and downloaded 1.1.0 (owner, *Check for updates*) |
 | [6 — Several Claude Code accounts (config folders) with a switcher](phases/phase-6-accounts.md) | ✅ Done (2026-09-26) — released as 1.1.0 |
-| [7 — A window per Claude Code account](phases/phase-7-account-windows.md) | ✅ Done (2026-09-28) — not released yet |
+| [7 — A window per Claude Code account](phases/phase-7-account-windows.md) | ✅ Done (2026-09-28) — released as 1.3.0 |
 
 Each phase has its own plan file in [`phases/`](phases/) (scope, notes, acceptance criteria,
 ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLOG.md).
@@ -52,7 +52,7 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 - **Launch at login** from the menu (installed builds only), reconciled with the OS on startup;
   the Windows uninstaller removes it. The menu also has *Open settings folder* and *About*.
 - **Release workflow:** pushing a `v*` tag builds on all three OSes and creates a draft GitHub
-  Release (not run yet).
+  Release; the owner publishes the draft by hand (every release since 1.0.0).
 - **Open Claude Code** (banner button on "sign-in expired" / "not signed in", plus a menu item in
   those states): opens the user's own Claude Code — a new Claude Code tab in VS Code
   (`vscode://anthropic.claude-code/open`) when the extension is installed, else a terminal running
@@ -171,6 +171,7 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D62 | **A window per Claude Code account (Phase 7).** `settings.windows` replaces `position` / `compact` / `claudeCodeDir`: one entry per open overlay window — its account (null = default, else one of `claudeCodeDirs`), position and compact mode; the first entry is the main window; never two windows for one account; at least one window. Old settings become the first entry (in the sanitizer, no separate migration). Each window (`overlay.ts`) owns what Phase 6 switched per account: its `UsageService` (one request per interval), cached snapshot, pace history, notification records and credentials watch; switching a window's account keeps Phase 6's generation guard (D52). Everything else stays global (look, lock, always on top, size, opacity, theme, source, interval, notification choices, shortcuts). Replaces D50's "one account at a time" with "one account per window" | Owner's request (2026-09-28): "a separate, dedicated window for each account, and each one can be closed separately". One window per account keeps hard rule 2: every open account is polled with its own token at the same rate as when it was the one shown, and an account without a window costs nothing; a second window of the same account would double its requests for the same numbers. Keeping the per-account machinery inside the window reuses Phase 6's tested switch instead of a second, shared-session design. Per-window look settings were left out (a longer menu for little gain). |
 | D63 | **Menus and closing with several windows.** A window's menu (⋯, right-click) is about that window: the *Claude Code account* radio switches it (accounts shown in another window are greyed out, "(in its own window)"), *Open in its own window ▸* lists the accounts without a window, *Close this window*; compact mode, Move to display, Reset position and Refresh act on it. The tray menu with several windows is about all of them: *Claude Code account* is a checkbox per account (window open / closed), compact mode / Refresh / Move to display / Reset position act on every window (placed side by side), one *Open Claude Code — (account)* per account whose sign-in is gone. With one window the tray menu is that window's menu, i.e. as in 1.2. Show / hide (tray click, shortcut) and lock act on all windows. A × button (card header and compact pill) appears only while several windows are open; Alt+F4 closes that window too; the last window can only be hidden. *Add folder…* switches the window it was opened from (from the tray with several windows: opens a new window). *Remove folder* closes that folder's window (or switches the last window to the default account) | The owner asked to close each window on its own; a visible × is the direct way, the menu item and Alt+F4 the usual ones. Context menus follow the object they are opened from (the common practice); the tray belongs to no window, so it gets the view of all. Keeping the last window means the tray always has something to show, as before (the reason the old Alt+F4 only hid the overlay). |
 | D64 | **Placement, tray, notifications, logs with several windows.** A window without a saved position goes to the first free spot along the top of the primary display, right to left from its top-right corner (`freeSpot` in `window-core.ts`; the corner again when the row is full); the tray's *Reset position* / *Move to display* line all windows up that way. Tray ring = the most constrained limit of all windows; tooltip one line per account (`<e-mail>: <n>% <limit>`, a short status when not ok). Notifications put the account (e-mail, or the folder while *Show account* is off) at the start of the body while several windows are open. Log lines of a window's service start with `[default]` or `[folder <6 hex of the state key>]`. `--claude-config-dir`: if that account has a window, the overlay just shows; otherwise the main window switches (Phase 6 behaviour) | A new window on top of the old one would look as if nothing happened. Heights differ (card vs pill, banners), widths hardly — so side by side, not stacked. The tray has one icon, and the fullest limit is the one that needs attention. Windows toasts and the 127-character tooltip are short, so the account goes where it costs least; the folder instead of the e-mail keeps screen sharing private, as *Show account* promises. Folder paths can hold user names, so the log gets a hash instead (D31). |
+| D65 | **Version 1.3.0** for Phase 7 (a window per account) together with the always-on-top fix (D61) — the two changes since 1.2.0 | Semantic Versioning, as D49 / D55: a new feature that breaks nothing is a minor version. Settings written by 1.3.0 are read by 1.3.0 only (known issue: going back to 1.2 loses position, compact mode and the selected account), which doesn't make it a major version — a downgrade isn't a supported path. |
 | D49 | **Version 1.0.0** for the first release with the updater (0.2.0 → 1.0.0; no 0.3.x). The real-release updater test becomes 1.0.0 → 1.0.1. README says openly that only Windows 11 is tested; macOS and Linux builds are CI-built but never run | Owner's choice (2026-09-26): all planned phases are done. Recommended first was 0.3.0 → 0.3.1 for the test and 1.0.0 once it passed; the owner preferred 1.0.0 now. Technically the same: a broken updater in the first updater version needs one manual install either way. |
 
 ## Usage API notes (observed 2026-09-24)
@@ -374,7 +375,7 @@ Kept for the record in case Anthropic ever offers an official way.
   exe / AppImage (`PORTABLE_EXECUTABLE_FILE` / `APPIMAGE`) and *Restart Claude Usage* in a packaged
   build weren't exercised. macOS / Linux: no tracker, watchdog off.
 - **Always on top (D61):** versions up to 1.2.0 lose it on Windows whenever the taskbar isn't
-  topmost; the installed app keeps that bug until the next release is installed (toggling
+  topmost; an installed 1.2.0 keeps that bug until it updates to 1.3.0 (toggling
   *Always on top* or hide/show doesn't help there). Since D61 the overlay is also above the
   taskbar, so parked over the taskbar it covers it (clicking the taskbar brings the taskbar up,
   like any other topmost window). Why the owner's primary taskbar wasn't topmost is unknown. Another
@@ -827,3 +828,14 @@ Kept for the record in case Anthropic ever offers an official way.
   the README and social-preview images are unaffected (one window in their scenarios).
 - Electron book v2.8: a chapter on several windows (one class per window, IPC routed by sender,
   a window's menu vs the tray's).
+
+### 2026-09-28 — Session 24: release 1.3.0
+
+- The owner asked for a new release. Since v1.2.0: Phase 7 (a window per account) and the
+  always-on-top fix (D61) → 1.3.0 (D65). `npm run check` passed (151 tests); `npm version 1.3.0
+  --no-git-tag-version`; commit, `main` pushed, tag `v1.3.0` pushed → the release workflow builds
+  the draft; the owner publishes it by hand (README → *Releasing a new version*). Release notes
+  drafted for the owner.
+- Docs: phase 7 marked "released as 1.3.0" (PROGRESS, BACKLOG, phase file); the known issue of
+  D61 now names 1.3.0; the release-workflow line no longer says "not run yet".
+- Electron book v2.9: changelog entry and roadmap (phase 7 released as 1.3.0).
