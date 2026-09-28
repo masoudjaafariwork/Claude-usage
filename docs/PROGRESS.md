@@ -845,3 +845,12 @@ Kept for the record in case Anthropic ever offers an official way.
 - Docs: phase 7 marked "released as 1.3.0" (PROGRESS, BACKLOG, phase file); the known issue of
   D61 now names 1.3.0; the release-workflow line no longer says "not run yet".
 - Electron book v2.9: changelog entry and roadmap (phase 7 released as 1.3.0).
+- README brought up to date on the owner's request: the intro says it needs no sign-in of its own
+  (read-only, no claude.ai login, no telemetry — D59's selling points); Features gained the System
+  theme, `Ctrl` + wheel sizing, refresh on wake / unlock, the tray tooltip (and the macOS title),
+  notification click, flush-to-edge dragging and *Open Claude Code*. The usage notes (move,
+  buttons, menu, keyboard, tray) moved from *Run from source* into a new *Using it* section, which
+  now also holds *Launch at login*, *Several Claude Code accounts* and *Updates*; the menu list
+  matches `menu.ts` (restart, about, launch at login, test notification, *Open Claude Code*,
+  *Restart to update*). Troubleshooting names 1.2.0 / 1.3.0 for the two Windows fixes and ends with
+  *Anything else*. No UI change, so no image re-render.

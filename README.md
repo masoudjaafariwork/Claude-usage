@@ -4,6 +4,9 @@ A small always-on-top desktop overlay that shows your **Claude plan usage limits
 session, weekly limits, per-model weekly limits and this week's split by app. It shows the same
 numbers as *Claude → Settings → Usage* and refreshes them automatically. Put it anywhere on any monitor.
 
+It needs no sign-in of its own: it reads the sign-in Claude Code already keeps on your computer
+(read-only), or the Claude desktop app's usage history. No claude.ai login, no telemetry.
+
 Windows · macOS · Linux — Electron + TypeScript.
 
 <p><img src="docs/images/social-preview.png" alt="Claude Usage overlay — expanded card and compact pill" width="800"></p>
@@ -12,8 +15,8 @@ Windows · macOS · Linux — Electron + TypeScript.
 
 ## Features
 
-- Frameless, transparent, always-on-top card. Drag it anywhere; its position is remembered, and
-  **Move to display** sends it to another monitor.
+- Frameless, transparent, always-on-top card. Drag it anywhere, right up to the screen edge; its
+  position is remembered, and **Move to display** sends it to another monitor.
 - Session ring with reset countdown, weekly bars, per-model limits, weekly split by app
   (Claude Code / Chats / Cowork …), and extra-usage credits when enabled.
 - Compact pill mode for a minimal footprint: the session plus the weekly limits you pick (menu →
@@ -25,19 +28,22 @@ Windows · macOS · Linux — Electron + TypeScript.
   (`CLAUDE_CONFIG_DIR`, e.g. one VS Code per account), add the folders in menu → *Claude Code
   account* and switch between them — or give each account **a window of its own** and see them all
   at once, closing any one on its own ([below](#several-claude-code-accounts)).
-- Tray / menu-bar icon that shows a live ring for your most-constrained limit.
+- Tray / menu-bar icon with a live ring for your most-constrained limit; its tooltip lists your
+  limits (on macOS the percentage also sits next to the icon).
 - **Notifications** when a limit reaches 75 %, 90 % and 100 % — once per limit and usage window —
-  and, optionally, when it resets (menu → *Notifications*).
+  and, optionally, when it resets (menu → *Notifications*). Clicking one brings up the overlay.
 - **Pace forecast**: "At this pace: limit in ~1h 15m" under the session (and a weekly limit) when
   your recent usage would hit 100 % before the reset.
 - **Lock (click-through)**: clicks go straight to the window underneath, so the overlay never gets
   in the way. Unlock from the tray menu or with the keyboard.
 - **Global shortcuts**: `Ctrl+Alt+U` shows/hides the overlay, `Ctrl+Alt+Shift+U` locks/unlocks it
   (`⌘⌥U` / `⌘⌥⇧U` on macOS).
-- **Size** 90–150 % and a **Light** theme besides the default dark one (menu → *Size*, *Theme*).
+- **Size** 90–150 % (menu → *Size*, or `Ctrl` `+` / `-` / mouse wheel over the overlay) and a
+  **theme**: dark (default), light, or the same as your system (menu → *Theme*).
 - **Opacity** 50–100 %: a see-through overlay fades to fully opaque while the mouse is over it, and
   back when the mouse leaves.
-- Refreshes every 3 minutes (1–10 min configurable), plus right after a limit resets.
+- Refreshes every 3 minutes (1–10 min configurable), right after a limit resets, and when the
+  computer wakes up or is unlocked; the refresh button does it at once.
 - Two data sources: **Claude Code**'s sign-in, and the **Claude desktop app**'s own usage history
   as a fallback (no extra sign-in). Menu → *Source* picks *Auto*, *Claude Code only* or
   *Claude Desktop only*; the footer and tray tooltip say where the numbers came from.
@@ -47,6 +53,9 @@ Windows · macOS · Linux — Electron + TypeScript.
   Linux AppImage). The macOS app, the portable exe and the deb package tell you about a new version
   and open its download page.
 - Keeps showing the last known data (clearly marked) when you're offline or the sign-in has expired.
+- **Sign-in expired?** The banner's **Open Claude Code** button starts your Claude Code (a VS Code
+  tab, or a terminal running `claude`), which renews its own sign-in; the overlay picks it up
+  within seconds.
 - A small diagnostic log with secrets removed (menu → *Open logs folder*).
 
 ## How it works
@@ -140,6 +149,28 @@ folder*), so they share them. Only one copy runs at a time.
 - **deb** (Debian / Ubuntu) — `sudo apt install ./claude-usage_<version>_amd64.deb`.
 - On GNOME the tray icon needs the AppIndicator extension.
 
+## Using it
+
+- **Move:** drag the card, also onto another monitor. Menu → *Reset position* puts it back in the
+  top-right corner of the main screen.
+- **Buttons:** the card has *Refresh now*, *Compact view* and **⋯** (the menu); the compact pill has
+  *Refresh now* and *Expand*. While several windows are open (one per account), each also has a
+  **×** that closes it.
+- **Menu:** the ⋯ button, right-click on the overlay, or the tray icon. It has show/hide, lock
+  (click-through) and refresh now; the data source and the Claude Code account (add folders, a
+  window per account); compact mode and which limits the pill shows, show account, always on top,
+  size, opacity, theme, refresh interval, move to display (with more than one monitor) and reset
+  position; notifications (with a test notification), keyboard shortcuts and launch at login; the
+  settings and logs folders, check for updates, about, restart and quit. *Open Claude Code* shows up
+  when a sign-in has expired, and *Restart to update* at the top when an update is ready.
+- **Keyboard:** `Ctrl+Alt+U` shows/hides the overlay and `Ctrl+Alt+Shift+U` locks/unlocks it from
+  any app (`⌘⌥U` / `⌘⌥⇧U` on macOS). Menu → *Keyboard shortcuts* switches them off. To use other
+  keys, edit `toggleShortcut` / `lockShortcut` in `settings.json` (menu → *Open settings folder*)
+  with the app closed, e.g. `"toggleShortcut": "CommandOrControl+Shift+F9"` (a modifier is
+  required). With the overlay focused, `Ctrl` `+` / `-` / `0` or `Ctrl` + mouse wheel change its
+  size.
+- **Tray:** on Windows/Linux, left-click toggles the overlay. On macOS, click the menu-bar icon.
+
 ### Launch at login
 
 Tick **Launch at login** in the menu. You can also see or switch it off in the OS: *Task Manager →
@@ -216,18 +247,9 @@ npm install
 npm start
 ```
 
-- **Move:** drag the card.
-- **Menu:** the ⋯ button, right-click, or the tray icon. The menu has show/hide, lock, the data
-  source, the Claude Code account (and a window per account), compact mode and which limits it shows, show account, always on top, size, opacity,
-  theme, refresh interval, move to display, reset position, notifications, keyboard shortcuts, the
-  settings and logs folders, check for updates, and quit.
-- **Keyboard:** `Ctrl+Alt+U` shows/hides the overlay and `Ctrl+Alt+Shift+U` locks/unlocks it from
-  any app (`⌘⌥U` / `⌘⌥⇧U` on macOS). Menu → *Keyboard shortcuts* switches them off. To use other
-  keys, edit `toggleShortcut` / `lockShortcut` in `settings.json` (menu → *Open settings folder*)
-  with the app closed, e.g. `"toggleShortcut": "CommandOrControl+Shift+F9"` (a modifier is
-  required). With the overlay focused, `Ctrl` `+` / `-` / `0` or `Ctrl` + mouse wheel change its
-  size.
-- **Tray:** on Windows/Linux, left-click toggles the overlay. On macOS, click the menu-bar icon.
+It runs with your real data, like the installed app, and uses the same settings folder — quit the
+installed app first (only one copy runs at a time). *Launch at login* and updates only work in the
+installed app.
 
 ## Development
 
@@ -276,11 +298,12 @@ Project guide for AI-assisted development: [CLAUDE.md](CLAUDE.md). Status and de
 
 - **"Not signed in"** (Auto mode): sign in to Claude Code (below) or open the Claude desktop app.
 - **The overlay vanished and nothing brings it back** (tray click, *Show overlay*, the shortcut):
-  menu → *Restart Claude Usage*. Newer versions switch off Chromium's window-occlusion tracking on
-  Windows — it hid the overlay for good after a full-screen capture overlay such as Win+Shift+S —
-  and the app restarts itself if it still happens; the log says so.
-- **The overlay goes behind other windows although *Always on top* is on** (Windows): update.
-  Versions up to 1.2.0 lost their always-on-top state whenever the taskbar itself wasn't on top.
+  menu → *Restart Claude Usage*. Since 1.2.0 the app switches off Chromium's window-occlusion
+  tracking on Windows — it hid the overlay for good after a full-screen capture overlay such as
+  Win+Shift+S — and rebuilds its window or restarts itself if it still happens; the log says so.
+- **The overlay goes behind other windows although *Always on top* is on** (Windows): update to
+  1.3.0 or newer. Versions up to 1.2.0 lost their always-on-top state whenever the taskbar itself
+  wasn't on top.
 - **"Not signed in to Claude Code"**: sign in from the Claude Code panel in VS Code, or run
   `claude` in a terminal and use `/login`. If your Claude Code uses another config folder
   (`CLAUDE_CONFIG_DIR`, e.g. set in the VS Code extension's settings or a launch script), add that
@@ -296,8 +319,6 @@ Project guide for AI-assisted development: [CLAUDE.md](CLAUDE.md). Status and de
   (update checks use the system proxy settings too); *No update information on GitHub* — the latest
   release has no `latest*.yml`, or only pre-releases exist. The app tries again after an hour, or
   use *Check for updates*. Details are in the log.
-- **Anything else**: menu → *Open logs folder* → `claude-usage.log`. Tokens, cookies and e-mail
-  addresses are removed before anything is written, so the log is safe to share.
 - **The overlay ignores clicks**: it is locked (a lock icon replaces its buttons). Unlock it from
   the tray menu (*Lock (click-through)*) or press `Ctrl+Alt+Shift+U`.
 - **No notifications**: menu → *Notifications* → *Send a test notification*. If nothing appears,
@@ -312,6 +333,8 @@ Project guide for AI-assisted development: [CLAUDE.md](CLAUDE.md). Status and de
 - **macOS Keychain prompt**: choose *Always Allow* so the overlay can read Claude Code's sign-in.
 - **Linux (GNOME)**: the tray icon needs the AppIndicator extension. On Wayland, always-on-top and
   window positioning depend on the compositor.
+- **Anything else**: menu → *Open logs folder* → `claude-usage.log`. Tokens, cookies and e-mail
+  addresses are removed before anything is written, so the log is safe to share.
 
 ## License
 
