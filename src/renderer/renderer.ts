@@ -398,6 +398,13 @@ function bannerSpec(st: AppState, now: Date): BannerSpec | null {
       if (claudeCode.renewing) {
         return { tone: 'warn', icon: 'key', title: 'Renewing sign-in…', body: ['Claude Code is renewing its sign-in in the background — no need to open it.'] };
       }
+      if (next === 'install') {
+        // Claude Code's folder (and an old sign-in in it) outlives Claude Code itself (D72).
+        return {
+          ...signIn('Claude Code isn’t installed'),
+          body: [`An old Claude Code sign-in is here, but not Claude Code itself. Install it, then sign in through your browser${desktopHint ? ', or open the Claude desktop app' : ''}.`],
+        };
+      }
       if (next !== 'open') return signInAgain();
       return {
         tone: 'warn',
@@ -520,7 +527,13 @@ function compactStatusText(st: AppState): string {
   const texts: Partial<Record<StatusKind, string>> = {
     loading: 'Loading…',
     'no-credentials': !st.claudeCode.installed ? 'No Claude Code' : st.status.reason === 'sign-in-ended' ? 'Sign in again' : 'Not signed in',
-    'token-expired': st.claudeCode.renewing ? 'Renewing sign-in…' : next === 'open' ? 'Sign-in expired' : 'Sign in again',
+    'token-expired': st.claudeCode.renewing
+      ? 'Renewing sign-in…'
+      : next === 'install'
+        ? 'No Claude Code'
+        : next === 'open'
+          ? 'Sign-in expired'
+          : 'Sign in again',
     'desktop-unavailable': 'No Desktop data',
     'rate-limited': 'Rate limited',
     'network-error': 'Offline',

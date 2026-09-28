@@ -159,6 +159,25 @@ test('findClaudeBinary: claude.exe on PATH, else the real binary behind npm’s 
   assert.equal(lookup(['C:\\Users\\j\\.local\\bin\\claude.exe']), 'C:\\Users\\j\\.local\\bin\\claude.exe');
 });
 
+test('findExtensionClaude also finds the extension in Cursor, Windsurf and VSCodium — VS Code first (D72)', () => {
+  const home = 'C:\\Users\\j';
+  const entry = 'anthropic.claude-code-2.1.283-win32-x64';
+  const binary = (folder: string) => `${home}\\${folder}\\extensions\\${entry}\\resources\\native-binary\\claude.exe`;
+  const lookup = (folders: string[]) =>
+    findExtensionClaude(
+      'win32',
+      home,
+      (dir) => (folders.some((f) => dir === `${home}\\${f}\\extensions`) ? [entry] : []),
+      (file) => folders.some((f) => file === binary(f)),
+    );
+  assert.equal(lookup(['.cursor']), binary('.cursor'));
+  assert.equal(lookup(['.windsurf']), binary('.windsurf'));
+  assert.equal(lookup(['.vscode-oss']), binary('.vscode-oss'));
+  assert.equal(lookup(['.cursor', '.vscode']), binary('.vscode'), 'VS Code first');
+  // Open Claude Code's editor route stays VS Code's: Cursor alone gives no URL scheme.
+  assert.equal(findVsCodeScheme(home, (dir) => (dir === `${home}\\.cursor\\extensions` ? [entry] : [])), null);
+});
+
 test('findClaudeBinary falls back to the VS Code extension’s binary; Unix looks for claude', () => {
   const ext = '/home/j/.vscode/extensions';
   const bundled = `${ext}/anthropic.claude-code-2.1.283-linux-x64/resources/native-binary/claude`;

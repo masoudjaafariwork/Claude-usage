@@ -189,6 +189,7 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D69 | ***Add account (sign in)…*** (menu → *Claude Code account*): the app creates `~/.claude-account-2`, `-3`, … (the first number neither on disk nor added), a terminal signs Claude Code in with it, and once `.credentials.json` or an `oauthAccount` appears, the folder is added and opened in a window of its own (D62). Without a sign-in it is removed again — when the terminal window closes (Windows), after 15 min, or when the app quits — but only if it holds no sign-in. One at a time | Owner's choice (2026-09-28): "just *Add account*, the app decides where the files go — the simplest, most direct way for the user". Next to Claude Code's own `~/.claude`, short and without spaces for a `.bat`'s `CLAUDE_CONFIG_DIR`; outside `userData`, so an uninstall doesn't take an account with it. |
 | D70 | **Terminals for sign-in and install:** Windows — a plain-ASCII `.cmd` in `%TEMP%` that takes every value from environment variables with delayed expansion (`!CLAUDE_USAGE_CLAUDE!`, `!CLAUDE_USAGE_EMAIL!`, the folder in `CLAUDE_CONFIG_DIR`), started by `cmd /d /v:on /c start "<title>" /wait cmd /d /c call "!CLAUDE_USAGE_SCRIPT!"`; the launcher exits when the window closes. macOS — a `.command` script in Terminal; Linux — a `.sh` script in the first terminal found; both wait for Enter at the end. The e-mail is passed only when it is a plain address. Claude Code itself is found by `findClaudeBinary()` (PATH `claude.exe`, npm's shim resolved to its `bin/claude.exe`, `~/.local/bin`, WinGet `Links`, Homebrew, the VS Code extension's binary), on every use | Batch files are read in the console's code page and cmd interprets `&`, `%`, `^` in anything expanded before parsing — a user name, a folder or an e-mail must never become part of a command line. Checked with a folder named `a & b (test)` and a value with `&` and `Ä`. `start /wait` is the only way to learn on Windows that a sign-in window was closed (to remove an unused account folder at once); elsewhere the 15-minute limit covers it. A running app doesn't see PATH changes, so the installers' folders are searched directly. |
 | D71 | **Version 1.4.0** for Phase 8 (sign in through Claude Code, background renewal) | Semantic Versioning, as D49 / D55 / D65: new features, nothing breaks. Settings of 1.3.0 are read unchanged (the two new keys get their defaults). The owner asked for the release right after the phase, before the manual tests; a fix found there becomes 1.4.1. |
+| D72 | **No Claude Code to run → *Install Claude Code*, also for an expired or refused sign-in** (`claudeCodeAction`; card "Claude Code isn't installed — An old Claude Code sign-in is here, but not Claude Code itself"). Claude Code is also found inside the Claude Code extension of **Cursor, Windsurf and VSCodium** (`~/.cursor`, `~/.windsurf`, `~/.vscode-oss` → `extensions/anthropic.claude-code-*/resources/native-binary/claude[.exe]`), after VS Code's; only the binary is used — *Open Claude Code*'s editor route stays VS Code's (`vscode://`) | The owner's first test of 1.4.0 on another computer (2026-09-28): an old `.claude` folder with an expired sign-in but no Claude Code gave "sign-in expired" + *Open Claude Code*, which without Claude Code can only open the setup page; after deleting the folder, *Install Claude Code* worked end to end (install, browser sign-in, numbers). A `.claude` folder says someone signed in once; only the executable says Claude Code is installed now — the lookup already existed (D70), the expired case didn't ask it. The editor forks keep their extensions in their own folders with the same layout; their URL schemes (`cursor://` …) weren't tried, so they aren't used. |
 | D49 | **Version 1.0.0** for the first release with the updater (0.2.0 → 1.0.0; no 0.3.x). The real-release updater test becomes 1.0.0 → 1.0.1. README says openly that only Windows 11 is tested; macOS and Linux builds are CI-built but never run | Owner's choice (2026-09-26): all planned phases are done. Recommended first was 0.3.0 → 0.3.1 for the test and 1.0.0 once it passed; the owner preferred 1.0.0 now. Technically the same: a broken updater in the first updater version needs one manual install either way. |
 
 ## Usage API notes (observed 2026-09-24)
@@ -393,6 +394,12 @@ Kept for the record in case Anthropic ever offers an official way.
     closed while Claude Code is still storing the sign-in could lose the folder before the sign-in
     arrives (it is only removed while it holds none) — not seen.
   - With the overlay locked (click-through) the banner buttons can't be clicked; use the menu items.
+  - Windows: after *Install Claude Code*, `claude` may not be found in a new cmd — Anthropic's
+    installer puts it in `%USERPROFILE%\.local\bin` and (per Claude Code's own setup check) doesn't
+    add that folder to PATH; the owner saw it on a fresh computer (2026-09-28), cause not yet
+    confirmed there. The overlay finds it without PATH; README → Troubleshooting says how to add it.
+  - Claude Code found only in Cursor / Windsurf / VSCodium (D72): *Open Claude Code* opens a terminal
+    with that binary, not the editor. Untested (no such editor here).
 - **No margin around the card (D42):** no drop shadow any more; over a background of the card's
   own colour only the 1 px border separates them. The first start after this change keeps the
   saved window position, so the card shows up 16 px further left and 12 px higher (× Size) than
@@ -978,3 +985,23 @@ Kept for the record in case Anthropic ever offers an official way.
   notes drafted for the owner.
 - Docs: phase 8 marked "released as 1.4.0" (PROGRESS, BACKLOG, phase file). Electron book v3.1:
   changelog entry and roadmap.
+
+### 2026-09-28 — Session 28: first real test of 1.4.0 — Install when Claude Code is missing (D72)
+
+- The owner installed 1.4.0 on another computer. First the card said "sign-in expired" and *Open
+  Claude Code* opened only the setup page: an old `.claude` folder with an expired sign-in was on
+  that computer, but no Claude Code. After deleting the folder: "Claude Code isn't installed" →
+  *Install Claude Code* → installer in cmd → browser sign-in → numbers. Checked the published
+  1.4.0 package (the `.deb` from the same CI run) contains the Phase 8 UI.
+- Fixed (D72): without a Claude Code to run, an expired or refused sign-in offers *Install Claude
+  Code* too (new banner text); Claude Code inside Cursor, Windsurf or VSCodium counts as installed.
+  Mock scenario `leftover-sign-in`. Verified with the real app in the owner's situation (fake home
+  with an expired made-up sign-in, Claude Code hidden from PATH / AppData): "Claude Code isn't
+  installed … Install Claude Code". Tests 173 → 174.
+- The owner's other question: after the install, `claude` wasn't found in a new cmd. Anthropic's
+  installer (`install.ps1` → `claude install`) puts it in `%USERPROFILE%\.local\bin`; Claude Code's
+  own setup check has a "… is not in your PATH" note for Windows, so the folder is probably not
+  added to PATH — the owner didn't see that note, so it isn't confirmed. README troubleshooting
+  entry; the overlay doesn't need PATH. Adding the folder to the user PATH automatically was
+  offered and is the owner's call.
+- Electron book v3.2: a section on "a data folder vs. an installed program" in the sign-in chapter.

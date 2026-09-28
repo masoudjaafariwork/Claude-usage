@@ -28,6 +28,7 @@ const ALL = [
   'first-run',
   'renewing',
   'sign-in-again',
+  'leftover-sign-in',
 ];
 
 /** Extra renders: file-name suffix → scenario + flags. */

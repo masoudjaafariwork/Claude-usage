@@ -53,7 +53,7 @@ The book is local only: do **not** publish or republish it to claude.ai (owner's
 
 Mock scenarios: `normal`, `warning`, `critical`, `expired`, `no-credentials`, `rate-limited`,
 `offline`, `loading`, `via-desktop`, `desktop-unavailable`, `forecast`, `locked`, `other-account`, `update-ready`,
-`several-accounts` (two windows), `first-run` (no Claude Code installed), `renewing`, `sign-in-again`
+`several-accounts` (two windows), `first-run` (no Claude Code installed), `renewing`, `sign-in-again`, `leftover-sign-in` (expired sign-in, no Claude Code)
 (defined in `src/main/mock.ts`). Mock runs never start Claude Code (sign-in, install, renewal only log).
 Extra flags: `--compact`, `--expanded`, `--theme=<system|dark|light>`, `--scale=<0.9|1|1.15|1.3|1.5>`,
 `--screenshot=<file>` (render, save PNG, quit; more windows → `<file>-2.png` …), `--keep-occlusion` (Windows: leave Chromium's window

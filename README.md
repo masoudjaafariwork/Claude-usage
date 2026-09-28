@@ -109,8 +109,8 @@ Code's own sign-in, in your browser ([Signing in](#signing-in)).
 ## Requirements
 
 - [Claude Code](https://docs.claude.com/en/docs/claude-code) signed in with a Claude Pro, Max, Team
-  or Enterprise account — either the Claude Code extension for VS Code, or the `claude`
-  command-line tool. Not installed yet? The overlay's **Install Claude Code** button runs
+  or Enterprise account — either the Claude Code extension for VS Code (or Cursor, Windsurf,
+  VSCodium), or the `claude` command-line tool. Not installed yet? The overlay's **Install Claude Code** button runs
   Anthropic's installer for you and signs in ([Signing in](#signing-in)). The free plan doesn't
   include Claude Code.
 - Or the Claude desktop app (Windows / macOS), running: the overlay then shows its recorded usage
@@ -193,7 +193,9 @@ Claude Code** (unmodified), in **your browser** — the same sign-in as `claude`
   first shows what will happen, then opens a terminal that runs Anthropic's official installer
   (`irm https://claude.ai/install.ps1 | iex` on Windows, `curl -fsSL https://claude.ai/install.sh | bash`
   on macOS / Linux; it installs for your user, no admin rights) and then signs the new Claude Code
-  in. Claude Code needs a Pro, Max, Team or Enterprise plan.
+  in. Claude Code needs a Pro, Max, Team or Enterprise plan. The card says the same when an old
+  sign-in is still on the computer but Claude Code itself isn't (its `~/.claude` folder stays when
+  Claude Code is removed).
 - **Not signed in** — **Sign in** opens a terminal running `claude auth login`. Claude Code opens
   your browser; sign in there. If the browser doesn't open, the terminal shows a link, and a code to
   paste if it asks for one. The numbers appear as soon as Claude Code has stored the sign-in — no
@@ -346,6 +348,12 @@ Project guide for AI-assisted development: [CLAUDE.md](CLAUDE.md). Status and de
 
 ## Troubleshooting
 
+- **`claude` isn't found in a new terminal after *Install Claude Code***: Anthropic's installer puts
+  Claude Code in `%USERPROFILE%\.local\bin` (`~/.local/bin` on macOS / Linux), and that folder may
+  not be on your PATH yet. Add it to your user *Path* (Windows: *Edit environment variables for
+  your account* → *Path* → *New* → `%USERPROFILE%\.local\bin`), then open a new terminal;
+  `"%USERPROFILE%\.local\bin\claude.exe" doctor` tells you what Claude Code thinks is missing. The
+  overlay finds Claude Code there without PATH, so signing in and renewal work either way.
 - **"Not signed in"** (Auto mode): click **Sign in** (or **Install Claude Code**), or open the Claude
   desktop app.
 - **Sign in / Install does nothing visible**: on Linux the overlay needs one of x-terminal-emulator,

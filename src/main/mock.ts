@@ -28,6 +28,7 @@ export const MOCK_SCENARIOS = [
   'first-run',
   'renewing',
   'sign-in-again',
+  'leftover-sign-in',
 ] as const;
 export type MockScenario = (typeof MOCK_SCENARIOS)[number];
 
@@ -280,5 +281,8 @@ export function createMockSource(scenario: MockScenario): MockSetup {
     case 'sign-in-again':
       // The sign-in itself is over: renewing can't help, only signing in again.
       return setup({ 'claude-code': claudeCode(() => delay(ended, 0)) }, { initialSnapshot: staleSnapshot(3 * DAY + 2 * HOUR) });
+    case 'leftover-sign-in':
+      // An old, expired sign-in in a `.claude` folder that outlived Claude Code itself (D72).
+      return setup({ 'claude-code': claudeCode(() => delay(expired, 0)) }, { claudeCode: { installed: false } });
   }
 }

@@ -273,6 +273,14 @@ its output format was taken from real runs instead.)
   `renewing`, `sign-in-again`, light variants); the others unchanged. README images and the social
   preview are unaffected (their scenarios' cards didn't change).
 
+**Follow-up after the owner's first test of 1.4.0 (D72):** on a computer with an old `.claude`
+folder (expired sign-in) but no Claude Code, the card offered *Open Claude Code*, which could only
+open the setup page; it now offers *Install Claude Code* whenever no Claude Code is found. Claude
+Code inside Cursor, Windsurf or VSCodium is found too. Mock scenario `leftover-sign-in`; the real
+app checked in that situation (fake home with an expired made-up sign-in, Claude Code hidden from
+PATH). The rest of the owner's test passed: *Install Claude Code* → installer → browser sign-in →
+numbers.
+
 **Not verified here (owner's manual tests below):** a real `claude auth login` through the browser
 (it would have opened the owner's browser), the Install flow on a machine without Claude Code, *Add
 account (sign in)…* end to end, and the renewal of a really expired token (Revaal). macOS and Linux

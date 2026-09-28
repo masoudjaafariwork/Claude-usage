@@ -82,12 +82,15 @@ export type ClaudeCodeAction = 'install' | 'sign-in' | 'open';
  * Not signed in: sign in through Claude Code, or install it first. Expired: nothing while Claude
  * Code renews it in the background; *Open Claude Code* while it may still renew it (D34); sign in
  * again once the sign-in itself is over. Null: nothing to offer.
+ * Without a Claude Code to run, always *Install*: a sign-in file can outlive Claude Code (its
+ * `.claude` folder stays when Claude Code is removed), and *Open Claude Code* could then only show
+ * the setup page (D72).
  */
 export function claudeCodeAction(status: Status, claudeCode: ClaudeCodeView): ClaudeCodeAction | null {
-  const signIn = claudeCode.installed ? 'sign-in' : 'install';
-  if (status.kind === 'no-credentials') return signIn;
+  if (status.kind === 'no-credentials') return claudeCode.installed ? 'sign-in' : 'install';
   if (status.kind !== 'token-expired' || claudeCode.renewing) return null;
-  return status.reason === 'sign-in-ended' || claudeCode.signInEnded ? signIn : 'open';
+  if (!claudeCode.installed) return 'install';
+  return status.reason === 'sign-in-ended' || claudeCode.signInEnded ? 'sign-in' : 'open';
 }
 
 /** Avatar letters, as on claude.ai: "Ada Lovelace" → "AL", "ada@example.com" → "A", nothing → "". */

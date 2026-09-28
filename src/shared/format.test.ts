@@ -14,6 +14,10 @@ test('claudeCodeAction: install / sign in / open Claude Code / nothing (Phase 8)
   assert.equal(claudeCodeAction(expired, view({ signInEnded: true })), 'sign-in');
   assert.equal(claudeCodeAction({ kind: 'token-expired', reason: 'sign-in-ended' }, view()), 'sign-in');
   assert.equal(claudeCodeAction({ kind: 'token-expired', reason: 'sign-in-ended' }, view({ installed: false })), 'install');
+  // An old sign-in outlived Claude Code (its folder stays when Claude Code is removed): Open Claude
+  // Code could only show the setup page, so offer the install (D72).
+  assert.equal(claudeCodeAction(expired, view({ installed: false })), 'install');
+  assert.equal(claudeCodeAction({ kind: 'token-expired', reason: 'rejected' }, view({ installed: false })), 'install');
   for (const kind of ['ok', 'loading', 'rate-limited', 'network-error', 'error', 'desktop-unavailable'] as const) {
     assert.equal(claudeCodeAction({ kind }, view()), null, kind);
   }

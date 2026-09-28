@@ -338,6 +338,13 @@ const VSCODE_FOLDERS = [
   ['.vscode-insiders', 'vscode-insiders'],
 ] as const;
 
+/**
+ * Editors whose Claude Code extension ships its own Claude Code binary: VS Code first, then the VS
+ * Code-based editors Cursor, Windsurf and VSCodium (D72). Only their binary is used (in a terminal,
+ * for sign-in and renewal) — *Open Claude Code*'s editor route stays VS Code's.
+ */
+const EXTENSION_FOLDERS: readonly string[] = [...VSCODE_FOLDERS.map(([folder]) => folder), '.cursor', '.windsurf', '.vscode-oss'];
+
 /** 'vscode' / 'vscode-insiders' when that VS Code has the Claude Code extension installed. */
 export function findVsCodeScheme(home: string, listDir: (dir: string) => string[] = safeReadDir): string | null {
   for (const [folder, scheme] of VSCODE_FOLDERS) {
@@ -354,8 +361,9 @@ function extensionVersion(entry: string): number[] | null {
 }
 
 /**
- * The `claude` binary inside the newest Claude Code extension for VS Code, for a terminal when the
- * command-line tool isn't installed (the extension ships its own copy of Claude Code).
+ * The `claude` binary inside the newest Claude Code extension for VS Code (or Cursor, Windsurf,
+ * VSCodium), for a terminal when the command-line tool isn't installed (the extension ships its own
+ * copy of Claude Code).
  */
 export function findExtensionClaude(
   platform: NodeJS.Platform,
@@ -365,7 +373,7 @@ export function findExtensionClaude(
 ): string | null {
   const path = platform === 'win32' ? win32 : posix;
   const byVersion = (a: number[], b: number[]) => a.map((n, i) => n - (b[i] ?? 0)).find((d) => d !== 0) ?? 0;
-  for (const [folder] of VSCODE_FOLDERS) {
+  for (const folder of EXTENSION_FOLDERS) {
     const extensions = path.join(home, folder, 'extensions');
     const newestFirst = listDir(extensions)
       .flatMap((entry) => {
