@@ -13,7 +13,7 @@ Living record of where the project stands. Update it at the end of every session
 | [5 — App auto-update](phases/phase-5-auto-update.md) | ✅ Done (2026-09-26) — real release test: 1.0.0 found and downloaded 1.1.0 (owner, *Check for updates*) |
 | [6 — Several Claude Code accounts (config folders) with a switcher](phases/phase-6-accounts.md) | ✅ Done (2026-09-26) — released as 1.1.0 |
 | [7 — A window per Claude Code account](phases/phase-7-account-windows.md) | ✅ Done (2026-09-28) — released as 1.3.0 |
-| [8 — Sign in through Claude Code, keep the sign-in fresh](phases/phase-8-sign-in.md) | ✅ Done (2026-09-28) — released as 1.4.0; browser sign-in, install and renewal of a really expired token: owner's manual tests |
+| [8 — Sign in through Claude Code, keep the sign-in fresh](phases/phase-8-sign-in.md) | ✅ Done (2026-09-28) — released as 1.4.0, fix D72 in 1.4.1; browser sign-in, install and renewal of a really expired token: owner's manual tests |
 
 Each phase has its own plan file in [`phases/`](phases/) (scope, notes, acceptance criteria,
 ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLOG.md).
@@ -190,6 +190,7 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D70 | **Terminals for sign-in and install:** Windows — a plain-ASCII `.cmd` in `%TEMP%` that takes every value from environment variables with delayed expansion (`!CLAUDE_USAGE_CLAUDE!`, `!CLAUDE_USAGE_EMAIL!`, the folder in `CLAUDE_CONFIG_DIR`), started by `cmd /d /v:on /c start "<title>" /wait cmd /d /c call "!CLAUDE_USAGE_SCRIPT!"`; the launcher exits when the window closes. macOS — a `.command` script in Terminal; Linux — a `.sh` script in the first terminal found; both wait for Enter at the end. The e-mail is passed only when it is a plain address. Claude Code itself is found by `findClaudeBinary()` (PATH `claude.exe`, npm's shim resolved to its `bin/claude.exe`, `~/.local/bin`, WinGet `Links`, Homebrew, the VS Code extension's binary), on every use | Batch files are read in the console's code page and cmd interprets `&`, `%`, `^` in anything expanded before parsing — a user name, a folder or an e-mail must never become part of a command line. Checked with a folder named `a & b (test)` and a value with `&` and `Ä`. `start /wait` is the only way to learn on Windows that a sign-in window was closed (to remove an unused account folder at once); elsewhere the 15-minute limit covers it. A running app doesn't see PATH changes, so the installers' folders are searched directly. |
 | D71 | **Version 1.4.0** for Phase 8 (sign in through Claude Code, background renewal) | Semantic Versioning, as D49 / D55 / D65: new features, nothing breaks. Settings of 1.3.0 are read unchanged (the two new keys get their defaults). The owner asked for the release right after the phase, before the manual tests; a fix found there becomes 1.4.1. |
 | D72 | **No Claude Code to run → *Install Claude Code*, also for an expired or refused sign-in** (`claudeCodeAction`; card "Claude Code isn't installed — An old Claude Code sign-in is here, but not Claude Code itself"). Claude Code is also found inside the Claude Code extension of **Cursor, Windsurf and VSCodium** (`~/.cursor`, `~/.windsurf`, `~/.vscode-oss` → `extensions/anthropic.claude-code-*/resources/native-binary/claude[.exe]`), after VS Code's; only the binary is used — *Open Claude Code*'s editor route stays VS Code's (`vscode://`) | The owner's first test of 1.4.0 on another computer (2026-09-28): an old `.claude` folder with an expired sign-in but no Claude Code gave "sign-in expired" + *Open Claude Code*, which without Claude Code can only open the setup page; after deleting the folder, *Install Claude Code* worked end to end (install, browser sign-in, numbers). A `.claude` folder says someone signed in once; only the executable says Claude Code is installed now — the lookup already existed (D70), the expired case didn't ask it. The editor forks keep their extensions in their own folders with the same layout; their URL schemes (`cursor://` …) weren't tried, so they aren't used. |
+| D73 | **Version 1.4.1** for D72 (Install Claude Code when only an old sign-in is left; the Claude Code extension of Cursor / Windsurf / VSCodium) | Semantic Versioning: a bug fix is a patch version (D49 / D55 / D65 / D71). Nothing else changed since 1.4.0; the PATH question of session 28 is still open and not part of it. |
 | D49 | **Version 1.0.0** for the first release with the updater (0.2.0 → 1.0.0; no 0.3.x). The real-release updater test becomes 1.0.0 → 1.0.1. README says openly that only Windows 11 is tested; macOS and Linux builds are CI-built but never run | Owner's choice (2026-09-26): all planned phases are done. Recommended first was 0.3.0 → 0.3.1 for the test and 1.0.0 once it passed; the owner preferred 1.0.0 now. Technically the same: a broken updater in the first updater version needs one manual install either way. |
 
 ## Usage API notes (observed 2026-09-24)
@@ -1005,3 +1006,15 @@ Kept for the record in case Anthropic ever offers an official way.
   entry; the overlay doesn't need PATH. Adding the folder to the user PATH automatically was
   offered and is the owner's call.
 - Electron book v3.2: a section on "a data folder vs. an installed program" in the sign-in chapter.
+
+### 2026-09-28 — Session 29: release 1.4.1
+
+- The owner asked for a new release with the D72 fix → 1.4.1 (D73).
+- Found before releasing: the fix had already been committed and pushed (not by this session) as
+  `2bcc674` with another project's task prompt as its commit message, on the public `main`. With the
+  owner's approval the message was replaced (content unchanged, same tree) and `main` force-pushed
+  with a lease on that exact commit → `d47dfed`. GitHub may still show the old commit by its full
+  SHA for a while.
+- `npm run check` passed (174 tests); `npm version 1.4.1 --no-git-tag-version`; commit, `main`
+  pushed, tag `v1.4.1` pushed → the release workflow builds the draft; the owner publishes it.
+- Docs: phase 8 "fix in 1.4.1" (PROGRESS, BACKLOG, phase file). Electron book v3.3: changelog.
