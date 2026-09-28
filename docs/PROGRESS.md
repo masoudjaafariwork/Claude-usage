@@ -14,11 +14,12 @@ Living record of where the project stands. Update it at the end of every session
 | [6 — Several Claude Code accounts (config folders) with a switcher](phases/phase-6-accounts.md) | ✅ Done (2026-09-26) — released as 1.1.0 |
 | [7 — A window per Claude Code account](phases/phase-7-account-windows.md) | ✅ Done (2026-09-28) — released as 1.3.0 |
 | [8 — Sign in through Claude Code, keep the sign-in fresh](phases/phase-8-sign-in.md) | ✅ Done (2026-09-28) — released as 1.4.0, fix D72 in 1.4.1; browser sign-in, install and renewal of a really expired token: owner's manual tests |
+| [9 — Project website (GitHub Pages)](phases/phase-9-website.md) | ✅ Built (2026-09-29) — goes live when the owner switches Pages to *GitHub Actions* and pushes |
 
 Each phase has its own plan file in [`phases/`](phases/) (scope, notes, acceptance criteria,
 ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLOG.md).
 
-## What works today (Phases 1–8)
+## What works today (Phases 1–9)
 
 - Frameless, transparent, always-on-top overlay; drag anywhere; position remembered; stays reachable
   when monitors change; "Move to display" menu for multi-monitor setups. The window is exactly the
@@ -114,6 +115,13 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
   (no prompt, no session file), renews its own token, and the overlay shows fresh numbers ("Renewing
   sign-in…" meanwhile) — at most every 30 min per account, backing off to 12 h, menu → *Renew sign-in
   automatically*. When renewing can't help, the card says *Sign in again* (D66–D70).
+- **Website (Phase 9):** `https://masoudjaafariwork.github.io/Claude-usage/` — one static page
+  (`site/`): hero with a download button for the visitor's OS, what the card shows, alert levels,
+  features, a gallery of states, privacy with a diagram of every read and request, getting started
+  and shortcuts, downloads per OS with the first-run warnings, FAQ, the "not affiliated" notice.
+  Dark and light, phone width, no requests to other sites. `scripts/site.mjs` fills in the latest
+  release's files at build time; `.github/workflows/pages.yml` deploys on site changes and on every
+  published release (D74–D77).
 
 ## Decisions
 
@@ -191,6 +199,10 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D71 | **Version 1.4.0** for Phase 8 (sign in through Claude Code, background renewal) | Semantic Versioning, as D49 / D55 / D65: new features, nothing breaks. Settings of 1.3.0 are read unchanged (the two new keys get their defaults). The owner asked for the release right after the phase, before the manual tests; a fix found there becomes 1.4.1. |
 | D72 | **No Claude Code to run → *Install Claude Code*, also for an expired or refused sign-in** (`claudeCodeAction`; card "Claude Code isn't installed — An old Claude Code sign-in is here, but not Claude Code itself"). Claude Code is also found inside the Claude Code extension of **Cursor, Windsurf and VSCodium** (`~/.cursor`, `~/.windsurf`, `~/.vscode-oss` → `extensions/anthropic.claude-code-*/resources/native-binary/claude[.exe]`), after VS Code's; only the binary is used — *Open Claude Code*'s editor route stays VS Code's (`vscode://`) | The owner's first test of 1.4.0 on another computer (2026-09-28): an old `.claude` folder with an expired sign-in but no Claude Code gave "sign-in expired" + *Open Claude Code*, which without Claude Code can only open the setup page; after deleting the folder, *Install Claude Code* worked end to end (install, browser sign-in, numbers). A `.claude` folder says someone signed in once; only the executable says Claude Code is installed now — the lookup already existed (D70), the expired case didn't ask it. The editor forks keep their extensions in their own folders with the same layout; their URL schemes (`cursor://` …) weren't tried, so they aren't used. |
 | D73 | **Version 1.4.1** for D72 (Install Claude Code when only an old sign-in is left; the Claude Code extension of Cursor / Windsurf / VSCodium) | Semantic Versioning: a bug fix is a patch version (D49 / D55 / D65 / D71). Nothing else changed since 1.4.0; the PATH question of session 28 is still open and not part of it. |
+| D74 | **Website = a hand-written static page in `site/`, deployed by GitHub Actions to GitHub Pages** (`https://masoudjaafariwork.github.io/Claude-usage/`, *Source: GitHub Actions*, `pages.yml`: `upload-pages-artifact` + `deploy-pages`). No framework or generator, no new dependency; English only; one page (plus `404.html` and `sitemap.xml`; no `robots.txt` — crawlers only read it at the host root, which a project site doesn't own) | Findability (D59, the competitor analysis's P0): a page search engines and link cards can use, with a real download button — the README is a manual, not a landing page. A static page needs no build tooling to maintain and keeps the app's security posture. Not the `/docs` folder: Jekyll would publish PROGRESS and the phase files as pages. English because the users are worldwide; a Persian page can follow the Persian UI idea. |
+| D75 | **Download links are filled in at build time from `releases/latest`** (GitHub API; `GITHUB_TOKEN` in CI): version, date, and per installer its direct URL, name and size (`ASSETS` in `site.mjs` = D46 names). A missing file links to the release page; in CI an unreadable release fails the build, locally it falls back to the Releases page. Publishing a release rebuilds the site: the `release` run (on the tag, which the `github-pages` environment won't deploy) only starts `pages.yml` again on `main` (`gh workflow run`, allowed with `GITHUB_TOKEN`). `app.js` only picks the visitor's OS file from the links already on the page | Visitors' browsers never call the GitHub API (no 60-per-hour limit, no request to another site, works without JavaScript) and the version in the JSON-LD is right for crawlers. The release event is the only moment the links change. |
+| D76 | **The site's overlay images are generated** (`npm run site:images`: mock scenarios at 2× pixel density — dark / light hero card and pill at Size 115 %, the three severity levels, light theme, several accounts, renewing, first run, expired, via Claude Desktop, locked — plus icons from `make-icon.mjs`), committed in `site/images/` (~2.5 MB); `{{dims:…}}` reads each PNG's size at build time. CLAUDE.md → Finish: re-render with UI changes and keep the page's text as true as the README | Same rule as the README images (D43) and the social preview (D58): the page can't drift from the app. 2× keeps text sharp on high-DPI screens; sizes from the file keep a re-rendered image at its natural size. The social preview is copied in at build time (one source). |
+| D77 | **The website tracks nobody and makes no third-party request:** no analytics, cookies, web fonts or CDNs; CSP `default-src 'self'` in a meta tag (Pages can't send headers), no inline script or style. States only what the README states (only Windows 11 tested, unsigned builds, not affiliated with Anthropic); no Apple / Microsoft logos (their trademark rules) | The app's "no telemetry" promise would sound hollow on a page that tracks its visitors. The honest notes are what an open-source user checks first. |
 | D49 | **Version 1.0.0** for the first release with the updater (0.2.0 → 1.0.0; no 0.3.x). The real-release updater test becomes 1.0.0 → 1.0.1. README says openly that only Windows 11 is tested; macOS and Linux builds are CI-built but never run | Owner's choice (2026-09-26): all planned phases are done. Recommended first was 0.3.0 → 0.3.1 for the test and 1.0.0 once it passed; the owner preferred 1.0.0 now. Technically the same: a broken updater in the first updater version needs one manual install either way. |
 
 ## Usage API notes (observed 2026-09-24)
@@ -454,6 +466,11 @@ Kept for the record in case Anthropic ever offers an official way.
   clicked — Windows orders topmost windows by who came up last. Verified on Windows 11 only (mock
   run: topmost after start and after activation while the taskbar wasn't topmost); macOS and Linux
   unchanged and untested.
+- **Website (Phase 9):** not live until the owner sets *Settings → Pages → Source: GitHub Actions*
+  and pushes (or runs *Website* by hand); `configure-pages` fails before that. Checked only in
+  Electron's Chromium (`npm run site:shot`, 1280 / 1024 / 390 px, dark / light) — Safari and Firefox
+  untested. The images are PNGs (~2.5 MB in all, lazy-loaded below the hero); WebP would be about a
+  third, not done. Every `site:images` run adds new PNGs to the repository's history.
 
 ## Session log
 
@@ -1018,3 +1035,35 @@ Kept for the record in case Anthropic ever offers an official way.
 - `npm run check` passed (174 tests); `npm version 1.4.1 --no-git-tag-version`; commit, `main`
   pushed, tag `v1.4.1` pushed → the release workflow builds the draft; the owner publishes it.
 - Docs: phase 8 "fix in 1.4.1" (PROGRESS, BACKLOG, phase file). Electron book v3.3: changelog.
+
+### 2026-09-29 — Session 30: Phase 9 (project website on GitHub Pages)
+
+- The owner asked for a complete introduction site on GitHub Pages. Planned as Phase 9
+  (`phases/phase-9-website.md`) and built in the same session (D74–D77). Checked first: the
+  repository is public, Pages was off, v1.4.1 is `releases/latest` with six installers.
+- `site/`: one English page — hero (OS-aware download button, the card and the pill over a
+  stylised editor), what the card shows, the three alert levels, twelve features, a gallery of
+  eight states, privacy with a diagram of every read and request, getting started + shortcuts,
+  downloads per OS with the SmartScreen / Gatekeeper / FUSE notes and copy buttons, ten FAQ
+  entries, closing call to action, footer with the Anthropic notice. `404.html`, `sitemap.xml`,
+  Open Graph + JSON-LD. Every claim was taken from the README and the decisions.
+- `scripts/site.mjs` (`site`, `site:build`, `site:images`, `site:shot`) and
+  `.github/workflows/pages.yml`. Pitfalls found while building `--shot`: Electron exits with -1
+  and no message when an `http://` URL is on its command line (the port is passed instead);
+  `img.decode()` never settles for off-screen lazy images (all set to eager first); one
+  `capturePage()` of a 10 000 px window fails with `UnknownVizError` (captured per window height,
+  raw rows joined with `nativeImage.createFromBitmap`); a second offscreen window failed to load
+  with `ERR_FAILED` (one window reused).
+- Verified: captures at 1280 and 390 px in both themes looked at section by section (hero layout,
+  kicker colour, file-size wrapping and the phone layout of the privacy diagram fixed after the
+  first look); no console errors and no 4xx; JSON-LD parses; every `#anchor` exists; every image
+  has `alt` and a size; the local server's 404 page; the build's fallback without release data and
+  its failure in CI mode. `npm run check`: 174 tests pass (no app code changed). The workflow
+  itself runs only on GitHub (YAML parsed locally).
+- README (website link, dev table, release step 5), CLAUDE.md (commands, architecture, Finish rule,
+  gotchas). Electron book: chapter on the website.
+- Owner's review: on a narrower desktop window the hero card sat off-centre in the frame behind it
+  (it was pinned right with padding on that side only, so a narrow column pushed it against the
+  frame's left edge). The stage now hugs the card (`width: fit-content`) with the same margin on
+  both sides, the pill is centred under it, the editor window peeks out at the top left; `site:shot`
+  also captures 1024 px (checked at 1280, 1024 and 390 px).

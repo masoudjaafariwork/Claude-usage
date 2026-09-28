@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- GitHub Pages can't send headers, so the policy lives here. No inline script or style anywhere. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self'; style-src 'self'; script-src 'self'; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<title>Claude Usage — your Claude plan limits, always on top</title>
+<meta name="description" content="Free, open-source desktop overlay for Windows, macOS and Linux that shows your Claude plan usage limits: the 5-hour session, weekly and per-model limits with reset countdowns, a pace forecast and alerts. Reads Claude Code's sign-in read-only — no claude.ai login, no telemetry.">
+<link rel="canonical" href="{{siteUrl}}">
+<meta name="color-scheme" content="dark light">
+<meta name="theme-color" content="#121110" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#faf8f5" media="(prefers-color-scheme: light)">
+<link rel="icon" type="image/png" sizes="32x32" href="images/favicon-32.png">
+<link rel="icon" type="image/png" sizes="192x192" href="images/icon-192.png">
+<link rel="apple-touch-icon" href="images/apple-touch-icon.png">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Claude Usage">
+<meta property="og:title" content="Claude Usage — your Claude plan limits, always on top">
+<meta property="og:description" content="A small always-on-top overlay with your session, weekly and per-model Claude limits, reset countdowns, pace forecast and alerts. Windows, macOS, Linux. Free and open source.">
+<meta property="og:url" content="{{siteUrl}}">
+<meta property="og:image" content="{{siteUrl}}images/social-preview.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="The Claude Usage overlay: the expanded card and the compact pill next to the app's name and main features.">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="stylesheet" href="styles.css">
+<script src="app.js" defer></script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "Claude Usage",
+  "description": "Always-on-top desktop overlay that shows your Claude plan usage limits: the 5-hour session, weekly and per-model limits with reset countdowns, pace forecast and alerts.",
+  "url": "{{siteUrl}}",
+  "image": "{{siteUrl}}images/social-preview.png",
+  "applicationCategory": "UtilitiesApplication",
+  "operatingSystem": "Windows 10, Windows 11, macOS, Linux",
+  "softwareVersion": "{{version}}",
+  "dateModified": "{{releaseDateISO}}",
+  "downloadUrl": "{{releaseUrl}}",
+  "license": "https://opensource.org/licenses/MIT",
+  "isAccessibleForFree": true,
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+  "author": { "@type": "Person", "name": "Masoud Jaafari", "url": "https://github.com/masoudjaafariwork" },
+  "sameAs": ["{{repoUrl}}"]
+}
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="topbar">
+  <div class="wrap topbar-inner">
+    <a class="brand" href="./">
+      <img src="images/logo-64.png" {{dims:images/logo-64.png}} alt="">
+      <span>Claude Usage</span>
+    </a>
+    <nav class="nav" aria-label="Sections">
+      <a href="#features">Features</a>
+      <a href="#privacy">Privacy</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <div class="topbar-actions">
+      <a class="icon-link" href="{{repoUrl}}" aria-label="Claude Usage on GitHub">
+        <svg class="gh" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      </a>
+      <a class="btn btn-small" href="#download">Download</a>
+    </div>
+  </div>
+</header>
+
+<main id="main">
+
+<!-- Hero ------------------------------------------------------------------------------------------------------ -->
+<section class="hero">
+  <div class="wrap hero-grid">
+    <div class="hero-copy">
+      <p class="eyebrow">Free &amp; open source · Windows · macOS · Linux</p>
+      <h1>Your Claude plan limits, <span class="accent">always in view.</span></h1>
+      <p class="lead">
+        Claude Usage is a small always-on-top overlay that shows your current session, weekly and per-model
+        limits — the same numbers as Claude’s <em>Settings → Usage</em> page — and keeps them fresh while you work.
+      </p>
+      <div class="cta">
+        <a class="btn btn-primary js-download" href="#download" data-version="{{version}}">
+          <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16"/></svg>
+          <span class="btn-text">
+            <span class="js-download-label">Download</span>
+            <small class="js-download-meta">v{{version}} · Windows, macOS, Linux</small>
+          </span>
+        </a>
+        <a class="btn btn-ghost" href="{{repoUrl}}">
+          <svg class="btn-icon gh" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+          View on GitHub
+        </a>
+      </div>
+      <p class="hero-links">
+        <a href="#download">All downloads</a>
+        <span aria-hidden="true">·</span>
+        <a href="{{releaseUrl}}">What’s new in v{{version}}</a>
+      </p>
+      <ul class="trust" aria-label="In short">
+        <li>Read-only</li>
+        <li>No claude.ai login</li>
+        <li>No telemetry</li>
+        <li>MIT licence</li>
+      </ul>
+    </div>
+
+    <figure class="stage">
+      <div class="desk" aria-hidden="true">
+        <div class="appwin">
+          <div class="appwin-bar"><i></i><i></i><i></i></div>
+          <div class="appwin-body">
+            <span class="ln w40 c1"></span><span class="ln w70 c2 in1"></span><span class="ln w55 c3 in1"></span>
+            <span class="ln w30 c4 in2"></span><span class="ln w65 c2 in2"></span><span class="ln w45 c1 in1"></span>
+            <span class="ln w20 c3"></span><span class="ln w50 c1"></span><span class="ln w75 c4 in1"></span>
+            <span class="ln w35 c2 in2"></span><span class="ln w60 c3 in2"></span><span class="ln w25 c1 in1"></span>
+            <span class="ln w45 c2"></span><span class="ln w55 c4 in1"></span><span class="ln w30 c3 in1"></span>
+          </div>
+        </div>
+      </div>
+      <picture class="stage-card">
+        <source srcset="images/hero-card-light.png" media="(prefers-color-scheme: light)">
+        <img src="images/hero-card-dark.png" {{dims:images/hero-card-dark.png}} alt="The Claude Usage card: current session at 62 % with a reset countdown and a pace forecast, the weekly limits for all models and for one model, and this week’s usage split by app.">
+      </picture>
+      <picture class="stage-pill">
+        <source srcset="images/hero-pill-light.png" media="(prefers-color-scheme: light)">
+        <img src="images/hero-pill-dark.png" {{dims:images/hero-pill-dark.png}} alt="The compact pill: the session and both weekly limits as small rings.">
+      </picture>
+      <figcaption class="visually-hidden">The overlay floats above an editor window: the expanded card and the compact pill.</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- What it shows -------------------------------------------------------------------------------------------- -->
+<section class="section" id="shows">
+  <div class="wrap split">
+    <figure class="split-media">
+      <img src="images/card-normal.png" {{dims:images/card-normal.png}} loading="lazy" alt="The expanded card with a session at 23 %, weekly limits at 52 % and 37 %, and this week’s split: Claude Code 74 %, Chats 16 %, Cowork 10 %.">
+    </figure>
+    <div class="split-copy">
+      <p class="kicker">At a glance</p>
+      <h2>The numbers you would otherwise keep checking</h2>
+      <p>
+        Everything on Claude’s usage page, in one card that stays on top of your editor, browser or terminal —
+        and refreshes itself.
+      </p>
+      <ul class="parts">
+        <li><b>Current session</b> The 5-hour limit as a ring, with a live countdown to its reset.</li>
+        <li><b>Weekly limits</b> All models, plus every model that has a weekly limit of its own.</li>
+        <li><b>This week, by app</b> How your weekly usage splits between Claude Code, chats and Cowork.</li>
+        <li><b>Pace forecast</b> “At this pace: limit in ~1h 15m” when your recent pace would hit 100 % before the reset.</li>
+        <li><b>Extra usage</b> Your extra-usage spending, when you have it switched on.</li>
+        <li><b>Plan and account</b> Your plan and the account the numbers belong to — hidden with one click while you share your screen.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- Alerts ---------------------------------------------------------------------------------------------------- -->
+<section class="section section-tint" id="alerts">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="kicker">Before you hit the wall</p>
+      <h2>It tells you when to slow down</h2>
+      <p>
+        Colours change as a limit fills up, a notification arrives at 75 %, 90 % and 100 % — once per limit and
+        usage window — and, if you like, another one when it resets. The tray icon’s ring always shows your
+        fullest limit.
+      </p>
+    </div>
+    <div class="levels">
+      <figure class="level">
+        <img src="images/card-normal.png" {{dims:images/card-normal.png}} loading="lazy" alt="Card in green: session at 23 %.">
+        <figcaption><span class="dot dot-ok"></span><b>Plenty left</b> Under 75 %</figcaption>
+      </figure>
+      <figure class="level">
+        <img src="images/card-warning.png" {{dims:images/card-warning.png}} loading="lazy" alt="Card in amber: session at 78 % and one weekly limit at 81 %.">
+        <figcaption><span class="dot dot-warn"></span><b>Getting close</b> From 75 %</figcaption>
+      </figure>
+      <figure class="level">
+        <img src="images/card-critical.png" {{dims:images/card-critical.png}} loading="lazy" alt="Card in red: session at 96 %, weekly limit at 91 %, and an extra-usage row.">
+        <figcaption><span class="dot dot-crit"></span><b>Almost out</b> From 90 %</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<!-- Features -------------------------------------------------------------------------------------------------- -->
+<section class="section" id="features">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="kicker">Features</p>
+      <h2>Made to stay out of your way</h2>
+      <p>A card when you want detail, a pill when you want space, and nothing in between you and your work.</p>
+    </div>
+    <ul class="features">
+      <li class="feature">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="13" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-3"/></svg>
+        <h3>Always on top, anywhere</h3>
+        <p>Drag it to any monitor and right up to the screen edge. It remembers where you left it; <em>Move to display</em> sends it to another screen.</p>
+      </li>
+      <li class="feature">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="8" width="20" height="8" rx="4"/><circle cx="7" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/></svg>
+        <h3>Compact pill</h3>
+        <p>The session and your weekly limits as small rings in a slim bar. Choose which limits it shows.</p>
+      </li>
+      <li class="feature">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>
+        <h3>Click-through lock</h3>
+        <p>Lock it and every click goes straight to the window underneath. Unlock from the tray or with a shortcut.</p>
+      </li>
+      <li class="feature">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+        <h3>Your look</h3>
+        <p>Size 90–150 %, dark, light or like your system, and 50–100 % opacity — a see-through overlay turns solid while the mouse is over it.</p>
+      </li>
+      <li class="feature">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M7 14h10"/></svg>
+        <h3>Keyboard shortcuts</h3>
+        <p>Show or hide it with <span class="combo"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>U</kbd></span> and lock it with <span class="combo"><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>U</kbd></span> — from any app (<span class="combo"><kbd>⌘</kbd><kbd>⌥</kbd><kbd>U</kbd></span> on a Mac).</p>
+      </li>
+      <li class="feature">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8" class="faint"/><path d="M12 4a8 8 0 0 1 7.6 10.5"/></svg>
+        <h3>Tray ring</h3>
+        <p>The tray or menu-bar icon is a live ring of your fullest limit; its tooltip lists them all.</p>
+      </li>
+      <li class="feature">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c.6-3.4 3-5.4 6-5.4s5.4 2 6 5.4"/><circle cx="17" cy="9" r="2.6"/><path d="M16 14.7c2.6 0 4.5 1.8 5 4.8"/></svg>
+        <h3>Several accounts</h3>
+        <p>Several Claude accounts? Give each one a window of its own and see them all at once, or switch in one window.</p>
+      </li>
+      <li class="feature">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="m11 12 8-8m-3 3 3 3m-6 0 2 2"/></svg>
+        <h3>One-button sign-in</h3>
+        <p><em>Sign in</em> lets your own Claude Code sign in through your browser. Not installed yet? <em>Install Claude Code</em> runs Anthropic’s installer.</p>
+      </li>
+      <li class="feature">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 0 1-14.3 4.9M4 12A8 8 0 0 1 18.3 7.1"/><path d="M18.5 3v4.2h-4.2M5.5 21v-4.2h4.2"/></svg>
+        <h3>Keeps the sign-in fresh</h3>
+        <p>When Claude Code’s sign-in expires after hours without use, the overlay lets Claude Code renew it in the background.</p>
+      </li>
+      <li class="feature">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 8.5a15 15 0 0 1 20 0M5.5 12a10 10 0 0 1 13 0M9 15.5a5 5 0 0 1 6 0"/><path d="M12 19h.01"/></svg>
+        <h3>Fine when offline</h3>
+        <p>Offline, rate-limited or signed out: it keeps showing the last numbers, clearly marked as old, and catches up by itself.</p>
+      </li>
+      <li class="feature">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+        <h3>Claude desktop app as backup</h3>
+        <p>No Claude Code sign-in? It can show the usage the Claude desktop app records by itself — no extra sign-in.</p>
+      </li>
+      <li class="feature">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v11m0 0-4-4m4 4 4-4"/><path d="M4 15v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/></svg>
+        <h3>Updates itself</h3>
+        <p>New versions download in the background and install when you quit — or right away with <em>Restart to update</em>.</p>
+      </li>
+    </ul>
+  </div>
+</section>
+
+<!-- Gallery --------------------------------------------------------------------------------------------------- -->
+<section class="section section-tint" id="gallery">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="kicker">In every state</p>
+      <h2>Clear about what it knows — and what it doesn’t</h2>
+      <p>Expired sign-ins, a missing Claude Code, old data: the card always says what’s going on and offers the next step.</p>
+    </div>
+    <div class="gallery">
+      <figure class="shot">
+        <img src="images/pill-normal.png" {{dims:images/pill-normal.png}} loading="lazy" alt="The compact pill with three rings: session 23 %, week 52 %, one model 37 %.">
+        <figcaption><b>Compact pill</b> The session and weekly limits, refresh and expand — nothing more.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="images/card-normal-light.png" {{dims:images/card-normal-light.png}} loading="lazy" alt="The card in the light theme.">
+        <figcaption><b>Light theme</b> Or dark, or whatever your system uses.</figcaption>
+      </figure>
+      <figure class="shot">
+        <div class="shot-stack">
+          <img src="images/pill-several.png" {{dims:images/pill-several.png}} loading="lazy" alt="First account’s pill with its e-mail under the rings.">
+          <img src="images/pill-several-2.png" {{dims:images/pill-several-2.png}} loading="lazy" alt="Second account’s pill with another e-mail.">
+        </div>
+        <figcaption><b>A window per account</b> Each with its own numbers, e-mail and warnings; close any one on its own.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="images/card-renewing.png" {{dims:images/card-renewing.png}} loading="lazy" alt="Card with the banner “Renewing sign-in… Claude Code is renewing its sign-in in the background — no need to open it.”">
+        <figcaption><b>Renewing the sign-in</b> Your Claude Code renews its own sign-in in the background; fresh numbers follow.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="images/card-first-run.png" {{dims:images/card-first-run.png}} loading="lazy" alt="Card saying “Claude Code isn’t installed” with an Install Claude Code button.">
+        <figcaption><b>First run</b> No Claude Code yet? One button installs it with Anthropic’s own installer, then signs in.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="images/card-expired.png" {{dims:images/card-expired.png}} loading="lazy" alt="Card with greyed-out numbers and the banner “Claude Code sign-in expired” with an Open Claude Code button.">
+        <figcaption><b>Last known numbers</b> Greyed out and labelled with their age until fresh ones arrive.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="images/card-via-desktop.png" {{dims:images/card-via-desktop.png}} loading="lazy" alt="Card with the footer “via Claude Desktop · as of 00:13” and reset time unknown.">
+        <figcaption><b>Via the Claude desktop app</b> Its own usage history as a backup: says where the numbers came from and how old they are.</figcaption>
+      </figure>
+      <figure class="shot">
+        <img src="images/pill-locked.png" {{dims:images/pill-locked.png}} loading="lazy" alt="The compact pill with a lock icon in place of its buttons.">
+        <figcaption><b>Locked</b> A lock icon replaces the buttons; clicks go through to the window below.</figcaption>
+      </figure>
+    </div>
+  </div>
+</section>
+
+<!-- Privacy --------------------------------------------------------------------------------------------------- -->
+<section class="section" id="privacy">
+  <div class="wrap split split-reverse">
+    <div class="split-copy">
+      <p class="kicker">Privacy &amp; security</p>
+      <h2>Private by design</h2>
+      <ul class="checks">
+        <li><b>Read-only.</b> It reads the sign-in Claude Code already keeps on your computer and never changes or refreshes it — refreshing would sign Claude Code out.</li>
+        <li><b>One destination.</b> That token goes only to <code>api.anthropic.com</code>, in the same usage request Claude Code’s own <code>/usage</code> makes. The only other request is the update check on github.com.</li>
+        <li><b>No login of its own.</b> No claude.ai password, cookies or session tokens — Anthropic doesn’t allow third-party apps to ask for them. Signing in is always your own Claude Code, in your own browser.</li>
+        <li><b>No telemetry.</b> No analytics, no accounts, no servers of ours. The diagnostic log removes tokens and e-mail addresses before anything is written.</li>
+        <li><b>Open source.</b> MIT-licensed; the code and the build workflow that makes the installers are on GitHub.</li>
+      </ul>
+    </div>
+    <figure class="flow" aria-labelledby="flow-caption">
+      <figcaption id="flow-caption" class="flow-caption">Everything the app reads and every request it makes</figcaption>
+      <div class="flow-zone">
+        <span class="flow-zone-label">Your computer</span>
+        <div class="flow-row">
+          <div class="flow-box">
+            <b>Claude Code’s sign-in</b>
+            <span><code>~/.claude</code> or the macOS Keychain</span>
+          </div>
+          <div class="flow-box flow-box-muted">
+            <b>Claude desktop app</b>
+            <span>its usage history file (backup)</span>
+          </div>
+        </div>
+        <div class="flow-link"><span>read-only</span></div>
+        <div class="flow-box flow-box-app">
+          <img src="images/logo-64.png" {{dims:images/logo-64.png}} alt="">
+          <b>Claude Usage</b>
+        </div>
+      </div>
+      <div class="flow-row flow-out">
+        <div class="flow-leg">
+          <div class="flow-link"><span>usage · every 3 min</span></div>
+          <div class="flow-box"><b>api.anthropic.com</b><span>the usage numbers</span></div>
+        </div>
+        <div class="flow-leg">
+          <div class="flow-link"><span>updates · every 6 h</span></div>
+          <div class="flow-box"><b>github.com</b><span>is there a new version?</span></div>
+        </div>
+      </div>
+      <p class="flow-none">Nothing else. No analytics, no crash reports, no third parties.</p>
+    </figure>
+  </div>
+</section>
+
+<!-- Getting started ------------------------------------------------------------------------------------------- -->
+<section class="section section-tint" id="start">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="kicker">Getting started</p>
+      <h2>Up and running in a minute</h2>
+    </div>
+    <ol class="steps">
+      <li class="step">
+        <h3>Download and open it</h3>
+        <p>Pick the file for your system <a href="#download">below</a>. The builds aren’t code-signed yet, so the first start shows a warning — the steps are next to each download.</p>
+      </li>
+      <li class="step">
+        <h3>Sign in — usually nothing to do</h3>
+        <p>Already use Claude Code? The numbers appear at once. Otherwise click <em>Sign in</em> (or <em>Install Claude Code</em>) on the card and finish in your browser.</p>
+      </li>
+      <li class="step">
+        <h3>Put it where you want it</h3>
+        <p>Drag the card anywhere, switch to the compact pill, lock it so clicks pass through. Right-click or <em>⋯</em> opens the menu.</p>
+      </li>
+    </ol>
+    <div class="start-extra">
+      <div class="panel">
+        <h3>What you need</h3>
+        <ul class="plain">
+          <li>A <b>Claude Pro, Max, Team or Enterprise</b> plan — the plans with Claude Code.</li>
+          <li><b>Claude Code</b>: the <code>claude</code> command, or the Claude Code extension for VS Code, Cursor, Windsurf or VSCodium. Not installed? The overlay installs it for you.</li>
+          <li>Or the <b>Claude desktop app</b> (Windows, macOS), running: rougher numbers, up to ~20 minutes old, without reset times.</li>
+        </ul>
+      </div>
+      <div class="panel">
+        <h3>Shortcuts</h3>
+        <table class="keys">
+          <thead><tr><th scope="col">Action</th><th scope="col">Windows / Linux</th><th scope="col">macOS</th></tr></thead>
+          <tbody>
+            <tr><th scope="row">Show / hide</th><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>U</kbd></td><td><kbd>⌘</kbd><kbd>⌥</kbd><kbd>U</kbd></td></tr>
+            <tr><th scope="row">Lock / unlock</th><td><kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>U</kbd></td><td><kbd>⌘</kbd><kbd>⌥</kbd><kbd>⇧</kbd><kbd>U</kbd></td></tr>
+            <tr><th scope="row">Size</th><td><kbd>Ctrl</kbd> + <kbd>+</kbd> / <kbd>−</kbd> / <kbd>0</kbd></td><td><kbd>⌘</kbd> + <kbd>+</kbd> / <kbd>−</kbd> / <kbd>0</kbd></td></tr>
+          </tbody>
+        </table>
+        <p class="note">The first two work from any app; switch them off or change them in the menu and settings. Size works while the overlay has focus, also with <kbd>Ctrl</kbd> + mouse wheel.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Download -------------------------------------------------------------------------------------------------- -->
+<section class="section" id="download">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="kicker">Download</p>
+      <h2>Get Claude Usage</h2>
+      <p class="release-line">
+        Version <b>{{version}}</b> · released {{releaseDate}} · <a href="{{releaseUrl}}">release notes</a>
+      </p>
+    </div>
+    <div class="platforms">
+      <article class="platform" data-os="windows">
+        <header>
+          <h3>Windows</h3>
+          <span class="platform-sub">10 and 11 · x64</span>
+          <span class="yours">Your system</span>
+        </header>
+        <a class="dl" href="{{winSetup.url}}" data-asset="winSetup" data-kind="Installer">
+          <span class="dl-title">Installer <span class="tag">recommended</span></span>
+          <span class="dl-file">{{winSetup.name}}<span class="dl-size">{{winSetup.size}}</span></span>
+        </a>
+        <a class="dl" href="{{winPortable.url}}" data-asset="winPortable" data-kind="Portable">
+          <span class="dl-title">Portable</span>
+          <span class="dl-file">{{winPortable.name}}<span class="dl-size">{{winPortable.size}}</span></span>
+        </a>
+        <ul class="plain small">
+          <li>The installer needs no admin rights, adds a Start-menu shortcut and <b>updates itself</b>. The portable exe runs from anywhere and tells you about new versions.</li>
+          <li>If SmartScreen says <em>“Windows protected your PC”</em>: <b>More info → Run anyway</b>.</li>
+        </ul>
+      </article>
+
+      <article class="platform" data-os="mac">
+        <header>
+          <h3>macOS</h3>
+          <span class="platform-sub">Apple Silicon and Intel</span>
+          <span class="yours">Your system</span>
+        </header>
+        <a class="dl" href="{{macArm.url}}" data-asset="macArm" data-kind="Apple Silicon">
+          <span class="dl-title">Apple Silicon <span class="tag">M1 and later</span></span>
+          <span class="dl-file">{{macArm.name}}<span class="dl-size">{{macArm.size}}</span></span>
+        </a>
+        <a class="dl" href="{{macIntel.url}}" data-asset="macIntel" data-kind="Intel">
+          <span class="dl-title">Intel</span>
+          <span class="dl-file">{{macIntel.name}}<span class="dl-size">{{macIntel.size}}</span></span>
+        </a>
+        <ul class="plain small">
+          <li>Open the dmg and drag the app to <em>Applications</em>. It lives in the menu bar.</li>
+          <li>The app isn’t notarized by Apple yet. On first launch open <b>System Settings → Privacy &amp; Security → Open Anyway</b>, or run once:</li>
+        </ul>
+        <pre class="cmd"><code>xattr -dr com.apple.quarantine "/Applications/Claude Usage.app"</code></pre>
+        <ul class="plain small">
+          <li>When macOS asks for Keychain access, choose <b>Always Allow</b>. New versions: you get a notice and the download page.</li>
+        </ul>
+      </article>
+
+      <article class="platform" data-os="linux">
+        <header>
+          <h3>Linux</h3>
+          <span class="platform-sub">x64</span>
+          <span class="yours">Your system</span>
+        </header>
+        <a class="dl" href="{{appImage.url}}" data-asset="appImage" data-kind="AppImage">
+          <span class="dl-title">AppImage <span class="tag">any distribution</span></span>
+          <span class="dl-file">{{appImage.name}}<span class="dl-size">{{appImage.size}}</span></span>
+        </a>
+        <a class="dl" href="{{deb.url}}" data-asset="deb" data-kind="deb">
+          <span class="dl-title">deb <span class="tag">Debian, Ubuntu</span></span>
+          <span class="dl-file">{{deb.name}}<span class="dl-size">{{deb.size}}</span></span>
+        </a>
+        <ul class="plain small">
+          <li>AppImage — make it executable and run it; it <b>updates itself</b>. It needs FUSE 2 (<code>libfuse2t64</code> on Ubuntu 24.04+, <code>libfuse2</code> before). A sandbox error? Start it with <code>--no-sandbox</code>.</li>
+        </ul>
+        <pre class="cmd"><code>chmod +x {{appImage.name}}</code></pre>
+        <ul class="plain small">
+          <li>deb — install it with apt:</li>
+        </ul>
+        <pre class="cmd"><code>sudo apt install ./{{deb.name}}</code></pre>
+        <ul class="plain small">
+          <li>On GNOME the tray icon needs the AppIndicator extension.</li>
+        </ul>
+      </article>
+    </div>
+    <p class="honest">
+      <b>Tested on Windows 11.</b> The macOS and Linux builds come from the same release workflow but haven’t been
+      tried on a real Mac or Linux machine yet — if something doesn’t work there, please
+      <a href="{{repoUrl}}/issues">open an issue</a>. Prefer to build it yourself?
+      <a href="{{repoUrl}}#run-from-source">Run it from source</a>.
+    </p>
+  </div>
+</section>
+
+<!-- FAQ ------------------------------------------------------------------------------------------------------- -->
+<section class="section section-tint" id="faq">
+  <div class="wrap wrap-narrow">
+    <div class="section-head">
+      <p class="kicker">FAQ</p>
+      <h2>Questions, answered</h2>
+    </div>
+    <div class="faq">
+      <details>
+        <summary>Is this an official Anthropic app?</summary>
+        <p>No. Claude Usage is an independent open-source project, not affiliated with or endorsed by Anthropic. It shows the same usage numbers Claude’s own apps show; the endpoint it reads them from isn’t a public API and can change without notice.</p>
+      </details>
+      <details>
+        <summary>Which Claude plans does it work with?</summary>
+        <p>Pro, Max, Team and Enterprise — the plans that include Claude Code. The free plan doesn’t include Claude Code.</p>
+      </details>
+      <details>
+        <summary>Do I need Claude Code?</summary>
+        <p>It’s the main source: the overlay reads the sign-in Claude Code keeps on your computer. The <code>claude</code> command and the Claude Code extension for VS Code (also in Cursor, Windsurf and VSCodium) both count. Not installed? The card’s <em>Install Claude Code</em> button runs Anthropic’s own installer and signs you in through your browser.</p>
+        <p>Without Claude Code, an open Claude desktop app can stand in: it records your usage about every 15 minutes, and the overlay shows that — up to ~20 minutes old, without reset times or the split by app.</p>
+      </details>
+      <details>
+        <summary>Will it sign me out of Claude Code?</summary>
+        <p>No. It never writes or refreshes Claude Code’s token — refresh tokens work only once, so refreshing would sign Claude Code out. When the sign-in expires after hours without use, the overlay starts your own Claude Code hidden with its built-in <code>/usage</code> command, and Claude Code renews its own sign-in. You can switch that off in the menu.</p>
+      </details>
+      <details>
+        <summary>Does it send prompts or use up my limits?</summary>
+        <p>It never sends a prompt to a model. It asks for your usage numbers every 3 minutes (1–10 minutes, your choice) — the same request Claude Code’s <code>/usage</code> makes — and backs off when the server asks it to. The background renewal runs Claude Code’s local <code>/usage</code> command, which is handled inside Claude Code and never reaches the model.</p>
+      </details>
+      <details>
+        <summary>What leaves my computer?</summary>
+        <p>Your Claude Code token, in the usage request to <code>api.anthropic.com</code>, and an update check on github.com every 6 hours, which sends nothing about you. Nothing else: no analytics, no crash reports, no servers of ours. This website doesn’t track you either — no cookies, no analytics, no third-party requests.</p>
+      </details>
+      <details>
+        <summary>Why does Windows or macOS warn me when I open it?</summary>
+        <p>The builds aren’t code-signed yet, so Windows SmartScreen and macOS Gatekeeper don’t know them. The steps to open it anyway are next to each <a href="#download">download</a>. The source code and the workflow that builds the installers are public.</p>
+      </details>
+      <details>
+        <summary>Can I watch several Claude accounts?</summary>
+        <p>Yes. Claude Code keeps each account in a config folder of its own (<code>CLAUDE_CONFIG_DIR</code>). Add those folders in the menu — or use <em>Add account (sign in)…</em>, which makes the folder and signs in for you — and give each account a window of its own. Each window checks only its own account.</p>
+      </details>
+      <details>
+        <summary>How does it update?</summary>
+        <p>It checks GitHub Releases shortly after it starts and then every 6 hours. The Windows installer and the Linux AppImage download a new version in the background and install it when you quit, or at once with <em>Restart to update</em>. The macOS app, the portable exe and the deb package tell you and open the download page.</p>
+      </details>
+      <details>
+        <summary>How do I remove it?</summary>
+        <p>Windows: <em>Settings → Apps</em>; your settings stay in <code>%APPDATA%\Claude Usage</code> until you delete that folder. macOS: move the app from <em>Applications</em> to the Trash. Linux: delete the AppImage, or <code>sudo apt remove claude-usage</code>.</p>
+      </details>
+      <details>
+        <summary>Is it really free?</summary>
+        <p>Yes — free and open source under the MIT licence. Issues and ideas are welcome on <a href="{{repoUrl}}/issues">GitHub</a>.</p>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- Closing call to action ----------------------------------------------------------------------------------- -->
+<section class="closing">
+  <div class="wrap closing-inner">
+    <img src="images/icon-192.png" {{dims:images/icon-192.png}} loading="lazy" alt="">
+    <h2>Keep your limits in sight</h2>
+    <p>Free, open source, and out of your way until you need it.</p>
+    <div class="cta cta-center">
+      <a class="btn btn-primary js-download" href="#download" data-version="{{version}}">
+        <svg class="btn-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-5-5m5 5 5-5M4 19h16"/></svg>
+        <span class="btn-text">
+          <span class="js-download-label">Download</span>
+          <small class="js-download-meta">v{{version}} · Windows, macOS, Linux</small>
+        </span>
+      </a>
+      <a class="btn btn-ghost" href="{{repoUrl}}">Star it on GitHub</a>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <div class="footer-brand">
+      <a class="brand" href="./">
+        <img src="images/logo-64.png" {{dims:images/logo-64.png}} alt="">
+        <span>Claude Usage</span>
+      </a>
+      <p>© {{year}} Masoud Jaafari · <a href="{{repoUrl}}/blob/main/LICENSE">MIT licence</a></p>
+    </div>
+    <nav class="footer-links" aria-label="Project">
+      <a href="{{repoUrl}}">Source code</a>
+      <a href="{{repoUrl}}/releases">All releases</a>
+      <a href="{{repoUrl}}#readme">Documentation</a>
+      <a href="{{repoUrl}}/issues">Report a problem</a>
+    </nav>
+    <p class="disclaimer">
+      Claude Usage is an independent open-source project. It is not affiliated with, endorsed by or sponsored by
+      Anthropic. Claude is a trademark of Anthropic, PBC, used here only to name the service this app works with.
+    </p>
+  </div>
+</footer>
+</body>
+</html>

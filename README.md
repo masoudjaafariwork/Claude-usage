@@ -9,7 +9,8 @@ It needs no sign-in of its own: it reads the sign-in Claude Code already keeps o
 Claude Code with Anthropic's own installer and signs it in through your browser. No claude.ai
 login in the app, no telemetry.
 
-Windows · macOS · Linux — Electron + TypeScript.
+Windows · macOS · Linux — Electron + TypeScript. **Website:**
+[masoudjaafariwork.github.io/Claude-usage](https://masoudjaafariwork.github.io/Claude-usage/)
 
 <p><img src="docs/images/social-preview.png" alt="Claude Usage overlay — expanded card and compact pill" width="800"></p>
 
@@ -313,6 +314,7 @@ installed app.
 | `npm run screenshot` | Render every mock scenario (plus light-theme and size variants) to `screenshots/` |
 | `npm run screenshot:readme` | Re-render the screenshots at the top of this README (`docs/images/`) |
 | `npm run social-preview` | Render the image link previews show for this repository (`docs/images/social-preview.png`; upload it in the repository's *Settings → Social preview*) |
+| `npm run site` | Preview the website (`site/`) at `http://localhost:4173/Claude-usage/` with the latest release's download links; `site:build` only builds `_site/`, `site:images` re-renders its overlay images, `site:shot` captures the page at 1280 / 1024 / 390 px into `screenshots/` |
 | `npm run check` | Type-check and run unit tests |
 | `npm run dist` | Build installers for the current OS into `release/` (`dist:win`, `dist:mac`, `dist:linux` for one OS) |
 | `npm run make-icon` | Regenerate the app icon `build/icon.png` |
@@ -337,7 +339,9 @@ installer through the `latest.yml`, `latest-mac.yml` and `latest-linux.yml` file
    `latest-mac.yml`, `latest-linux.yml`**. Edit the notes if you like, keep **Release label**
    on **None** (not *Pre-release*), then **Publish release**. GitHub marks the newest normal release
    as *Latest* by itself.
-5. Installed copies find it within 6 hours, or at once via *Check for updates*.
+5. Installed copies find it within 6 hours, or at once via *Check for updates*. Publishing the
+   release also rebuilds the [website](https://masoudjaafariwork.github.io/Claude-usage/), so its
+   download buttons point at the new files ([pages.yml](.github/workflows/pages.yml)).
 
 Never delete or replace files of a published release: running copies may be downloading them, and
 a changed installer no longer matches the hash in `latest.yml`. Fix a bad release with a new

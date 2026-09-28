@@ -16,6 +16,7 @@ technical notes, acceptance criteria, a manual test checklist, a ready-to-paste 
 | 6 | Several Claude Code accounts (config folders) with a switcher | ✅ Done (2026-09-26) — version 1.1.0 | [phase-6-accounts.md](phases/phase-6-accounts.md) |
 | 7 | A window per Claude Code account (several shown at once, each closable) | ✅ Done (2026-09-28) — released as 1.3.0 | [phase-7-account-windows.md](phases/phase-7-account-windows.md) |
 | 8 | Sign in through Claude Code (`claude auth login`), install help, background renewal | ✅ Done (2026-09-28) — released as 1.4.0 (fix in 1.4.1); browser sign-in, install and a really expired token: owner's manual tests | [phase-8-sign-in.md](phases/phase-8-sign-in.md) |
+| 9 | Project website on GitHub Pages (landing page, downloads, FAQ) | ✅ Done (2026-09-29) — live after the owner switches Pages to *GitHub Actions* | [phase-9-website.md](phases/phase-9-website.md) |
 
 **Running a phase:** open a new Claude Code session in this repo, open the phase file, copy the
 text in its **Prompt** block, paste it, send. Run phases in order, one per session.
@@ -68,11 +69,13 @@ Move an idea into a phase file (with the "Plan a new phase" prompt) when it's ti
 - Show which limit is binding (`is_active`) once its meaning is confirmed.
 - Code signing: a Windows certificate (no SmartScreen warning) and an Apple Developer ID with
   notarization (no "Open Anyway" step). SignPath.io signs open-source Windows builds for free.
-- Findability (D59; About text, topics and social preview done): README top with a tagline in
-  search words, a GIF, badges and a short "why this one"; a GitHub Pages landing page (title, meta
-  description, Open Graph, JSON-LD `SoftwareApplication`, Google Search Console); winget and Scoop
+- Findability (D59; About text, topics, social preview and the website — Phase 9 — done): README top
+  with a tagline in search words, a GIF, badges and a short "why this one"; Google Search Console
+  for the website (owner); winget and Scoop
   manifests; PRs to awesome lists (awesome-claude-code, awesome-electron); launch posts
   (r/ClaudeAI, r/ClaudeCode, Show HN, a dev.to article, a Persian one on Virgool).
+- Website: WebP images (~⅓ of the PNGs' 2.5 MB), a short demo video or GIF in the hero, a
+  Persian page (with the Persian UI).
 - arm64 builds for Windows and Linux.
 - Pace forecast in the compact pill and the tray tooltip (today only in the expanded card).
 - Change the global shortcuts from the menu (today only in `settings.json`, D37); on Wayland,

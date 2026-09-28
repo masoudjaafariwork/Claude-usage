@@ -18,7 +18,11 @@ same numbers as Claude → Settings → Usage, refreshed automatically.
    `docs/images/*.png` and ship them with the change (D43); README text that describes the UI and
    the images' `width` attributes (the overlay's CSS width) must match too. The GitHub social
    preview shows the same card and pill: re-render it too (`npm run social-preview`), look at
-   `docs/images/social-preview.png` and tell the owner to upload it again (D58). Then update `docs/PROGRESS.md` (status, session-log entry, new decisions as D-numbers,
+   `docs/images/social-preview.png` and tell the owner to upload it again (D58). **Website:** the
+   site (`site/`) shows overlay renders too (`SITE_IMAGES` in `scripts/site.mjs`) — when they change,
+   run `npm run site:images`, then `npm run site:shot` and look at the captures; a new or changed
+   feature also gets its line on the site (`site/index.html`), which must stay as true as the README
+   (D76). Then update `docs/PROGRESS.md` (status, session-log entry, new decisions as D-numbers,
    known issues), the phase file (tick Scope items, set Status, fill in **Result**) and the phase
    table in `docs/BACKLOG.md`, and update the **Electron book** (next section). Commit only when the
    user asks — but whenever work is left for the user to commit, give them a ready-to-paste commit
@@ -46,6 +50,10 @@ The book is local only: do **not** publish or republish it to claude.ai (owner's
 | `npm run screenshot -- [outDir] [scenario…]` | Render mock scenarios (expanded + compact) to PNGs (default `./screenshots/`) |
 | `npm run screenshot:readme` | Re-render the README images in `docs/images/` (committed) |
 | `npm run social-preview` | Render the 1280×640 GitHub social preview to `docs/images/social-preview.png` (committed; uploaded by hand in the repo's Settings) |
+| `npm run site` | Build the website into `_site/` and serve it at `http://localhost:4173/Claude-usage/` (rebuilds on changes in `site/`) |
+| `npm run site:build` | Only build `_site/` (what `.github/workflows/pages.yml` deploys to GitHub Pages) |
+| `npm run site:images` | Re-render the site's overlay images (2× density) and icons into `site/images/` (committed) |
+| `npm run site:shot -- [outDir]` | Capture the built site at 1280 / 390 px dark and light, plus 1024 px dark (default `./screenshots/site-*.png`); fails on console errors or 4xx |
 | `npm run check` | Typecheck (main + renderer configs) and unit tests |
 | `npm run build` / `npm run watch` | esbuild bundle to `dist/` |
 | `npm run dist` / `dist:win` / `dist:mac` / `dist:linux` | Build + electron-builder installers into `release/` (never publishes) |
@@ -102,9 +110,13 @@ src/
     fixtures/            Real API responses used by tests
   preload/preload.ts     contextBridge → window.overlay (OverlayApi)
   renderer/              Sandboxed UI: index.html, styles.css (dark + light theme vars), renderer.ts (DOM)
-scripts/                 build.mjs, test.mjs, start.mjs, screenshots.mjs, social-preview.mjs, make-icon.mjs
+scripts/                 build.mjs, test.mjs, start.mjs, screenshots.mjs, social-preview.mjs, make-icon.mjs,
+                         site.mjs (website: build with release data, serve, images, captures)
+site/                    Website (GitHub Pages, Phase 9): index.html, 404.html, styles.css, app.js, sitemap.xml,
+                         images/ (overlay renders + icons from `npm run site:images`, committed); {{…}} filled by site.mjs
 build/                   icon.png (generated, committed), installer.nsh (NSIS uninstall hook)
-.github/workflows/       release.yml — tag v* → build on 3 OSes → draft GitHub Release
+.github/workflows/       release.yml — tag v* → build on 3 OSes → draft GitHub Release;
+                         pages.yml — site/ changes on main or a published release → build → GitHub Pages
 docs/                    PROGRESS.md, BACKLOG.md (phase index), phases/ (one plan per phase),
                          images/ (README screenshots, from `npm run screenshot:readme`; social
                          preview, from `npm run social-preview`)
@@ -212,3 +224,10 @@ samples count only for the shown account's org (D51).
   dev, mock and screenshot runs. To test it locally, build two versions under another identity
   (own `appId` / `productName` / `extraMetadata`, `publish` = generic `http://127.0.0.1:<port>/`)
   and serve the newer one's output folder — never test on the owner's installed app.
+- Website (Phase 9, D74–D77): the page makes no request to any other site (CSP in a meta tag, no
+  inline script / style, no web fonts, no analytics) — keep it that way. Download links come from
+  `releases/latest` at build time, so file names must keep matching `ASSETS` in `site.mjs` (D46
+  names). `site/index.html` isn't viewable as is (`{{…}}` placeholders): use `npm run site`. The
+  site lives under `/Claude-usage/`; `404.html` uses root-relative links for that. Electron quits at
+  once when an `http://` URL is on its command line (why `--shot` passes a port), and `img.decode()`
+  never settles for off-screen `loading="lazy"` images.
