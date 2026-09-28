@@ -53,7 +53,8 @@ The book is local only: do **not** publish or republish it to claude.ai (owner's
 
 Mock scenarios: `normal`, `warning`, `critical`, `expired`, `no-credentials`, `rate-limited`,
 `offline`, `loading`, `via-desktop`, `desktop-unavailable`, `forecast`, `locked`, `other-account`, `update-ready`,
-`several-accounts` (two windows) (defined in `src/main/mock.ts`).
+`several-accounts` (two windows), `first-run` (no Claude Code installed), `renewing`, `sign-in-again`
+(defined in `src/main/mock.ts`). Mock runs never start Claude Code (sign-in, install, renewal only log).
 Extra flags: `--compact`, `--expanded`, `--theme=<system|dark|light>`, `--scale=<0.9|1|1.15|1.3|1.5>`,
 `--screenshot=<file>` (render, save PNG, quit; more windows → `<file>-2.png` …), `--keep-occlusion` (Windows: leave Chromium's window
 occlusion tracker on, to test the blank-overlay watchdog, D60). Mock runs use a separate userData dir and keep
@@ -78,7 +79,8 @@ src/
     file-watch.ts        Debounced folder watch for one file name (survives atomic renames)       [pure]
     hover.ts             Opaque on hover: polls cursor vs window bounds while see-through (D57)   [pure]
     recovery-core.ts     Crash-loop budget, relaunch target (portable exe / AppImage), process-gone text (D60) [pure]
-    claude-code-launcher.ts  "Open Claude Code": VS Code URI → terminal `claude` → docs (D34, D53) [pure]
+    claude-code-launcher.ts  Finds a directly runnable Claude Code; "Open Claude Code" (D34, D53); sign-in / install terminals (Phase 8) [pure]
+    claude-code-renewal.ts   Background renewal: hidden `claude -p /usage`, output check, schedule (Phase 8) [pure]
     usage-service.ts     Source selection (Auto/single), polling, backoff, status, emits 'change' [pure]
     notifications-core.ts  75/90/100 % + reset notices: once per limit/threshold/window (D35)   [pure]
     notifications.ts     Shows them (Electron Notification), records in notifications.json
@@ -116,6 +118,10 @@ next one; other errors are reported as they are (no fallback on network errors).
 `usage:refresh`, `view:set-compact`, `window:resize` (content size), `menu:show`, `window:close`,
 `page:visibility` (blank-overlay watchdog, D60); main routes each to the window whose `webContents`
 sent it.
+Sign-in is always the user's own Claude Code (Phase 8, D66–D70): *Sign in* / *Install Claude Code* /
+*Add account (sign in)…* open a terminal that runs `claude auth login` (after Anthropic's installer);
+an expired sign-in makes the window's `Overlay` ask main to run Claude Code hidden with its local
+`/usage` command, which renews Claude Code's own token; the credentials watch then loads fresh numbers.
 Every window shows one Claude Code account (config folder), never one another window shows
 (`settings.windows`: account, position, compact; the first is the main window, D62). Switching a
 window moves its credentials watch, cached snapshot, pace history and notification records to that
@@ -131,6 +137,8 @@ samples count only for the shown account's org (D51).
    tokens are single-use, so refreshing would log Claude Code out (decision D3). Never log or print
    the token, never send it anywhere except the `Authorization` header to `api.anthropic.com`,
    never pass it to the renderer. When inspecting the credentials file, print key names only.
+   Letting the user's own Claude Code renew its own token (Open Claude Code, the hidden `/usage`
+   run, D34 / D67) is allowed — the app itself never touches the refresh token.
 2. **The usage endpoint is unofficial and changes.** Keep `usage-parse.ts` tolerant. For any new
    response shape, add a fixture in `src/main/fixtures/` and a test. Poll politely: default 180 s,
    minimum 60 s, honour `Retry-After`, back off on errors; don't add request-heavy features.
@@ -146,8 +154,10 @@ samples count only for the shown account's org (D51).
    `scripts/build.mjs` and electron-builder packs them into `app.asar`.
 7. **No claude.ai sign-in in the app** (D28): Anthropic does not permit third-party apps to offer
    Claude.ai login or to collect/store claude.ai session tokens — no embedded login window, no
-   browser-cookie reading, no pasted `sessionKey`. From Claude Desktop's folder read only
-   `plan-usage-history.json`; never its sign-in (D26).
+   browser-cookie reading, no pasted `sessionKey`, no OAuth flow of our own (not even with Claude
+   Code's client id). Signing in = the user's own Claude Code running `claude auth login` in a
+   visible terminal (D66). From Claude Desktop's folder read only `plan-usage-history.json`; never
+   its sign-in (D26).
 8. **Severity colours live in three places** — keep them in sync: CSS vars in
    `renderer/styles.css`, SVG gradients in `renderer/index.html`, `SEVERITY_RGB` in
    `main/tray-icon.ts`.
@@ -156,6 +166,13 @@ samples count only for the shown account's org (D51).
 
 - VS Code / Claude Code terminals set `ELECTRON_RUN_AS_NODE=1`; plain `npx electron .` then runs as
   Node (`app` is undefined). Always use `npm start` / the scripts — they unset it.
+- **Never run `claude -p "/usage"` through a shell** (Git Bash / MSYS rewrites a leading `/` into a
+  Windows path, and Claude Code then sends it to the model as a real prompt — it happened once in
+  the Phase 8 research). The app spawns the binary directly (`runHidden`); to try it by hand, use a
+  Node script, not Bash. Only one real `/usage` run on the owner's default account per session, and
+  never on an account the owner didn't ask about — use an empty or fake config folder instead.
+- Each hidden `/usage` run leaves an empty `projects/<…claude-code-runs>/memory` folder in that
+  account's Claude Code config (no session file, thanks to `--no-session-persistence`).
 - Windows drag regions (`-webkit-app-region: drag`) swallow mouse events: no `:hover` or
   `contextmenu` on the card; interactive elements need `no-drag`. Right-click on the drag area
   arrives as the window's `system-context-menu` event (handled in `main.ts`).

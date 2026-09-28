@@ -16,6 +16,7 @@ const HOUR = 60 * MIN;
 const creds = (overrides: Partial<ClaudeCredentials> = {}): ClaudeCredentials => ({
   accessToken: 'token-a',
   expiresAt: NOW + 8 * HOUR,
+  refreshTokenExpiresAt: null,
   subscriptionType: 'max',
   rateLimitTier: 'default_claude_max_20x',
   source: 'file',
@@ -208,6 +209,63 @@ test('Auto: expired token and Desktop not running → token-expired banner, last
   assert.equal(await svc.attempt(), RECHECK_CREDENTIALS_SEC);
   assert.equal(svc.status.kind, 'token-expired');
   assert.equal(svc.snapshot, before);
+});
+
+test('why Claude Code can’t be used (Phase 8): expired, rejected, or the sign-in itself is over', async () => {
+  const reason = async (read: () => Promise<ClaudeCredentials>, fetchUsage?: () => Promise<unknown>) => {
+    const { svc } = service({ mode: 'claude-code', readCredentials: read, fetchUsage });
+    await svc.attempt();
+    return [svc.status.kind, svc.status.reason];
+  };
+  assert.deepEqual(await reason(expiredCreds), ['token-expired', 'expired']);
+  assert.deepEqual(await reason(async () => creds({ expiresAt: NOW - 1, refreshTokenExpiresAt: NOW + HOUR })), ['token-expired', 'expired']);
+  assert.deepEqual(await reason(async () => creds({ expiresAt: NOW - 1, refreshTokenExpiresAt: NOW - 1 })), ['token-expired', 'sign-in-ended']);
+  const refused = async () => Promise.reject(new UsageHttpError(401, null));
+  assert.deepEqual(await reason(async () => creds(), refused), ['token-expired', 'rejected']);
+  // The free plan doesn't include Claude Code: not something a renewal can fix.
+  assert.deepEqual(await reason(async () => creds({ subscriptionType: 'free' }), refused), ['no-credentials', 'free-plan']);
+  // Claude Code emptied its sign-in (it couldn't renew it) vs. never signed in.
+  const signedOut = async (): Promise<ClaudeCredentials> => Promise.reject(new CredentialsNotFoundError('x', true));
+  assert.deepEqual(await reason(signedOut), ['no-credentials', 'sign-in-ended']);
+  assert.deepEqual(await reason(noCreds), ['no-credentials', undefined]);
+  const auto = service({ readCredentials: signedOut, desktopAgeMs: null }).svc;
+  await auto.attempt();
+  assert.equal(auto.status.reason, 'sign-in-ended', 'Auto keeps the reason');
+});
+
+test('after a background renewal, a token the API refused earlier is tried again', async () => {
+  let refuse = true;
+  const { svc, counts } = service({
+    mode: 'claude-code',
+    fetchUsage: async () => {
+      if (refuse) throw new UsageHttpError(401, null);
+      return mockRawUsage(NOW, { session: 1, weekly: 2, fable: 3 });
+    },
+  });
+  svc.start();
+  await svc.poll();
+  assert.equal(svc.status.reason, 'rejected');
+  refuse = false; // Claude Code's /usage worked with the same token
+  svc.signInRenewed();
+  await new Promise((resolve) => setImmediate(resolve));
+  await svc.poll();
+  svc.stop();
+  assert.equal(svc.status.kind, 'ok');
+  assert.ok(counts.fetches >= 2);
+});
+
+test('Auto: Claude Code’s expired sign-in behind Claude Desktop’s numbers is still known (for its renewal)', async () => {
+  const { svc } = service({ readCredentials: expiredCreds, desktopAgeMs: 6 * MIN });
+  await svc.attempt();
+  assert.equal(svc.snapshot?.source, 'claude-desktop');
+  assert.equal(svc.unavailable['claude-code']?.reason, 'expired');
+  const free = service({
+    readCredentials: async () => creds({ subscriptionType: 'free' }),
+    fetchUsage: async () => Promise.reject(new UsageHttpError(403, null)),
+    desktopAgeMs: null,
+  }).svc;
+  await free.attempt();
+  assert.equal(free.status.reason, 'free-plan', 'Auto says why rather than a plain "not signed in"');
 });
 
 test('Auto: nothing available → one "not signed in" status naming both ways to fix it', async () => {

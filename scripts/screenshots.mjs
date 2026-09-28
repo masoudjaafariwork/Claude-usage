@@ -25,6 +25,9 @@ const ALL = [
   'other-account',
   'update-ready',
   'several-accounts',
+  'first-run',
+  'renewing',
+  'sign-in-again',
 ];
 
 /** Extra renders: file-name suffix → scenario + flags. */
@@ -32,6 +35,7 @@ const VARIANTS = [
   { name: 'forecast-light', scenario: 'forecast', flags: ['--theme=light'] },
   { name: 'critical-light', scenario: 'critical', flags: ['--theme=light'] },
   { name: 'expired-light', scenario: 'expired', flags: ['--theme=light'] },
+  { name: 'first-run-light', scenario: 'first-run', flags: ['--theme=light'] },
   { name: 'normal-150', scenario: 'normal', flags: ['--scale=1.5'] },
   { name: 'forecast-90', scenario: 'forecast', flags: ['--scale=0.9'] },
 ];

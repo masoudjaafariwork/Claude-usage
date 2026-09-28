@@ -2,12 +2,19 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   CLAUDE_CODE_SETUP_URL,
+  INSTALL_COMMANDS,
   claudeExtraDirs,
+  findClaudeBinary,
   findExecutable,
   findExtensionClaude,
   findVsCodeScheme,
   planClaudeCodeLaunch,
+  planTerminalJob,
+  scriptSafeEmail,
+  shJobScript,
+  windowsJobScript,
   type LaunchFacts,
+  type TerminalFacts,
 } from './claude-code-launcher';
 
 const facts = (overrides: Partial<LaunchFacts>): LaunchFacts => ({
@@ -120,6 +127,7 @@ test('claudeExtraDirs knows the native installer and npm folders', () => {
   assert.deepEqual(claudeExtraDirs('win32', { APPDATA: 'C:\\Users\\j\\AppData\\Roaming' }, 'C:\\Users\\j'), [
     'C:\\Users\\j\\.local\\bin',
     'C:\\Users\\j\\AppData\\Roaming\\npm',
+    'C:\\Users\\j\\AppData\\Local\\Microsoft\\WinGet\\Links',
   ]);
   assert.ok(claudeExtraDirs('darwin', {}, '/Users/j').includes('/opt/homebrew/bin'));
 });
@@ -135,3 +143,114 @@ test('findVsCodeScheme looks for the anthropic.claude-code extension folder', ()
     'vscode-insiders',
   );
 });
+
+// --- Phase 8: a Claude Code to run directly, sign-in and install terminals ---------------------------
+
+test('findClaudeBinary: claude.exe on PATH, else the real binary behind npm’s claude.cmd shim — never the shim', () => {
+  const npm = 'C:\\Users\\j\\AppData\\Roaming\\npm';
+  const real = `${npm}\\node_modules\\@anthropic-ai\\claude-code\\bin\\claude.exe`;
+  const env = { PATH: `C:\\Windows;${npm}`, APPDATA: 'C:\\Users\\j\\AppData\\Roaming' };
+  const lookup = (files: string[]) =>
+    findClaudeBinary({ platform: 'win32', env, home: 'C:\\Users\\j', exists: (f) => files.includes(f), listDir: () => [] });
+  assert.equal(lookup([`${npm}\\claude.cmd`, real]), real);
+  assert.equal(lookup([`${npm}\\claude.cmd`]), null, 'an old npm package (node cli.js) is skipped');
+  assert.equal(lookup([`${npm}\\claude.cmd`, real, 'C:\\Windows\\claude.exe']), 'C:\\Windows\\claude.exe', 'PATH order');
+  // Not on PATH (the app started before the install): the native installer's folder.
+  assert.equal(lookup(['C:\\Users\\j\\.local\\bin\\claude.exe']), 'C:\\Users\\j\\.local\\bin\\claude.exe');
+});
+
+test('findClaudeBinary falls back to the VS Code extension’s binary; Unix looks for claude', () => {
+  const ext = '/home/j/.vscode/extensions';
+  const bundled = `${ext}/anthropic.claude-code-2.1.283-linux-x64/resources/native-binary/claude`;
+  assert.equal(
+    findClaudeBinary({
+      platform: 'linux',
+      env: { PATH: '/usr/bin' },
+      home: '/home/j',
+      exists: (f) => f === bundled,
+      listDir: (d) => (d === ext ? ['anthropic.claude-code-2.1.283-linux-x64'] : []),
+    }),
+    bundled,
+  );
+  assert.equal(
+    findClaudeBinary({ platform: 'darwin', env: { PATH: '/usr/bin' }, home: '/Users/j', exists: (f) => f === '/opt/homebrew/bin/claude', listDir: () => [] }),
+    '/opt/homebrew/bin/claude',
+  );
+});
+
+const terminal = (overrides: Partial<TerminalFacts>): TerminalFacts => ({
+  platform: 'win32',
+  home: 'C:\\Users\\Jane Doe',
+  configDir: null,
+  tempDir: 'C:\\Users\\Jane Doe\\AppData\\Local\\Temp',
+  linuxTerminal: null,
+  ...overrides,
+});
+
+test('Windows sign-in: a waited-for console window runs an ASCII script; values only through the environment', () => {
+  const claude = 'C:\\Users\\Jane Doe\\.local\\bin\\claude.exe';
+  const plan = planTerminalJob(terminal({ configDir: 'D:\\Ärger & Co\\claude' }), { kind: 'sign-in', claude, email: 'jane@example.com' });
+  assert.ok(plan && plan.kind === 'spawn');
+  if (!plan || plan.kind !== 'spawn') return;
+  assert.equal(plan.waits, true, 'start /wait: the launcher exits when the window is closed');
+  assert.equal(plan.verbatim, true);
+  assert.equal(
+    [plan.command, ...plan.args].join(' '),
+    'cmd.exe /d /v:on /c start "Claude Code sign-in" /wait cmd.exe /d /c call "!CLAUDE_USAGE_SCRIPT!"',
+    'nothing from the user in the command line',
+  );
+  assert.deepEqual(plan.env, {
+    CLAUDE_USAGE_SCRIPT: 'C:\\Users\\Jane Doe\\AppData\\Local\\Temp\\claude-usage-sign-in.cmd',
+    CLAUDE_USAGE_CLAUDE: claude,
+    CLAUDE_USAGE_EMAIL: 'jane@example.com',
+    CLAUDE_CONFIG_DIR: 'D:\\Ärger & Co\\claude',
+  });
+  const script = plan.script?.text ?? '';
+  assert.ok(/^[\x20-\x7e\r\n]*$/.test(script), 'plain ASCII (cmd reads it in the console code page)');
+  assert.ok(script.includes('"!CLAUDE_USAGE_CLAUDE!" auth login --email "!CLAUDE_USAGE_EMAIL!"'));
+  assert.ok(script.includes('setlocal EnableDelayedExpansion'));
+  assert.ok(script.includes('\r\n'), 'CRLF line ends');
+});
+
+test('Windows install: Anthropic’s installer, then the installed binary signs in', () => {
+  const plan = planTerminalJob(terminal({}), { kind: 'install' });
+  assert.ok(plan && plan.kind === 'spawn');
+  if (!plan || plan.kind !== 'spawn') return;
+  assert.deepEqual(plan.env, { CLAUDE_USAGE_SCRIPT: 'C:\\Users\\Jane Doe\\AppData\\Local\\Temp\\claude-usage-install-claude-code.cmd' });
+  const script = windowsJobScript({ kind: 'install' });
+  assert.ok(script.includes(`powershell.exe -NoProfile -Command "${INSTALL_COMMANDS.windows}"`));
+  assert.ok(script.includes('set "CLAUDE_USAGE_CLAUDE=!USERPROFILE!\\.local\\bin\\claude.exe"'));
+  assert.ok(script.indexOf('install.ps1 | iex"') < script.indexOf('auth login'), 'installer first, then the sign-in');
+  assert.ok(!script.includes('ExecutionPolicy'), 'the official command as it is');
+});
+
+test('macOS / Linux: a script sets the folder, prefills the e-mail and waits for Enter', () => {
+  const mac = planTerminalJob(terminal({ platform: 'darwin', home: '/Users/j', tempDir: '/tmp', configDir: "/Users/j/Jane's" }), {
+    kind: 'sign-in',
+    claude: '/Users/j/.local/bin/claude',
+    email: 'j@example.com',
+  });
+  assert.ok(mac && mac.kind === 'spawn');
+  if (!mac || mac.kind !== 'spawn') return;
+  assert.deepEqual([mac.command, ...mac.args], ['open', '-a', 'Terminal', '/tmp/claude-usage-sign-in.command']);
+  const text = mac.script?.text ?? '';
+  assert.ok(text.includes("CLAUDE_CONFIG_DIR='/Users/j/Jane'\\''s'\nexport CLAUDE_CONFIG_DIR"));
+  assert.ok(text.includes("'/Users/j/.local/bin/claude' auth login --email 'j@example.com'"));
+  assert.ok(text.includes('read -r _'));
+  assert.ok(!mac.waits);
+
+  const linux = planTerminalJob(terminal({ platform: 'linux', home: '/home/j', tempDir: '/tmp', linuxTerminal: 'gnome-terminal' }), { kind: 'install' });
+  assert.ok(linux && linux.kind === 'spawn');
+  if (!linux || linux.kind !== 'spawn') return;
+  assert.deepEqual([linux.command, ...linux.args], ['gnome-terminal', '--', '/tmp/claude-usage-install-claude-code.sh']);
+  assert.ok(shJobScript({ kind: 'install' }, null).includes(`if ${INSTALL_COMMANDS.unix} && [ -x "$HOME/.local/bin/claude" ]; then`));
+  assert.ok(shJobScript({ kind: 'install' }, null).includes('"$HOME/.local/bin/claude" auth login'));
+  assert.equal(planTerminalJob(terminal({ platform: 'linux', home: '/home/j', tempDir: '/tmp' }), { kind: 'install' }), null, 'no terminal found');
+});
+
+test('scriptSafeEmail passes plain addresses only', () => {
+  assert.equal(scriptSafeEmail('ada.lovelace+work@analytical-engines.example'), 'ada.lovelace+work@analytical-engines.example');
+  for (const bad of ['a"b@x.com', 'a&b@x.com', 'a b@x.com', "a'b@x.com", 'no-at-sign', '%PATH%@x.com']) assert.equal(scriptSafeEmail(bad), null, bad);
+  assert.equal(scriptSafeEmail(null), null);
+});
+

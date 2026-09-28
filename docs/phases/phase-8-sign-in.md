@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| **Status** | ⏭️ Next |
+| **Status** | ✅ Done (2026-09-28) — real install, browser sign-in and renewal of a really expired token are the owner's manual tests |
 | **Depends on** | Phase 6 (accounts), Phase 7 (a window per account), D34 / D53 (Open Claude Code) |
 | **Size** | One Claude Code session |
 
@@ -69,46 +69,46 @@ never sees a password or session, and never refreshes or writes a token (D3, D28
 
 ## Scope
 
-- [ ] **Find a Claude Code to run directly** (extend `claude-code-launcher.ts`, pure, tested): the
+- [x] **Find a Claude Code to run directly** (extend `claude-code-launcher.ts`, pure, tested): the
       native binary (`~/.local/bin/claude[.exe]`), the npm package's real `bin/claude.exe` behind a
       `claude.cmd` shim, Homebrew / `/usr/local/bin`, the VS Code extension's bundled binary (D53).
       Looked up on every use (a running app doesn't see PATH changes). Never via a shell.
-- [ ] **Sign in** — banner button and menu item while an account is not signed in or can't be
+- [x] **Sign in** — banner button and menu item while an account is not signed in or can't be
       renewed: a visible terminal runs `claude auth login` (with `CLAUDE_CONFIG_DIR` for an added
       folder, `--email` prefilled when the account is known). Claude Code opens the system browser;
       its fallback (URL, paste code) stays visible in that terminal. The overlay loads as soon as
       the credentials appear (watch + 60 s recheck; a folder that doesn't exist yet is covered).
       For the default account while it is signed in, a confirm dialog first (it would switch Claude
       Code's own account).
-- [ ] **Install Claude Code** — when none is found: a dialog shows the official command from
+- [x] **Install Claude Code** — when none is found: a dialog shows the official command from
       Anthropic's setup page and what it does; on OK a visible terminal runs the native installer
       and then `claude auth login` in the same window (the installed binary by its full path). No
       silent install, nothing bundled.
-- [ ] **Add account (sign in)…** in menu → *Claude Code account*: creates a new config folder (the
+- [x] **Add account (sign in)…** in menu → *Claude Code account*: creates a new config folder (the
       default location is to be decided — user-visible, e.g. under the home folder — ask the owner
       if unclear), runs `claude auth login` with it, adds it and opens it in its own window once
       signed in (Phase 7). A folder left without a sign-in (cancelled) is removed again.
-- [ ] **Renew in the background** — when an account's status is `token-expired` and a Claude Code
+- [x] **Renew in the background** — when an account's status is `token-expired` and a Claude Code
       is found: run it hidden, `claude -p "/usage" --no-session-persistence`, with that account's
       `CLAUDE_CONFIG_DIR`, in a neutral working folder, 60 s timeout (kill the tree). Claude Code
       renews its own token; the credentials watch then loads fresh numbers. At most once per
       30 min per account, backing off after failures (1 h, 2 h … 12 h); not while offline or
       rate-limited. Menu switch *Renew sign-in automatically* (default on). Card: "Renewing
       sign-in…" meanwhile.
-- [ ] **Never a prompt** — renewal only for claude.ai subscription credentials (`claudeAiOauth`),
+- [x] **Never a prompt** — renewal only for claude.ai subscription credentials (`claudeAiOauth`),
       never for API-key or gateway setups; the output must look like `/usage` output ("Current
       session … used", "Not logged in"); anything else stops renewal for that account (logged,
       shown in the menu). Settle the `isEnabled` question in Claude Code's code before shipping; if
       it can't be ruled out that the text reaches the model, stop and ask the owner.
-- [ ] **When renewal can't help** (the sign-in itself is gone: refresh token expired or revoked,
+- [x] **When renewal can't help** (the sign-in itself is gone: refresh token expired or revoked,
       logged out): banner "Sign in again" with the *Sign in* button.
-- [ ] Banner and menu texts for: not signed in (Install / Sign in), renewing, sign in again; the
+- [x] Banner and menu texts for: not signed in (Install / Sign in), renewing, sign in again; the
       Free-plan case ("Claude Code needs a Pro, Max, Team or Enterprise plan") where Claude Code
       says so.
-- [ ] Mock scenarios `first-run` (nothing installed) and `renewing`; screenshots.
-- [ ] Tests: binary lookup, launch plans per OS (terminal commands, env, the `.command` script on
+- [x] Mock scenarios `first-run` (nothing installed) and `renewing`; screenshots.
+- [x] Tests: binary lookup, launch plans per OS (terminal commands, env, the `.command` script on
       macOS), output classification, renewal schedule / backoff.
-- [ ] README (first run, how sign-in works and what the app never does, background renewal,
+- [x] README (first run, how sign-in works and what the app never does, background renewal,
       troubleshooting), `docs/`, Electron book (child processes without a shell, MSYS path
       conversion, a local CLI command as a refresh trigger).
 
@@ -180,4 +180,100 @@ set its status, update docs/PROGRESS.md and docs/BACKLOG.md, and give me the man
 
 ## Result
 
-_Filled in when the phase is done._
+Done on 2026-09-28 (session 26). Decisions D66–D70 in `docs/PROGRESS.md`.
+
+**Settled first — `isEnabled` of `/usage`** (Claude Code 2.1.283's code): the non-interactive
+`/usage` (type `local`, `supportsNonInteractive`) has `isEnabled: () => !launchOptions.isInteractive()`,
+and `-p` / `--print` (or a stdout that isn't a TTY) makes the session non-interactive — so it is
+enabled exactly in our run and handled inside Claude Code. The dispatch also showed the one way the
+text *could* reach the model: an unknown slash command falls back to the model by default in `-p`
+mode — but a built-in name like `usage` is answered "isn't available in this environment" instead,
+unless a file `/usage` exists at the root of the working folder's drive (then the text is treated
+as a prompt). That case is ruled out before every run. Not asked again: nothing left open. (One
+attempt to extract the `/usage` module's own source was blocked by the session's safety classifier;
+its output format was taken from real runs instead.)
+
+**Built**
+
+- `claude-code-launcher.ts`: `findClaudeBinary()` — PATH (with `claude.exe`, never `claude.cmd`:
+  npm's shim is resolved to `node_modules/@anthropic-ai/claude-code/bin/claude.exe`), then
+  `~/.local/bin`, npm's folder, WinGet's `Links` (Windows) / `~/.local/bin`, `~/.claude/local`,
+  Homebrew, `/usr/local/bin`, then the VS Code extension's binary; looked up on every use.
+  `planTerminalJob()` for *Sign in* (`claude auth login [--email]`) and *Install* (Anthropic's
+  installer, then `claude auth login` with `~/.local/bin/claude[.exe]`): Windows a plain-ASCII
+  `.cmd` in `%TEMP%` that gets every value through the environment (`!VAR!`, delayed expansion) and
+  runs via `cmd /d /v:on /c start "…" /wait cmd /d /c call "!CLAUDE_USAGE_SCRIPT!"` — the launcher's
+  exit is the window's; macOS a `.command` in Terminal; Linux a `.sh` in the first terminal found.
+  `runLaunchPlan()` (was `launchClaudeCode`) returns the process.
+- `claude-code-renewal.ts` (new): `claude -p /usage --no-session-persistence --strict-mcp-config
+  --settings {"disableAllHooks":true}` run hidden and directly (`shell: false`), 60 s timeout with a
+  tree kill, environment without API keys / gateway / tokens / parent-session variables and with the
+  account's `CLAUDE_CONFIG_DIR`, working folder `userData/claude-code-runs`; version gate ≥ 2.1.283
+  (`claude --version`, cached per binary); output classes `usage` (renewed), `no-usage` (the local
+  cost block: the command ran but had no plan usage), `signed-out`, `empty`, `unexpected` — and any
+  non-zero model-token count in the output is `unexpected`; `RenewalSchedule` (30 min gap, 1 h … 12 h
+  after failures).
+- `Overlay`: `maybeRenew()` on every usage change while Claude Code's sign-in is expired or refused —
+  also behind Claude Desktop's numbers in Auto (`UsageService.unavailable`); "Renewing sign-in…"
+  only while Claude Code really runs; `watchSignIn()` looks at the account's two files every 2 s for
+  15 min after a sign-in terminal opened (the folder may not exist yet, so a watch can't) and re-arms
+  the credentials watch. After a renewal the source forgets a rejected token (`signInRenewed`).
+- `main.ts`: *Sign in* (a confirm first for the default account when Claude Code has an account on
+  record), *Install Claude Code* (dialog with the official command), *Add account (sign in)…*
+  (`~/.claude-account-N`, removed again when the terminal closes / 15 min pass / the app quits
+  without a sign-in), `renewSignIn()` with its checks and log lines, the stop record per account and
+  Claude Code version (`settings.renewStopped`), *Renew sign-in automatically* (`settings.autoRenew`,
+  default on; turning it on clears the stops).
+- Statuses: `Status.reason` — `expired`, `rejected`, `sign-in-ended` (refresh token's expiry passed,
+  or Claude Code emptied its tokens — `CredentialsNotFoundError.signedOut`), `free-plan` (401/403 with
+  `subscriptionType: "free"`). `claudeCodeAction()` (shared) picks Install / Sign in / Open Claude
+  Code / nothing for the banner and the menus; `AppState.claudeCode` carries installed / renewing /
+  signInEnded / signingIn.
+- UI: banners *Claude Code isn't installed* (Install Claude Code), *Not signed in* (Sign in),
+  *Renewing sign-in…*, *Sign in again* (Sign in), *No Claude Code on this plan*; the expired banner
+  (Open Claude Code) is unchanged. Compact texts and tray tooltip likewise. Menu: *Sign in to Claude
+  Code…* / *Install Claude Code…* next to *Open Claude Code*; in *Claude Code account*: *Add account
+  (sign in)…*, *Renew sign-in automatically*, "Renewal stopped for … — see the log".
+- Mock scenarios `first-run`, `renewing`, `sign-in-again` (mock runs never start Claude Code).
+- Tests 151 → 173 (launcher: binary lookup, terminal plans / scripts per OS, e-mail filter; renewal:
+  args, env, version gate, `/usage` clash, output classes from real outputs, results, schedule;
+  statuses and reasons; settings; `nextAccountFolder`; `claudeCodeAction`).
+
+**Deviations from the plan, with reasons**
+
+- Two more flags on the hidden run (`--strict-mcp-config`, `--settings {"disableAllHooks":true}`) so
+  it starts no MCP servers and runs none of the user's hooks, and a cleaned environment; plus the
+  version gate and the `/usage` root-file check (from the code reading above).
+- A third outcome besides "usage" and "not logged in": with an expired sign-in that can't be
+  renewed, Claude Code 2.1.283 prints only its local cost block ("Usage: 0 input, 0 output") **and
+  empties both tokens in `.credentials.json`** — seen with a fake expired sign-in in a scratch folder.
+  So an emptied sign-in block now counts as "sign-in ended" (card: *Sign in again*), and two
+  `no-usage` runs in a row do too. "Not logged in" never appeared.
+- The folder of *Add account (sign in)…*: the owner chose "the app decides, simplest for the user"
+  → `~/.claude-account-2`, `-3`, … (D69).
+- The stop after an unexpected answer is remembered per account **and Claude Code version** in the
+  settings, so a restart doesn't try again with the same Claude Code, but an update does.
+- Free plan: Claude Code's code has no free-plan message to detect, so the card says so when the API
+  refuses a token whose `subscriptionType` is `free` — unverified (no free account to try).
+- Extra mock scenario `sign-in-again` to review that banner.
+
+**Verified on Windows 11 (this machine)**
+
+- Terminal mechanism with a harmless script in a folder named `a & b (test)`: values with `&` and
+  `Ä` arrived through the environment, the launcher exited when the window closed (2.3 s).
+- Hidden `/usage`: an empty config folder → cost block, 0 tokens, `no-usage`, no session file; the
+  owner's default account (valid token) → `Current session: 34% used · …` in 4.2 s, `renewed`, no
+  session file (an empty `projects/…-runs/memory` folder only; removed again); a fake expired sign-in
+  → `no-usage`, Claude Code emptied the fake tokens.
+- The real app (own `--user-data-dir`, installed app untouched) on that fake folder: *expired* →
+  "letting Claude Code 2.1.283 renew it" → watch saw the emptied sign-in within 4 s → the card read
+  (DevTools) "Sign in again … Sign in"; the ⋯ menu (captured through the main-process inspector) had
+  *Sign in to Claude Code…*, *Add account (sign in)…*, *Add folder…*, *Renew sign-in automatically*.
+- `npm run check`: 173 tests pass. Screenshots of all scenarios reviewed (new: `first-run`,
+  `renewing`, `sign-in-again`, light variants); the others unchanged. README images and the social
+  preview are unaffected (their scenarios' cards didn't change).
+
+**Not verified here (owner's manual tests below):** a real `claude auth login` through the browser
+(it would have opened the owner's browser), the Install flow on a machine without Claude Code, *Add
+account (sign in)…* end to end, and the renewal of a really expired token (Revaal). macOS and Linux
+untested (terminals, `.command` / `.sh` scripts, Keychain prompt after Claude Code rewrites its item).

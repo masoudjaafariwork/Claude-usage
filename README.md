@@ -5,7 +5,9 @@ session, weekly limits, per-model weekly limits and this week's split by app. It
 numbers as *Claude → Settings → Usage* and refreshes them automatically. Put it anywhere on any monitor.
 
 It needs no sign-in of its own: it reads the sign-in Claude Code already keeps on your computer
-(read-only), or the Claude desktop app's usage history. No claude.ai login, no telemetry.
+(read-only), or the Claude desktop app's usage history. Nothing set up yet? One button installs
+Claude Code with Anthropic's own installer and signs it in through your browser. No claude.ai
+login in the app, no telemetry.
 
 Windows · macOS · Linux — Electron + TypeScript.
 
@@ -53,9 +55,14 @@ Windows · macOS · Linux — Electron + TypeScript.
   Linux AppImage). The macOS app, the portable exe and the deb package tell you about a new version
   and open its download page.
 - Keeps showing the last known data (clearly marked) when you're offline or the sign-in has expired.
-- **Sign-in expired?** The banner's **Open Claude Code** button starts your Claude Code (a VS Code
-  tab, or a terminal running `claude`), which renews its own sign-in; the overlay picks it up
-  within seconds.
+- **Sign in with one button**: *Sign in* (or *Install Claude Code* when it isn't installed) opens a
+  terminal where your own Claude Code signs in through your browser; the numbers appear as soon as
+  it's done. *Add account (sign in)…* adds another Claude account the same way, in a window of its
+  own ([below](#signing-in)).
+- **Keeps the sign-in fresh**: when an account's Claude Code sign-in expires because you haven't
+  used Claude Code for a while, the overlay lets Claude Code renew it in the background — no prompt
+  is sent, and you don't have to open Claude Code. **Open Claude Code** remains in the banner as the
+  manual way.
 - A small diagnostic log with secrets removed (menu → *Open logs folder*).
 
 ## How it works
@@ -67,11 +74,13 @@ Claude Code) both keep their sign-in there, so either one is enough.
 It uses that token to ask Anthropic's servers for your usage, the same way the Settings → Usage page
 does.
 
-- The token is **only read, never modified or refreshed**. Refreshing would log Claude Code out.
+- The token is **only read, never modified or refreshed** by the overlay. Refreshing would log
+  Claude Code out.
 - The token goes only to `api.anthropic.com`. There is no telemetry and no third-party server; the
   only other requests are the update checks to github.com ([Updates](#updates)).
-- If Claude Code's sign-in expires (after ~8 h without use), the overlay says so and recovers
-  automatically once Claude Code renews it.
+- If Claude Code's sign-in expires (after ~8 h without use), Claude Code renews it itself — the
+  overlay starts it for that in the background ([Signing in](#signing-in)) and recovers within
+  seconds.
 - The account it shows (e-mail, name, organization) comes from Claude Code's settings file
   `.claude.json`, which holds no secrets.
 - With `CLAUDE_CONFIG_DIR` (an account in its own folder) Claude Code keeps both files in that
@@ -91,16 +100,19 @@ Claude Code account you're looking at — never another account's numbers. (With
 only* they are always shown, labelled "Claude Desktop's account" when the organization differs.)
 
 The overlay never offers a claude.ai sign-in of its own: Anthropic does not allow third-party apps
-to offer Claude.ai login or to store claude.ai session tokens.
+to offer Claude.ai login or to store claude.ai session tokens. Signing in always happens in Claude
+Code's own sign-in, in your browser ([Signing in](#signing-in)).
 
 > The usage endpoint is not an official public API. It can change without notice. This project is
 > not affiliated with Anthropic.
 
 ## Requirements
 
-- [Claude Code](https://docs.claude.com/en/docs/claude-code) signed in with a Claude Pro/Max/Team
-  account — either the Claude Code extension for VS Code, or the `claude` command-line tool
-  (`claude`, then `/login`).
+- [Claude Code](https://docs.claude.com/en/docs/claude-code) signed in with a Claude Pro, Max, Team
+  or Enterprise account — either the Claude Code extension for VS Code, or the `claude`
+  command-line tool. Not installed yet? The overlay's **Install Claude Code** button runs
+  Anthropic's installer for you and signs in ([Signing in](#signing-in)). The free plan doesn't
+  include Claude Code.
 - Or the Claude desktop app (Windows / macOS), running: the overlay then shows its recorded usage
   (up to ~20 minutes old, without reset times).
 - Node.js 22+ only if you run from source.
@@ -161,8 +173,9 @@ folder*), so they share them. Only one copy runs at a time.
   window per account); compact mode and which limits the pill shows, show account, always on top,
   size, opacity, theme, refresh interval, move to display (with more than one monitor) and reset
   position; notifications (with a test notification), keyboard shortcuts and launch at login; the
-  settings and logs folders, check for updates, about, restart and quit. *Open Claude Code* shows up
-  when a sign-in has expired, and *Restart to update* at the top when an update is ready.
+  settings and logs folders, check for updates, about, restart and quit. *Sign in to Claude Code…*,
+  *Install Claude Code…* or *Open Claude Code* shows up when an account needs it, and *Restart to
+  update* at the top when an update is ready.
 - **Keyboard:** `Ctrl+Alt+U` shows/hides the overlay and `Ctrl+Alt+Shift+U` locks/unlocks it from
   any app (`⌘⌥U` / `⌘⌥⇧U` on macOS). Menu → *Keyboard shortcuts* switches them off. To use other
   keys, edit `toggleShortcut` / `lockShortcut` in `settings.json` (menu → *Open settings folder*)
@@ -170,6 +183,40 @@ folder*), so they share them. Only one copy runs at a time.
   required). With the overlay focused, `Ctrl` `+` / `-` / `0` or `Ctrl` + mouse wheel change its
   size.
 - **Tray:** on Windows/Linux, left-click toggles the overlay. On macOS, click the menu-bar icon.
+
+### Signing in
+
+The overlay never signs in by itself and never sees your password. Signing in is done by **your own
+Claude Code** (unmodified), in **your browser** — the same sign-in as `claude` → `/login`:
+
+- **Nothing installed yet** — the card says *Claude Code isn't installed*. **Install Claude Code**
+  first shows what will happen, then opens a terminal that runs Anthropic's official installer
+  (`irm https://claude.ai/install.ps1 | iex` on Windows, `curl -fsSL https://claude.ai/install.sh | bash`
+  on macOS / Linux; it installs for your user, no admin rights) and then signs the new Claude Code
+  in. Claude Code needs a Pro, Max, Team or Enterprise plan.
+- **Not signed in** — **Sign in** opens a terminal running `claude auth login`. Claude Code opens
+  your browser; sign in there. If the browser doesn't open, the terminal shows a link, and a code to
+  paste if it asks for one. The numbers appear as soon as Claude Code has stored the sign-in — no
+  restart. Signing in the default account again asks first: it is also the sign-in your VS Code and
+  terminals use.
+- **Another Claude account** — menu → **Claude Code account** → **Add account (sign in)…**. The
+  overlay makes a new config folder for it (`~/.claude-account-2`, `-3`, …), Claude Code signs in
+  with that folder, and the account opens in a window of its own. If you close the terminal (or
+  nothing happens for 15 minutes), the empty folder is removed again. To use that account in a
+  terminal or VS Code too, set `CLAUDE_CONFIG_DIR` to that folder.
+- **Kept fresh in the background** — Claude Code's sign-in expires after about 8 hours without use.
+  When that happens, the overlay runs your Claude Code hidden with its built-in `/usage` command
+  (`claude -p "/usage" --no-session-persistence`, for that account's folder). That command only
+  shows your usage — it is handled inside Claude Code and **never sent to the model**, and no
+  session is saved — and on the way Claude Code renews its own sign-in; the overlay then shows
+  fresh numbers ("Renewing sign-in…" meanwhile). At most once per 30 minutes per account, less often
+  after failures (1 h … 12 h), never while offline. It needs Claude Code 2.1.283 or newer. Menu →
+  **Claude Code account** → **Renew sign-in automatically** switches it off. If Claude Code ever
+  answers with something that isn't `/usage` output, renewal stops for that account (the menu and
+  the log say so) until Claude Code is updated or the switch is turned on again.
+- **Sign in again** — a sign-in doesn't last forever. When Claude Code can't renew it any more
+  (it signs the account out, or the sign-in's end date has passed), the card asks you to **Sign in**
+  again.
 
 ### Launch at login
 
@@ -214,9 +261,12 @@ show any of them, in one window you switch or in a window per account:
   code --user-data-dir "D:\Work\VSCode-Profile" --extensions-dir "D:\Work\VSCode-Profile\extensions"
   ```
 
+- **Add account (sign in)…** does all of this in one step for a new account: a new folder, the
+  sign-in in your browser, a window of its own ([Signing in](#signing-in)).
 - **Open Claude Code** (shown when that account's sign-in has expired) opens a terminal that runs
-  `claude` with that folder, so Claude Code renews the right account. It needs the `claude` command
-  or the Claude Code extension for VS Code installed.
+  `claude` with that folder, so Claude Code renews the right account; **Sign in** signs that folder
+  in. Both need the `claude` command or the Claude Code extension for VS Code installed. Background
+  renewal also runs with each account's own folder.
 - The Claude desktop app fills gaps only for the account it is signed in to (see
   [How it works](#how-it-works)).
 
@@ -296,7 +346,20 @@ Project guide for AI-assisted development: [CLAUDE.md](CLAUDE.md). Status and de
 
 ## Troubleshooting
 
-- **"Not signed in"** (Auto mode): sign in to Claude Code (below) or open the Claude desktop app.
+- **"Not signed in"** (Auto mode): click **Sign in** (or **Install Claude Code**), or open the Claude
+  desktop app.
+- **Sign in / Install does nothing visible**: on Linux the overlay needs one of x-terminal-emulator,
+  gnome-terminal, konsole, xfce4-terminal or xterm (it says so otherwise); run `claude auth login`
+  yourself then. If Claude Code was installed while the overlay was running and isn't found, it is
+  looked for again on every click — in `~/.local/bin`, npm's folder and, on Windows, WinGet's.
+- **"Renewing sign-in…" and then "Claude Code sign-in expired" again**: the background renewal
+  didn't work this time (it tries again later, see [Signing in](#signing-in)); the log says why.
+  **Open Claude Code** still works as before. Renewal needs Claude Code 2.1.283 or newer — update it
+  (`claude update`).
+- **"Sign in again"**: Claude Code's sign-in for that account has ended (renewing isn't possible any
+  more). Click **Sign in**.
+- **"No Claude Code on this plan"**: the account is on the free plan, which doesn't include Claude
+  Code. Sign in with a Pro, Max, Team or Enterprise account.
 - **The overlay vanished and nothing brings it back** (tray click, *Show overlay*, the shortcut):
   menu → *Restart Claude Usage*. Since 1.2.0 the app switches off Chromium's window-occlusion
   tracking on Windows — it hid the overlay for good after a full-screen capture overlay such as
@@ -304,11 +367,12 @@ Project guide for AI-assisted development: [CLAUDE.md](CLAUDE.md). Status and de
 - **The overlay goes behind other windows although *Always on top* is on** (Windows): update to
   1.3.0 or newer. Versions up to 1.2.0 lost their always-on-top state whenever the taskbar itself
   wasn't on top.
-- **"Not signed in to Claude Code"**: sign in from the Claude Code panel in VS Code, or run
-  `claude` in a terminal and use `/login`. If your Claude Code uses another config folder
-  (`CLAUDE_CONFIG_DIR`, e.g. set in the VS Code extension's settings or a launch script), add that
-  folder in menu → *Claude Code account* → *Add folder…*.
-- **"Claude Code sign-in expired"**: click **Open Claude Code** in the banner (or the menu). It opens
+- **"Not signed in to Claude Code"**: click **Sign in** — or sign in from the Claude Code panel in
+  VS Code, or run `claude` in a terminal and use `/login`. If your Claude Code uses another config
+  folder (`CLAUDE_CONFIG_DIR`, e.g. set in the VS Code extension's settings or a launch script), add
+  that folder in menu → *Claude Code account* → *Add folder…*.
+- **"Claude Code sign-in expired"**: usually the overlay renews it in the background first
+  ("Renewing sign-in…"). Otherwise click **Open Claude Code** in the banner (or the menu). It opens
   a new Claude Code tab in VS Code — or, without the VS Code extension, a terminal running `claude` —
   and Claude Code renews its own token when it starts; the overlay notices within seconds. You don't
   need to type anything. In *Auto* mode an open Claude desktop app fills the gap meanwhile.

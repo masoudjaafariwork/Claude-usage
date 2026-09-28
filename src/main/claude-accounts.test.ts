@@ -11,6 +11,7 @@ import {
   claudeCodeLocation,
   configDirArg,
   folderLabel,
+  nextAccountFolder,
   normalizeFolder,
   sameFolder,
 } from './claude-accounts';
@@ -133,4 +134,15 @@ test('--claude-config-dir: a folder (resolved), default, or nothing', () => {
   assert.equal(configDirArg(['app', '--claude-config-dir='], '/', 'linux'), undefined);
   assert.equal(configDirArg(['app', '--mock'], '/', 'linux'), undefined);
   assert.equal(configDirArg(['app', '--claude-config-dir=/a', '--claude-config-dir=/b'], '/', 'linux'), '/b', 'the last one wins');
+});
+
+test('nextAccountFolder: ~/.claude-account-N, the first N that is neither on disk nor added (Phase 8)', () => {
+  assert.equal(nextAccountFolder('C:\\Users\\j', [], 'win32', () => false), 'C:\\Users\\j\\.claude-account-2');
+  const onDisk = new Set(['C:\\Users\\j\\.claude-account-2']);
+  assert.equal(
+    nextAccountFolder('C:\\Users\\j', ['c:\\users\\J\\.claude-account-3'], 'win32', (d) => onDisk.has(d)),
+    'C:\\Users\\j\\.claude-account-4',
+    'on disk: 2; added (other case): 3',
+  );
+  assert.equal(nextAccountFolder('/home/j', [], 'linux', () => false), '/home/j/.claude-account-2');
 });

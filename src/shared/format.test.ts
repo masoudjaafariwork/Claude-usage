@@ -1,7 +1,23 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import type { LimitMeter } from './types';
-import { compactMeters, formatAgo, formatApprox, formatClock, formatDuration, initials, shortenEmail } from './format';
+import type { ClaudeCodeView, LimitMeter, Status } from './types';
+import { claudeCodeAction, compactMeters, formatAgo, formatApprox, formatClock, formatDuration, initials, shortenEmail } from './format';
+
+test('claudeCodeAction: install / sign in / open Claude Code / nothing (Phase 8)', () => {
+  const view = (overrides: Partial<ClaudeCodeView> = {}): ClaudeCodeView => ({ installed: true, renewing: false, signInEnded: false, signingIn: false, ...overrides });
+  const expired: Status = { kind: 'token-expired', reason: 'expired' };
+  assert.equal(claudeCodeAction({ kind: 'no-credentials' }, view()), 'sign-in');
+  assert.equal(claudeCodeAction({ kind: 'no-credentials' }, view({ installed: false })), 'install');
+  assert.equal(claudeCodeAction({ kind: 'no-credentials', reason: 'free-plan' }, view()), 'sign-in', 'with another account');
+  assert.equal(claudeCodeAction(expired, view()), 'open', 'Claude Code may still renew it (D34)');
+  assert.equal(claudeCodeAction(expired, view({ renewing: true })), null, 'it is renewing right now');
+  assert.equal(claudeCodeAction(expired, view({ signInEnded: true })), 'sign-in');
+  assert.equal(claudeCodeAction({ kind: 'token-expired', reason: 'sign-in-ended' }, view()), 'sign-in');
+  assert.equal(claudeCodeAction({ kind: 'token-expired', reason: 'sign-in-ended' }, view({ installed: false })), 'install');
+  for (const kind of ['ok', 'loading', 'rate-limited', 'network-error', 'error', 'desktop-unavailable'] as const) {
+    assert.equal(claudeCodeAction({ kind }, view()), null, kind);
+  }
+});
 
 const MIN = 60_000;
 const HOUR = 60 * MIN;

@@ -24,6 +24,12 @@ const SHORT_STATUS: Partial<Record<StatusKind, string>> = {
   error: 'error',
 };
 
+/** A status for the tooltip; Claude Code renewing the sign-in in the background (Phase 8) says so. */
+function statusText(state: AppState, short: boolean): string | undefined {
+  if (state.status.kind === 'token-expired' && state.claudeCode.renewing) return short ? 'renewing sign-in…' : 'Claude Code is renewing its sign-in…';
+  return short ? SHORT_STATUS[state.status.kind] : state.status.message;
+}
+
 /** One overlay window's account (Phase 7): its state and a short name for it (e-mail or folder). */
 export interface TrayAccount {
   state: AppState;
@@ -82,7 +88,8 @@ export class TrayController {
     const source = state.snapshot ? ` · via ${SOURCE_LABELS[state.snapshot.source]}` : '';
     const lines = [`Claude Usage${source}`];
     for (const meter of state.snapshot?.meters ?? []) lines.push(`${meter.label}: ${Math.round(meter.percent)}%`);
-    if (state.status.kind !== 'ok' && state.status.message) lines.push(state.status.message);
+    const status = state.status.kind !== 'ok' ? statusText(state, false) : undefined;
+    if (status) lines.push(status);
     return fit(lines);
   }
 
@@ -91,7 +98,7 @@ export class TrayController {
     const lines = ['Claude Usage'];
     for (const { state, who } of accounts) {
       const top = state.snapshot ? mostConstrained(state.snapshot.meters) : null;
-      const status = state.status.kind !== 'ok' ? SHORT_STATUS[state.status.kind] : undefined;
+      const status = state.status.kind !== 'ok' ? statusText(state, true) : undefined;
       const usage = top ? `${Math.round(top.percent)}% ${top.label}` : null;
       lines.push(`${who}: ${[usage, status].filter(Boolean).join(' · ') || '—'}`);
     }

@@ -1,5 +1,6 @@
 // The context menu, shared by the tray icon, the overlay's ⋯ button and right-click.
 import { Menu, app, nativeImage, screen, type MenuItemConstructorOptions, type NativeImage } from 'electron';
+import type { ClaudeCodeAction } from '../shared/format';
 import type { SourceMode } from '../shared/types';
 import type { AccountMenuEntry } from './claude-accounts';
 import { NOTIFY_THRESHOLDS } from './notifications-core';
@@ -68,6 +69,14 @@ export interface MenuActions {
   setShortcutsEnabled(on: boolean): void;
   /** Open Claude Code for an account whose sign-in is missing or expired, so it renews it (D34). */
   openClaudeCode(dir: string | null): void;
+  /** Sign an account in through Claude Code (`claude auth login` in a terminal, Phase 8). */
+  signIn(dir: string | null): void;
+  /** Install Claude Code (Anthropic's installer, after a dialog), then sign that account in. */
+  installClaudeCode(dir: string | null): void;
+  /** A new account: a new config folder, signed in through Claude Code, in a window of its own. */
+  addAccountBySignIn(): void;
+  /** Let Claude Code renew expired sign-ins in the background. */
+  setAutoRenew(on: boolean): void;
   openSettingsFolder(): void;
   openLogsFolder(): void;
   checkForUpdates(): void;
@@ -96,8 +105,10 @@ export interface MenuContext {
   weeklyMeters: ReadonlyArray<{ id: string; label: string }>;
   /** The default Claude Code account and the added config folders (claude-accounts.ts). */
   accounts: readonly AccountMenuEntry[];
-  /** Accounts whose sign-in is missing or expired, each with its *Open Claude Code* label. */
-  claudeCodeLaunches: ReadonlyArray<{ dir: string | null; label: string }>;
+  /** Accounts whose sign-in needs the user: Open Claude Code, Sign in or Install (Phase 8), each with its label. */
+  claudeCodeActions: ReadonlyArray<{ dir: string | null; action: ClaudeCodeAction; label: string }>;
+  /** Accounts whose background renewal stopped (unexpected answer from Claude Code), by short label. */
+  renewStopped: readonly string[];
   shortcuts: ShortcutsStatus;
   notificationsSupported: boolean;
   /** The updates item: at the top when there is something to do, else next to About. */
@@ -202,6 +213,7 @@ export function buildMenu(settings: Readonly<Settings>, context: MenuContext, ac
       submenu: [
         ...accountItems(context, actions),
         { type: 'separator' },
+        { label: 'Add account (sign in)…', click: () => actions.addAccountBySignIn() },
         { label: 'Add folder…', click: () => actions.addClaudeCodeDir() },
         ...(added.length > 0
           ? [
@@ -211,10 +223,17 @@ export function buildMenu(settings: Readonly<Settings>, context: MenuContext, ac
               },
             ]
           : []),
+        { type: 'separator' },
+        // Claude Code renews its own sign-in; the overlay only runs it (D3, Phase 8).
+        { label: 'Renew sign-in automatically', type: 'checkbox', checked: settings.autoRenew, click: (item) => actions.setAutoRenew(item.checked) },
+        ...context.renewStopped.map((who) => ({ label: `Renewal stopped for ${who} — see the log`, enabled: false })),
       ],
     },
-    // Claude Code renews its own sign-in when it starts (the overlay never does, D3).
-    ...context.claudeCodeLaunches.map(({ dir, label }) => ({ label, click: () => actions.openClaudeCode(dir) })),
+    // Sign-ins that need the user: always through their own Claude Code (D3, D28).
+    ...context.claudeCodeActions.map(({ dir, action, label }) => ({
+      label,
+      click: () => (action === 'open' ? actions.openClaudeCode(dir) : action === 'sign-in' ? actions.signIn(dir) : actions.installClaudeCode(dir)),
+    })),
     { type: 'separator' },
     { label: 'Compact mode', type: 'checkbox', checked: context.compact, click: (item) => actions.setCompact(item.checked) },
     {

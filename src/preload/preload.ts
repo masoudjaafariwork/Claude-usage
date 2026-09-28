@@ -20,6 +20,8 @@ const api: OverlayApi = {
   showMenu: () => ipcRenderer.send('menu:show'),
   closeWindow: () => ipcRenderer.send('window:close'),
   openClaudeCode: () => ipcRenderer.send('claude-code:open'),
+  signIn: () => ipcRenderer.send('claude-code:sign-in'),
+  installClaudeCode: () => ipcRenderer.send('claude-code:install'),
   pageVisibility: (hidden) => ipcRenderer.send('page:visibility', hidden),
 };
 

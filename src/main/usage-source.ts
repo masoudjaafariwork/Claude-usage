@@ -21,6 +21,8 @@ export interface FetchContext {
 export interface UsageSource {
   readonly id: SourceId;
   fetch(context: FetchContext): Promise<UsageSnapshot>;
+  /** Forget what was learned about the current sign-in (a rejected token): Claude Code just showed it works. */
+  signInRenewed?(): void;
 }
 
 export class SourceUnavailableError extends Error {
@@ -59,25 +61,34 @@ export class ClaudeCodeSource implements UsageSource {
     this.deps = deps;
   }
 
+  signInRenewed(): void {
+    this.rejectedToken = null;
+  }
+
   async fetch(): Promise<UsageSnapshot> {
     let credentials: ClaudeCredentials;
     try {
       credentials = await this.deps.readCredentials();
     } catch (err) {
       throw new SourceUnavailableError(
-        err instanceof CredentialsNotFoundError
-          ? { kind: 'no-credentials', message: 'Sign in to Claude Code on this computer to see your usage.' }
-          : { kind: 'error', message: `Could not read Claude Code credentials: ${errorMessage(err)}` },
+        !(err instanceof CredentialsNotFoundError)
+          ? { kind: 'error', message: `Could not read Claude Code credentials: ${errorMessage(err)}` }
+          : err.signedOut
+            ? // Claude Code emptied its sign-in (it couldn't renew it): only signing in again helps.
+              { kind: 'no-credentials', reason: 'sign-in-ended', message: 'Claude Code sign-in has ended. Sign in again.' }
+            : { kind: 'no-credentials', message: 'Sign in to Claude Code on this computer to see your usage.' },
       );
     }
 
     const now = this.deps.now();
     const expired = credentials.expiresAt !== null && credentials.expiresAt <= now + EXPIRY_SKEW_MS;
-    if (expired || credentials.accessToken === this.rejectedToken) {
-      throw new SourceUnavailableError({
-        kind: 'token-expired',
-        message: 'Claude Code sign-in has expired. Open Claude Code to renew it.',
-      });
+    const rejected = credentials.accessToken === this.rejectedToken;
+    if (expired || rejected) {
+      // Past the refresh token's expiry Claude Code can't renew the sign-in any more (Phase 8).
+      if (credentials.refreshTokenExpiresAt !== null && credentials.refreshTokenExpiresAt <= now) {
+        throw new SourceUnavailableError({ kind: 'token-expired', reason: 'sign-in-ended', message: 'Claude Code sign-in has ended. Sign in again.' });
+      }
+      throw new SourceUnavailableError(rejected ? rejectedStatus(credentials) : EXPIRED_STATUS);
     }
 
     // Read together with the token (Claude Code's `/login` rewrites both), before the request.
@@ -91,12 +102,21 @@ export class ClaudeCodeSource implements UsageSource {
     } catch (err) {
       if (err instanceof UsageHttpError && (err.status === 401 || err.status === 403)) {
         this.rejectedToken = credentials.accessToken;
-        throw new SourceUnavailableError({
-          kind: 'token-expired',
-          message: 'Claude Code sign-in is no longer valid. Open Claude Code to renew it.',
-        });
+        throw new SourceUnavailableError(rejectedStatus(credentials));
       }
       throw err;
     }
   }
+}
+
+const EXPIRED_STATUS: Status = { kind: 'token-expired', reason: 'expired', message: 'Claude Code sign-in has expired. Open Claude Code to renew it.' };
+
+/**
+ * The API refused the token. On the free plan that is final — Claude Code isn't part of it
+ * (Anthropic's setup page), and renewing can't change that; otherwise Claude Code may renew it.
+ */
+function rejectedStatus(credentials: ClaudeCredentials): Status {
+  return credentials.subscriptionType === 'free'
+    ? { kind: 'no-credentials', reason: 'free-plan', message: 'Claude Code needs a Pro, Max, Team or Enterprise plan.' }
+    : { kind: 'token-expired', reason: 'rejected', message: 'Claude Code sign-in is no longer valid. Open Claude Code to renew it.' };
 }

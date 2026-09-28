@@ -19,6 +19,7 @@ import {
   ipcMain,
   nativeImage,
   nativeTheme,
+  net,
   powerMonitor,
   screen,
   shell,
@@ -26,10 +27,12 @@ import {
   type IpcMainInvokeEvent,
   type Menu,
 } from 'electron';
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import type { ChildProcess } from 'node:child_process';
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
-import { homedir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { claudeCodeAction } from '../shared/format';
 import {
   accountLogName,
   accountMenuEntries,
@@ -38,10 +41,33 @@ import {
   chooseFolder,
   claudeCodeLocation,
   configDirArg,
+  nextAccountFolder,
   normalizeFolder,
   type ClaudeCodeLocation,
 } from './claude-accounts';
-import { accountInfo, readClaudeCodeAccount, readCredentials, type ClaudeCodeAccount } from './credentials';
+import {
+  CLAUDE_CODE_SETUP_URL,
+  INSTALL_COMMANDS,
+  findClaudeBinary,
+  findLinuxTerminal,
+  planTerminalJob,
+  runLaunchPlan,
+  type TerminalFacts,
+} from './claude-code-launcher';
+import {
+  MIN_RENEWAL_VERSION,
+  RENEWAL_ARGS,
+  RENEW_TIMEOUT_MS,
+  parseClaudeVersion,
+  readClaudeVersion,
+  renewalEnv,
+  renewalResult,
+  runHidden,
+  usagePathClash,
+  versionAtLeast,
+  type RenewalResult,
+} from './claude-code-renewal';
+import { accountInfo, parseClaudeCodeAccount, readClaudeCodeAccount, readCredentials, type ClaudeCodeAccount } from './credentials';
 import { DesktopSource, desktopDataDirs, readDesktopHistory, watchDesktopHistory } from './desktop-source';
 import { AttemptBudget, describeProcessGone, isCleanExit, relaunchOptions } from './recovery-core';
 import { RotatingLog, describeError } from './log';
@@ -121,6 +147,9 @@ if (!app.requestSingleInstanceLock()) {
 
 /** Menu items that act on the window whose menu it is, or on all windows (menuFor below). */
 type WindowAction = 'closeWindow' | 'refresh' | 'setCompact' | 'setClaudeCodeDir' | 'addClaudeCodeDir' | 'moveToDisplay' | 'resetPosition';
+
+/** How long a sign-in for a new account may take before its empty folder is removed again. */
+const NEW_ACCOUNT_WAIT_MS = 15 * 60_000;
 
 function start(): void {
   if (process.platform === 'darwin') app.dock?.hide();
@@ -269,6 +298,8 @@ function start(): void {
     setScale: (scale) => actions.setScale(scale),
     showAll: () => showAll(),
     credentialsChanged: () => void readAccounts(),
+    claudeCodeInstalled: () => claudeBinary() !== null,
+    renewSignIn: (overlay, started) => renewSignIn(overlay, started),
     shownFirstTime: () => {
       updateTray();
       if (cli.screenshot) captureOnce(cli.screenshot);
@@ -421,6 +452,22 @@ function start(): void {
       broadcast();
     },
     openClaudeCode: (dir) => overlays.find((o) => o.account === dir)?.openClaudeCode(),
+    signIn: (dir) => {
+      const overlay = overlays.find((o) => o.account === dir);
+      if (overlay) void signIn(overlay);
+    },
+    installClaudeCode: (dir) => {
+      const overlay = overlays.find((o) => o.account === dir);
+      if (overlay) void installFor(overlay);
+    },
+    addAccountBySignIn: () => void addAccountBySignIn(),
+    setAutoRenew: (on) => {
+      // Turning it on again also gives accounts whose renewal stopped another try.
+      settings.update({ autoRenew: on, renewStopped: on ? [] : settings.get().renewStopped });
+      log.info(`Renew sign-in automatically → ${on ? 'on' : 'off'}`);
+      if (on) for (const overlay of overlays) overlay.maybeRenew();
+      updateTray();
+    },
     openSettingsFolder: () => void shell.openPath(userData),
     openLogsFolder: () => {
       mkdirSync(log.dir, { recursive: true });
@@ -445,7 +492,13 @@ function start(): void {
     for (const overlay of scoped) {
       for (const meter of overlay.service.snapshot?.meters ?? []) if (meter.group === 'weekly' && !weekly.has(meter.id)) weekly.set(meter.id, meter);
     }
-    const signInNeeded = scoped.filter((o) => o.service.status.kind === 'token-expired' || o.service.status.kind === 'no-credentials');
+    const claudeCodeActions = scoped.flatMap((o) => {
+      const { status, claudeCode } = o.state();
+      const action = claudeCodeAction(status, claudeCode);
+      if (!action) return [];
+      const label = { open: 'Open Claude Code', 'sign-in': 'Sign in to Claude Code…', install: 'Install Claude Code…' }[action];
+      return [{ dir: o.account, action, label: target ? label : `${label} — ${shortLabel(o.account)}` }];
+    });
     return buildMenu(
       current,
       {
@@ -465,10 +518,8 @@ function start(): void {
           home,
           platform: process.platform,
         }),
-        claudeCodeLaunches: signInNeeded.map((o) => ({
-          dir: o.account,
-          label: target ? 'Open Claude Code' : `Open Claude Code — ${shortLabel(o.account)}`,
-        })),
+        claudeCodeActions,
+        renewStopped: current.renewStopped.map((stop) => shortLabel(stop.account)),
         shortcuts,
         notificationsSupported: notices.supported,
         update: mockUpdate ?? updater.menuItem,
@@ -661,6 +712,286 @@ function start(): void {
     return accountShortLabel(account, email, settings.get().showAccount, home, process.platform);
   }
 
+  // --- Signing in through Claude Code, installing it, renewing its sign-in (Phase 8) ----------------
+  // Always the user's own, unmodified Claude Code: the overlay never offers a login of its own, never
+  // sees a password or session, and never refreshes or writes a token (D3, D28).
+  const openExternal = (url: string) => shell.openExternal(url);
+  /** A found Claude Code, looked up again after 5 s (the card asks with every state it gets). */
+  let claudeLookup: { at: number; path: string | null } | null = null;
+  function claudeBinary(fresh = false): string | null {
+    if (mock) return mock.claudeCode.installed ? 'claude' : null;
+    if (fresh || !claudeLookup || Date.now() - claudeLookup.at > 5000) {
+      claudeLookup = { at: Date.now(), path: findClaudeBinary({ platform: process.platform, env: process.env, home }) };
+    }
+    return claudeLookup.path;
+  }
+
+  function terminalFacts(configDir: string | null): TerminalFacts {
+    return { platform: process.platform, home, configDir, tempDir: tmpdir(), linuxTerminal: findLinuxTerminal(process.platform, process.env) };
+  }
+
+  /** Linux without a known terminal emulator: say what to run instead. */
+  async function noTerminal(command: string): Promise<void> {
+    const { response } = await dialog.showMessageBox({
+      type: 'info',
+      title: 'Claude Usage',
+      message: 'No terminal program found',
+      detail: `Claude Usage opens x-terminal-emulator, gnome-terminal, konsole, xfce4-terminal or xterm, and none of them is installed. Run this in a terminal yourself:\n\n    ${command}`,
+      buttons: ['OK', 'Open setup page'],
+      noLink: true,
+    });
+    if (response === 1) void openExternal(CLAUDE_CODE_SETUP_URL);
+  }
+
+  /**
+   * *Sign in* (banner, menu): a terminal runs `claude auth login` for this window's account; Claude
+   * Code opens the browser and stores the sign-in where the overlay reads it (watched meanwhile).
+   * Without a Claude Code, the Install dialog comes first.
+   */
+  async function signIn(overlay: Overlay): Promise<void> {
+    if (mock) return void log.info('Sign in: not started in mock runs');
+    const claude = claudeBinary(true);
+    if (!claude) return installFor(overlay);
+    const known = await readClaudeCodeAccount(overlay.location);
+    // The default account is Claude Code's own: signing in there changes it for VS Code and the terminals too.
+    if (overlay.account === null && known !== null) {
+      const who = known.email ?? 'the same account';
+      const { response } = await dialog.showMessageBox({
+        type: 'question',
+        title: 'Claude Usage',
+        message: 'Sign in to Claude Code again?',
+        detail:
+          `This signs in Claude Code itself on this computer — the sign-in that VS Code and your terminals use too. ` +
+          `Sign in with ${who} to keep that account; another Claude account would replace it there as well.\n\n` +
+          'To see another account next to this one, use Claude Code account → Add account (sign in)… instead.',
+        buttons: ['Sign in', 'Cancel'],
+        defaultId: 0,
+        cancelId: 1,
+        noLink: true,
+      });
+      if (response !== 0) return;
+    }
+    const plan = planTerminalJob(terminalFacts(overlay.account === null ? null : overlay.location.dir), { kind: 'sign-in', claude, email: known?.email ?? null });
+    if (!plan) return noTerminal('claude auth login');
+    const terminal = await runLaunchPlan(plan, `[${overlay.logName}] Sign in`, openExternal, log.write);
+    overlay.watchSignIn(plan.kind === 'spawn' && plan.waits ? terminal : null);
+  }
+
+  /** *Install Claude Code* for a window's account: installer, then its sign-in, watched like *Sign in*. */
+  async function installFor(overlay: Overlay): Promise<void> {
+    if (mock) return void log.info('Install Claude Code: not started in mock runs');
+    const terminal = await installClaudeCode(overlay.account === null ? null : overlay.location.dir, `[${overlay.logName}]`);
+    if (terminal !== 'cancelled') overlay.watchSignIn(terminal);
+  }
+
+  /**
+   * Explains, then (on OK) opens a terminal that runs Anthropic's official installer and signs the
+   * installed Claude Code in (for `configDir`, null = the default account). Nothing is installed
+   * without the user's click, and nothing is bundled. Returns the terminal's process when its exit
+   * means the window was closed (Windows), null when that can't be told, 'cancelled' otherwise.
+   */
+  async function installClaudeCode(configDir: string | null, tag: string): Promise<ChildProcess | null | 'cancelled'> {
+    const windows = process.platform === 'win32';
+    const command = windows ? INSTALL_COMMANDS.windows : INSTALL_COMMANDS.unix;
+    const { response } = await dialog.showMessageBox({
+      type: 'info',
+      title: 'Install Claude Code',
+      message: 'Install Claude Code to sign in',
+      detail: [
+        "Claude Usage shows your limits through Claude Code, Anthropic's coding tool — it never signs in by itself.",
+        '',
+        "A terminal window will run Anthropic's official installer:",
+        '',
+        `    ${command}`,
+        '',
+        `It installs Claude Code for your user, without admin rights (into ${windows ? '%USERPROFILE%\\.local\\bin' : '~/.local/bin'}). ` +
+          'Then Claude Code opens your browser: sign in to your Claude account there.',
+        '',
+        "Claude Code needs a Pro, Max, Team or Enterprise plan; the free plan doesn't include it.",
+      ].join('\n'),
+      buttons: ['Install', 'Open setup page', 'Cancel'],
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true,
+    });
+    if (response === 1) void openExternal(CLAUDE_CODE_SETUP_URL);
+    if (response !== 0) return 'cancelled';
+    const plan = planTerminalJob(terminalFacts(configDir), { kind: 'install' });
+    if (!plan) {
+      await noTerminal(command);
+      return 'cancelled';
+    }
+    const terminal = await runLaunchPlan(plan, `${tag} Install Claude Code`, openExternal, log.write);
+    claudeLookup = null;
+    return plan.kind === 'spawn' && plan.waits ? terminal : null;
+  }
+
+  /** The new account of *Add account (sign in)…* while its sign-in runs (one at a time). */
+  let pendingAccount: { dir: string; deadline: number; timer: NodeJS.Timeout } | null = null;
+
+  /**
+   * *Add account (sign in)…*: the app makes a new config folder (nextAccountFolder), Claude Code
+   * signs in with it in a terminal, and once it has, the account is added and gets a window of its
+   * own (Phase 7). A folder left without a sign-in is removed again.
+   */
+  async function addAccountBySignIn(): Promise<void> {
+    if (mock) return void log.info('Add account (sign in): not started in mock runs');
+    if (pendingAccount) {
+      await dialog.showMessageBox({
+        type: 'info',
+        title: 'Claude Usage',
+        message: 'A sign-in is already open',
+        detail: 'Finish the sign-in for the new account in its terminal window (or close that window) first.',
+        buttons: ['OK'],
+      });
+      return;
+    }
+    const dir = nextAccountFolder(home, settings.get().claudeCodeDirs, process.platform, existsSync);
+    try {
+      mkdirSync(dir, { recursive: true });
+    } catch (err) {
+      log.error(`Add account: could not create its folder: ${describeError(err)}`);
+      return;
+    }
+    const tag = '[new account]';
+    const claude = claudeBinary(true);
+    let terminal: ChildProcess | null;
+    if (claude) {
+      const plan = planTerminalJob(terminalFacts(dir), { kind: 'sign-in', claude, email: null });
+      if (!plan) {
+        removeUnusedFolder(dir);
+        return noTerminal(`CLAUDE_CONFIG_DIR="${dir}" claude auth login`);
+      }
+      const child = await runLaunchPlan(plan, `${tag} Sign in`, openExternal, log.write);
+      terminal = plan.kind === 'spawn' && plan.waits ? child : null;
+    } else {
+      const installed = await installClaudeCode(dir, tag);
+      if (installed === 'cancelled') return removeUnusedFolder(dir);
+      terminal = installed;
+    }
+    const pending = { dir, deadline: Date.now() + NEW_ACCOUNT_WAIT_MS, timer: setInterval(() => checkNewAccount(false), 2000) };
+    pendingAccount = pending;
+    terminal?.on('exit', () => setTimeout(() => checkNewAccount(true), 3000)); // Claude Code may still be writing
+  }
+
+  /** The new account signed in → add it and open its window; closed / timed out without → remove its folder. */
+  function checkNewAccount(terminalClosed: boolean): void {
+    const pending = pendingAccount;
+    if (!pending) return;
+    const signedIn = signedInThere(pending.dir);
+    if (!signedIn && !terminalClosed && Date.now() < pending.deadline) return;
+    clearInterval(pending.timer);
+    pendingAccount = null;
+    if (!signedIn) {
+      removeUnusedFolder(pending.dir);
+      log.info(`New account: no sign-in (${terminalClosed ? 'its terminal was closed' : 'nothing after 15 min'}); its folder was removed again`);
+      return;
+    }
+    const account = resolveAccount(pending.dir);
+    log.info(`[${accountLogName(account, process.platform)}] New account signed in`);
+    openWindow(account);
+    void readAccounts();
+  }
+
+  /** Claude Code has signed in with this config folder (its account file names the account; macOS keeps the token in the Keychain). */
+  function signedInThere(dir: string): boolean {
+    let accountText = '';
+    try {
+      accountText = readFileSync(join(dir, '.claude.json'), 'utf8');
+    } catch {
+      // no account file yet
+    }
+    return existsSync(join(dir, '.credentials.json')) || parseClaudeCodeAccount(accountText) !== null;
+  }
+
+  /** Removes a folder made for a new account, unless Claude Code signed in there after all. */
+  function removeUnusedFolder(dir: string): void {
+    if (signedInThere(dir)) return;
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch (err) {
+      log.warn(`Could not remove an unused account folder: ${describeError(err)}`);
+    }
+  }
+
+  // Background renewal: claude-code-renewal.ts explains why `/usage` never reaches the model.
+  /** Working folder of the hidden runs: the app's own, so no project's settings apply. */
+  const renewalCwd = join(userData, 'claude-code-runs');
+  /** Claude Code versions by binary (path + modification time): `claude --version` once per binary. */
+  const claudeVersions = new Map<string, string | null>();
+  /** Config folders a hidden run is going on for. */
+  const renewingDirs = new Set<string>();
+  const loggedOnce = new Set<string>();
+  const logOnce = (key: string, level: 'info' | 'warn', line: string) => {
+    if (loggedOnce.has(key)) return;
+    loggedOnce.add(key);
+    log.write(level, line);
+  };
+
+  async function claudeVersion(claude: string, env: NodeJS.ProcessEnv): Promise<string | null> {
+    let key = claude;
+    try {
+      key += `|${statSync(claude).mtimeMs}`;
+    } catch {
+      return null;
+    }
+    if (!claudeVersions.has(key)) claudeVersions.set(key, await readClaudeVersion(claude, env));
+    return claudeVersions.get(key) ?? null;
+  }
+
+  async function renewSignIn(overlay: Overlay, started: () => void): Promise<RenewalResult | null> {
+    if (mock) {
+      if (!mock.claudeCode.renewing) return null;
+      started();
+      return new Promise<never>(() => {}); // the `renewing` scenario: renewing for good
+    }
+    if (cli.screenshot) return null;
+    const account = overlay.account;
+    const tag = `[${overlay.logName}]`;
+    const runDir = overlay.location.dir;
+    const configDir = account === null ? null : runDir;
+    const claude = claudeBinary(true);
+    if (!claude || !net.isOnline() || renewingDirs.has(runDir)) return null;
+    const env = renewalEnv(process.env, configDir);
+    const version = await claudeVersion(claude, env);
+    const parsed = version === null ? null : parseClaudeVersion(version);
+    if (version === null || !parsed || !versionAtLeast(parsed, MIN_RENEWAL_VERSION)) {
+      logOnce(`old:${version}`, 'info', `Claude Code ${version ?? '(unknown version)'} is older than ${MIN_RENEWAL_VERSION.join('.')}: no background renewal with it — update Claude Code`);
+      return null;
+    }
+    const stop = settings.get().renewStopped.find((s) => s.account === account);
+    if (stop?.claudeVersion === version) return null;
+    mkdirSync(renewalCwd, { recursive: true });
+    if (usagePathClash(renewalCwd, process.platform, existsSync)) {
+      logOnce('clash', 'warn', 'A file or folder named "usage" at the root of the drive would turn /usage into a prompt: no background renewal');
+      return null;
+    }
+    renewingDirs.add(runDir);
+    log.info(`${tag} Sign-in expired: letting Claude Code ${version} renew it (its local /usage command, hidden)`);
+    started();
+    const startedAt = Date.now();
+    try {
+      const run = await runHidden(claude, RENEWAL_ARGS, { cwd: renewalCwd, env, timeoutMs: RENEW_TIMEOUT_MS, platform: process.platform });
+      const result = renewalResult(run);
+      const took = `${((Date.now() - startedAt) / 1000).toFixed(1)} s`;
+      if (result.kind === 'renewed') log.info(`${tag} Renewal: Claude Code answered with its usage in ${took}`);
+      else if (result.kind === 'no-usage') log.warn(`${tag} Renewal: Claude Code ran /usage but had no plan usage to show — its sign-in didn't renew`);
+      else if (result.kind === 'signed-out') log.warn(`${tag} Renewal: Claude Code says the account isn't signed in ("${result.excerpt}") — sign in again`);
+      else if (result.kind === 'failed') log.warn(`${tag} Renewal didn't run through: ${result.detail}`);
+      else {
+        log.error(
+          `${tag} Renewal: unexpected answer from Claude Code ${version} ("${result.excerpt}"); background renewal stopped for this ` +
+            'account until Claude Code is updated or Renew sign-in automatically is switched on again',
+        );
+        settings.update({ renewStopped: [...settings.get().renewStopped.filter((s) => s.account !== account), { account, claudeVersion: version }] });
+        updateTray();
+      }
+      return result;
+    } finally {
+      renewingDirs.delete(runDir);
+    }
+  }
+
   // --- IPC (only accepted from our own overlay pages; routed to the window that sent it) ------------
   const overlayOf = (event: IpcMainEvent | IpcMainInvokeEvent) =>
     overlays.find((o) => !o.win.isDestroyed() && event.sender === o.win.webContents);
@@ -682,6 +1013,14 @@ function start(): void {
     if (overlay && overlays.length > 1) closeWindow(overlay, 'close button');
   });
   ipcMain.on('claude-code:open', (event) => overlayOf(event)?.openClaudeCode());
+  ipcMain.on('claude-code:sign-in', (event) => {
+    const overlay = overlayOf(event);
+    if (overlay) void signIn(overlay);
+  });
+  ipcMain.on('claude-code:install', (event) => {
+    const overlay = overlayOf(event);
+    if (overlay) void installFor(overlay);
+  });
   ipcMain.on('page:visibility', (event, hidden: unknown) => {
     const overlay = overlayOf(event);
     if (overlay && typeof hidden === 'boolean') overlay.pageVisibility(hidden);
@@ -766,6 +1105,14 @@ function start(): void {
   app.on('before-quit', () => {
     quitting = true;
     log.info('Quitting');
+    if (pendingAccount) {
+      // A new account's sign-in still open: keep the account if it got signed in, else its folder goes.
+      clearInterval(pendingAccount.timer);
+      const { dir } = pendingAccount;
+      pendingAccount = null;
+      if (signedInThere(dir)) resolveAccount(dir);
+      else removeUnusedFolder(dir);
+    }
     stopWatchingDesktop();
     for (const overlay of overlays) overlay.stop();
     updater.stop();

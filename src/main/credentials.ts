@@ -13,6 +13,12 @@ export interface ClaudeCredentials {
   accessToken: string;
   /** Expiry as epoch milliseconds, or null when not recorded. */
   expiresAt: number | null;
+  /**
+   * When the sign-in itself ends (the refresh token's expiry), epoch milliseconds, or null when not
+   * recorded. After it, Claude Code can't renew the access token: only signing in again helps. The
+   * refresh token itself is never read into memory here.
+   */
+  refreshTokenExpiresAt: number | null;
   subscriptionType: string | null;
   rateLimitTier: string | null;
   source: 'file' | 'keychain';
@@ -20,6 +26,33 @@ export interface ClaudeCredentials {
 
 export class CredentialsNotFoundError extends Error {
   override name = 'CredentialsNotFoundError';
+  /**
+   * Claude Code's sign-in block is there but its tokens are empty: Claude Code signed the account
+   * out (it does so when its sign-in can't be renewed any more, seen with 2.1.283). Only signing in
+   * again helps.
+   */
+  readonly signedOut: boolean;
+
+  constructor(message: string, signedOut = false) {
+    super(message);
+    this.signedOut = signedOut;
+  }
+}
+
+/** A `claudeAiOauth` block whose access token Claude Code emptied (signed out), as opposed to none at all. */
+export function isSignedOutCredentials(text: string): boolean {
+  try {
+    const oauth = (JSON.parse(text) as Record<string, unknown> | null)?.claudeAiOauth as Record<string, unknown> | undefined;
+    return typeof oauth === 'object' && oauth !== null && oauth.accessToken === '';
+  } catch {
+    return false;
+  }
+}
+
+/** A timestamp in milliseconds; one small enough to be seconds is taken as seconds. */
+function epochMs(value: unknown): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value <= 0) return null;
+  return value < 1e12 ? value * 1000 : value;
 }
 
 export function parseCredentials(text: string, source: ClaudeCredentials['source']): ClaudeCredentials | null {
@@ -37,29 +70,37 @@ export function parseCredentials(text: string, source: ClaudeCredentials['source
   return {
     accessToken: o.accessToken,
     expiresAt: typeof o.expiresAt === 'number' && Number.isFinite(o.expiresAt) ? o.expiresAt : null,
+    refreshTokenExpiresAt: epochMs(o.refreshTokenExpiresAt),
     subscriptionType: typeof o.subscriptionType === 'string' ? o.subscriptionType : null,
     rateLimitTier: typeof o.rateLimitTier === 'string' ? o.rateLimitTier : null,
     source,
   };
 }
 
-async function readFromFile(dir: string): Promise<ClaudeCredentials | null> {
+/** What one place holds: a sign-in, a signed-out block (see CredentialsNotFoundError), or nothing. */
+interface Stored {
+  credentials: ClaudeCredentials | null;
+  signedOut: boolean;
+}
+
+const stored = (text: string, source: ClaudeCredentials['source']): Stored => ({
+  credentials: parseCredentials(text, source),
+  signedOut: isSignedOutCredentials(text),
+});
+
+async function readFromFile(dir: string): Promise<Stored> {
   try {
-    const text = await readFile(join(dir, '.credentials.json'), 'utf8');
-    return parseCredentials(text, 'file');
+    return stored(await readFile(join(dir, '.credentials.json'), 'utf8'), 'file');
   } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') return { credentials: null, signedOut: false };
     throw err;
   }
 }
 
-function readFromKeychain(service: string): Promise<ClaudeCredentials | null> {
+function readFromKeychain(service: string): Promise<Stored> {
   return new Promise((resolve) => {
-    execFile(
-      'security',
-      ['find-generic-password', '-s', service, '-w'],
-      { timeout: 10_000 },
-      (err, stdout) => resolve(err ? null : parseCredentials(stdout.trim(), 'keychain')),
+    execFile('security', ['find-generic-password', '-s', service, '-w'], { timeout: 10_000 }, (err, stdout) =>
+      resolve(err ? { credentials: null, signedOut: false } : stored(stdout.trim(), 'keychain')),
     );
   });
 }
@@ -116,19 +157,17 @@ export function accountInfo(account: ClaudeCodeAccount | null): AccountInfo | nu
 
 /** The sign-in stored at `location` (claude-accounts.ts: the default account or an added folder). */
 export async function readCredentials(location: ClaudeCodeLocation): Promise<ClaudeCredentials> {
-  const found: ClaudeCredentials[] = [];
-  if (process.platform === 'darwin') {
-    const fromKeychain = await readFromKeychain(location.keychainService);
-    if (fromKeychain) found.push(fromKeychain);
-  }
-  const fromFile = await readFromFile(location.dir);
-  if (fromFile) found.push(fromFile);
+  const places: Stored[] = [];
+  if (process.platform === 'darwin') places.push(await readFromKeychain(location.keychainService));
+  places.push(await readFromFile(location.dir));
+  const found = places.flatMap((place) => (place.credentials ? [place.credentials] : []));
 
   // On macOS the Keychain and the file can diverge; the one expiring last is the freshest.
   found.sort((a, b) => (b.expiresAt ?? 0) - (a.expiresAt ?? 0));
   const best = found[0];
   if (!best) {
-    throw new CredentialsNotFoundError('No Claude Code sign-in found on this computer');
+    const signedOut = places.some((place) => place.signedOut);
+    throw new CredentialsNotFoundError(signedOut ? 'Claude Code signed this account out' : 'No Claude Code sign-in found on this computer', signedOut);
   }
   return best;
 }

@@ -5,10 +5,14 @@
 // compact). Everything else — look, lock, source, interval, tray, menu, shortcuts, updates — is
 // global and lives in main.ts, which reaches the windows through this class.
 import { screen, shell, type BrowserWindow, type Display, type Rectangle } from 'electron';
+import type { ChildProcess } from 'node:child_process';
+import { statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import type { AccountInfo, AppState, SourceId, UsageSnapshot } from '../shared/types';
+import { join } from 'node:path';
+import type { AccountInfo, AppState, ClaudeCodeView, SourceId, UsageSnapshot } from '../shared/types';
 import { accountLogName, type ClaudeCodeLocation } from './claude-accounts';
-import { gatherLaunchFacts, launchClaudeCode, planClaudeCodeLaunch } from './claude-code-launcher';
+import { gatherLaunchFacts, planClaudeCodeLaunch, runLaunchPlan } from './claude-code-launcher';
+import { RenewalSchedule, type RenewalResult } from './claude-code-renewal';
 import { watchFileInDirs } from './file-watch';
 import { HoverWatch } from './hover';
 import { describeError, type RotatingLog } from './log';
@@ -55,6 +59,14 @@ export interface OverlayHost {
   showAll(): void;
   /** Claude Code rewrote this account's credentials (e.g. `/login`): the menu's e-mails are read again. */
   credentialsChanged(): void;
+  /** A Claude Code the overlay can run was found (Phase 8): the card offers Sign in, else Install. */
+  claudeCodeInstalled(): boolean;
+  /**
+   * Lets Claude Code renew this window's expired sign-in in the background (its local `/usage`,
+   * claude-code-renewal.ts); `started` is called when Claude Code actually runs. Null when it didn't
+   * run: no (recent enough) Claude Code, offline, stopped for this account, already running.
+   */
+  renewSignIn(overlay: Overlay, started: () => void): Promise<RenewalResult | null>;
   /** The renderer's first size report fitted (and showed) the window. */
   shownFirstTime(overlay: Overlay): void;
   /** The blank-overlay watchdog saw a rebuilt window go blank again: restart the app (D60). */
@@ -91,6 +103,18 @@ export class Overlay {
   /** `fetchedAt` of the last snapshot that went into the history and the notification check. */
   private lastSeenAt: string | null = null;
   private lastClaudeCodeLaunch = 0;
+  /** Background renewal of an expired sign-in through Claude Code (Phase 8). */
+  private renewal = new RenewalSchedule();
+  /** The host's renewSignIn() for this account while it runs (its checks, then maybe Claude Code). */
+  private renewCall: Promise<void> | null = null;
+  /** Claude Code itself runs for it (the card says "Renewing sign-in…"). */
+  private renewing = false;
+  /** Claude Code said the account isn't signed in any more: only signing in again helps. */
+  private signInEnded = false;
+  /** Renewals in a row in which Claude Code had no plan usage to show (its sign-in didn't renew). */
+  private noUsageRuns = 0;
+  /** A sign-in terminal is open for this account: its files are checked every 2 s (watchSignIn). */
+  private signInTimer: NodeJS.Timeout | null = null;
   /** False until the renderer's first size report has fitted (and shown) the current window. */
   private shown = false;
   /** Whether that first fit shows the window. */
@@ -184,6 +208,7 @@ export class Overlay {
       sourceMode: current.source,
       selectedAccount: host.accountInfo(this.account),
       addedAccount: this.account !== null,
+      claudeCode: this.claudeCodeView(),
       canClose: host.canClose(),
       updateReady: host.updateReady(),
       forecast: service.status.kind === 'ok' ? this.forecast : {},
@@ -215,6 +240,12 @@ export class Overlay {
     this.forecast = {};
     this.notifier.useRecords(this.host.accountFile(account, 'notifications.json'));
     this.lastSeenAt = null;
+    this.renewal = new RenewalSchedule();
+    this.renewCall = null; // a run still going for the previous account ends unseen
+    this.renewing = false;
+    this.signInEnded = false;
+    this.noUsageRuns = 0;
+    this.stopSignInWatch();
     this.host.log.info(`[${before}] Claude Code account → ${this.logName}`);
     const cache = this.host.accountFile(account, 'last-usage.json');
     this.service.accountChanged(cache ? loadSnapshot(cache) : null);
@@ -230,7 +261,7 @@ export class Overlay {
     this.lastClaudeCodeLaunch = Date.now();
     const addedFolder = this.account === null ? null : this.location.dir;
     const plan = planClaudeCodeLaunch(gatherLaunchFacts(process.platform, process.env, this.host.home, addedFolder, tmpdir()));
-    launchClaudeCode(plan, (url) => shell.openExternal(url), this.host.log.write).catch((err: unknown) =>
+    runLaunchPlan(plan, `[${this.logName}] Open Claude Code`, (url) => shell.openExternal(url), this.host.log.write).catch((err: unknown) =>
       this.host.log.warn(`Open Claude Code failed: ${describeError(err)}`),
     );
   }
@@ -238,10 +269,122 @@ export class Overlay {
   /** Claude Code rewrites its credentials file when it renews its token: recover in seconds, not 60 s. */
   private watchCredentials(): () => void {
     if (this.host.mock) return () => {};
-    return watchFileInDirs([this.location.dir], '.credentials.json', () => {
-      this.service.credentialsChanged();
-      this.host.credentialsChanged(); // `/login` rewrites it too
+    return watchFileInDirs([this.location.dir], '.credentials.json', () => this.credentialsChanged());
+  }
+
+  /** Claude Code renewed, signed in or signed out this account. */
+  private credentialsChanged(): void {
+    this.signInEnded = false; // a new sign-in; if it is gone after all, the next renewal says so again
+    this.service.credentialsChanged();
+    this.host.credentialsChanged(); // `/login` rewrites it too
+  }
+
+  // --- Sign-in through Claude Code (Phase 8) ---------------------------------------------------------
+
+  private claudeCodeView(): ClaudeCodeView {
+    return {
+      installed: this.host.claudeCodeInstalled(),
+      renewing: this.renewing,
+      signInEnded: this.signInEnded,
+      signingIn: this.signInTimer !== null,
+    };
+  }
+
+  /**
+   * A sign-in terminal was opened for this account (`terminal`: the process that lasts as long as
+   * its window, when the OS tells). The folder may not exist yet, so a file watch can't see the
+   * result: its files are looked at every 2 s until the account shows numbers, the window is
+   * closed, or 15 minutes have passed.
+   */
+  watchSignIn(terminal: ChildProcess | null): void {
+    this.stopSignInWatch();
+    this.signInEnded = false;
+    const deadline = Date.now() + 15 * 60_000;
+    let seen = this.signInStamp();
+    const look = () => {
+      const stamp = this.signInStamp();
+      if (stamp === seen) return;
+      seen = stamp;
+      this.stopWatchingCredentials(); // the folder may exist only now
+      this.stopWatchingCredentials = this.watchCredentials();
+      this.credentialsChanged();
+    };
+    this.signInTimer = setInterval(() => {
+      look();
+      if (Date.now() > deadline) this.stopSignInWatch();
+    }, 2000);
+    terminal?.on('exit', () => {
+      look();
+      setTimeout(() => this.stopSignInWatch(), 3000); // Claude Code may still be writing
     });
+    this.send();
+    this.host.changed();
+  }
+
+  private stopSignInWatch(): void {
+    if (!this.signInTimer) return;
+    clearInterval(this.signInTimer);
+    this.signInTimer = null;
+    if (!this.disposed) {
+      this.send();
+      this.host.changed();
+    }
+  }
+
+  /** Changes whenever Claude Code writes the account's sign-in or account file (the Keychain has no file: `.claude.json` changes too). */
+  private signInStamp(): string {
+    const mtime = (file: string) => {
+      try {
+        return String(statSync(file).mtimeMs);
+      } catch {
+        return '-';
+      }
+    };
+    return `${mtime(join(this.location.dir, '.credentials.json'))}|${mtime(this.location.accountFile)}`;
+  }
+
+  /**
+   * Claude Code's sign-in for this account has expired (also behind Claude Desktop's numbers in
+   * Auto): let Claude Code renew it in the background, when the schedule allows.
+   */
+  maybeRenew(): void {
+    const { service } = this;
+    const claudeCode = service.status.kind === 'token-expired' ? service.status : service.unavailable['claude-code'];
+    const renewable = claudeCode?.kind === 'token-expired' && (claudeCode.reason === 'expired' || claudeCode.reason === 'rejected');
+    if (!renewable || this.renewCall || this.signInEnded || this.disposed || !this.renewal.due(Date.now())) return;
+    if (!this.host.settings.get().autoRenew) return;
+    const schedule = this.renewal; // replaced when the window switches to another account
+    const current = () => schedule === this.renewal && !this.disposed;
+    const call: Promise<void> = this.host
+      .renewSignIn(this, () => {
+        if (!current()) return;
+        this.renewing = true;
+        this.send();
+        this.host.changed();
+      })
+      .catch((err: unknown) => {
+        this.host.log.warn(`[${this.logName}] Renewal failed: ${describeError(err)}`);
+        return null;
+      })
+      .then((result) => {
+        if (this.renewCall === call) this.renewCall = null;
+        if (current()) this.renewed(result); // else: about another account, or the window is gone
+      });
+    this.renewCall = call;
+  }
+
+  private renewed(result: RenewalResult | null): void {
+    const wasRenewing = this.renewing;
+    this.renewing = false;
+    if (!result && !wasRenewing) return; // skipped: nothing changed on the card
+    if (result) this.renewal.attempted(Date.now());
+    // Twice (an hour apart) no plan usage although online: the sign-in is gone, not the network.
+    this.noUsageRuns = result?.kind === 'no-usage' ? this.noUsageRuns + 1 : result ? 0 : this.noUsageRuns;
+    if (result?.kind === 'signed-out' || this.noUsageRuns >= 2) this.signInEnded = true;
+    // Claude Code rewrote the sign-in (the file watch sees it too; the macOS Keychain has no file).
+    if (result?.kind === 'renewed') this.service.signInRenewed();
+    this.send();
+    this.host.changed();
   }
 
   // Every fresh snapshot: history, forecast, notifications, cache. Stale data (status not ok) is
@@ -259,6 +402,14 @@ export class Overlay {
       const cache = this.host.accountFile(this.account, 'last-usage.json');
       if (cache) saveSnapshot(cache, snapshot);
     }
+    if (this.service.status.kind === 'ok' && snapshot?.source === 'claude-code') {
+      // Claude Code's sign-in works (again): a renewal, if any, did its job.
+      this.renewal.succeeded();
+      this.signInEnded = false;
+      this.noUsageRuns = 0;
+      this.stopSignInWatch();
+    }
+    this.maybeRenew();
     this.send();
     this.host.changed();
   }
@@ -486,6 +637,8 @@ export class Overlay {
   /** Stops polling and watching (quit, close). */
   stop(): void {
     this.stopWatchingCredentials();
+    if (this.signInTimer) clearInterval(this.signInTimer);
+    this.signInTimer = null;
     this.hover.setActive(false);
     this.service.stop();
   }

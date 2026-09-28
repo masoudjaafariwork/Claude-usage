@@ -52,6 +52,19 @@ export interface Settings {
   /** Global shortcuts as Electron accelerators (hand-editable in settings.json). */
   toggleShortcut: string;
   lockShortcut: string;
+  /** Let Claude Code renew an expired sign-in in the background (Phase 8, claude-code-renewal.ts). */
+  autoRenew: boolean;
+  /**
+   * Accounts whose background renewal stopped because Claude Code answered unexpectedly, with that
+   * Claude Code's version: tried again only with another version or after the switch is turned on again.
+   */
+  renewStopped: RenewStop[];
+}
+
+export interface RenewStop {
+  /** An added folder, or null for the default account. */
+  account: string | null;
+  claudeVersion: string;
 }
 
 export const DEFAULT_WINDOW: Readonly<WindowSettings> = { account: null, position: null, compact: false };
@@ -74,6 +87,8 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   shortcutsEnabled: true,
   toggleShortcut: DEFAULT_SHORTCUTS.toggle,
   lockShortcut: DEFAULT_SHORTCUTS.lock,
+  autoRenew: true,
+  renewStopped: [],
 };
 
 export const SOURCE_MODES: readonly SourceMode[] = ['auto', 'claude-code', 'claude-desktop'];
@@ -124,6 +139,19 @@ function sanitizeWindows(r: Record<string, unknown>, dirs: readonly string[]): W
   return windows.length > 0 ? windows : [{ ...DEFAULT_WINDOW }];
 }
 
+/** Entries of accounts that still exist (the default one or an added folder), one per account. */
+function sanitizeRenewStopped(v: unknown, dirs: readonly string[]): RenewStop[] {
+  if (!Array.isArray(v)) return [];
+  const stops: RenewStop[] = [];
+  for (const item of v) {
+    const s = (typeof item === 'object' && item !== null ? item : {}) as Record<string, unknown>;
+    const account = s.account === null ? null : typeof s.account === 'string' && dirs.includes(s.account) ? s.account : undefined;
+    if (account === undefined || typeof s.claudeVersion !== 'string' || s.claudeVersion.length > 40) continue;
+    if (!stops.some((known) => known.account === account)) stops.push({ account, claudeVersion: s.claudeVersion });
+  }
+  return stops;
+}
+
 export function sanitizeSettings(raw: unknown): Settings {
   const r = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
   const claudeCodeDirs = sanitizeStringList(r.claudeCodeDirs, 1024, MAX_FOLDERS);
@@ -149,6 +177,8 @@ export function sanitizeSettings(raw: unknown): Settings {
     shortcutsEnabled: typeof r.shortcutsEnabled === 'boolean' ? r.shortcutsEnabled : DEFAULT_SETTINGS.shortcutsEnabled,
     toggleShortcut: isValidShortcut(r.toggleShortcut) ? r.toggleShortcut : DEFAULT_SETTINGS.toggleShortcut,
     lockShortcut: isValidShortcut(r.lockShortcut) ? r.lockShortcut : DEFAULT_SETTINGS.lockShortcut,
+    autoRenew: typeof r.autoRenew === 'boolean' ? r.autoRenew : DEFAULT_SETTINGS.autoRenew,
+    renewStopped: sanitizeRenewStopped(r.renewStopped, claudeCodeDirs),
   };
 }
 

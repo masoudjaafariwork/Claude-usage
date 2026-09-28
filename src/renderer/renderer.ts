@@ -2,7 +2,17 @@
 // The DOM is rebuilt on every state change (it is tiny); bar and ring animations continue from the
 // previously rendered values, so updates glide instead of jumping.
 import type { AppState, BreakdownRow, LimitMeter, OverlayApi, SourceId, SpendInfo, StatusKind } from '../shared/types';
-import { compactMeters, formatAgo, formatApprox, formatClock, formatDuration, initials, shortenEmail } from '../shared/format';
+import {
+  claudeCodeAction,
+  compactMeters,
+  formatAgo,
+  formatApprox,
+  formatClock,
+  formatDuration,
+  initials,
+  shortenEmail,
+  type ClaudeCodeAction,
+} from '../shared/format';
 
 declare global {
   interface Window {
@@ -354,8 +364,17 @@ interface BannerSpec {
   action?: { label: string; run: () => void };
 }
 
-/** Claude Code renews its own sign-in when it starts; the overlay never touches the token (D3). */
-const OPEN_CLAUDE_CODE = { label: 'Open Claude Code', run: () => api.openClaudeCode() };
+/**
+ * Everything runs the user's own Claude Code: it renews its own sign-in when it starts (D34), and
+ * signs in through the browser (Phase 8). The overlay never touches the token (D3, D28).
+ */
+const ACTIONS: Record<ClaudeCodeAction, { label: string; run: () => void }> = {
+  open: { label: 'Open Claude Code', run: () => api.openClaudeCode() },
+  'sign-in': { label: 'Sign in', run: () => api.signIn() },
+  install: { label: 'Install Claude Code', run: () => api.installClaudeCode() },
+};
+const OPEN_CLAUDE_CODE = ACTIONS.open;
+const SIGNING_IN = 'Finish signing in through your browser — the overlay picks it up by itself.';
 
 function retryText(st: AppState, now: Date): string {
   const next = st.status.nextAttemptAt ? Date.parse(st.status.nextAttemptAt) : NaN;
@@ -363,46 +382,52 @@ function retryText(st: AppState, now: Date): string {
 }
 
 function bannerSpec(st: AppState, now: Date): BannerSpec | null {
-  const code = (text: string) => h('code', null, text);
-  const auto = st.sourceMode === 'auto';
-  const signIn: Child[] = ['the Claude Code panel in VS Code, or run ', code('claude'), ' and use ', code('/login')];
+  // Claude Desktop only helps the account it is signed in to; an added folder's, as a rule, not (D51).
+  const desktopHint = st.sourceMode === 'auto' && !st.addedAccount;
+  const { claudeCode } = st;
+  const next = claudeCodeAction(st.status, claudeCode);
+  const action = next ? ACTIONS[next] : undefined;
+  const signIn = (text: string): BannerSpec => ({ tone: 'warn', icon: 'key', title: text, body: [], action });
+  // The sign-in itself is over (renewal can't help, or Claude Code signed the account out).
+  const signInAgain = (): BannerSpec => ({
+    ...signIn('Sign in again'),
+    body: [claudeCode.signingIn ? SIGNING_IN : 'Claude Code’s sign-in for this account has ended and can’t be renewed. Sign in again through your browser.'],
+  });
   const specs: Partial<Record<StatusKind, () => BannerSpec>> = {
-    'token-expired': () => ({
-      tone: 'warn',
-      icon: 'key',
-      title: 'Claude Code sign-in expired',
-      body: [
-        // Claude Desktop only helps the account it is signed in to; an added folder's, as a rule, not.
-        auto && !st.addedAccount
-          ? 'Open Claude Code to renew it, or keep the Claude desktop app open. The overlay recovers on its own.'
-          : 'Open Claude Code to renew it — the overlay recovers on its own.',
-      ],
-      action: OPEN_CLAUDE_CODE,
-    }),
-    'no-credentials': () =>
-      st.addedAccount
-        ? {
-            tone: 'warn',
-            icon: 'key',
-            title: 'Not signed in to Claude Code',
-            body: ['This account’s folder has no sign-in yet. Open Claude Code (it starts with this folder) and use ', code('/login'), '.'],
-            action: OPEN_CLAUDE_CODE,
-          }
-        : auto
-        ? {
-            tone: 'warn',
-            icon: 'key',
-            title: 'Not signed in',
-            body: ['Sign in to Claude Code (', ...signIn, '), or open the Claude desktop app. The overlay picks it up automatically.'],
-            action: OPEN_CLAUDE_CODE,
-          }
-        : {
-            tone: 'warn',
-            icon: 'key',
-            title: 'Not signed in to Claude Code',
-            body: ['Sign in from ', ...signIn, '. The overlay picks it up automatically.'],
-            action: OPEN_CLAUDE_CODE,
-          },
+    'token-expired': () => {
+      if (claudeCode.renewing) {
+        return { tone: 'warn', icon: 'key', title: 'Renewing sign-in…', body: ['Claude Code is renewing its sign-in in the background — no need to open it.'] };
+      }
+      if (next !== 'open') return signInAgain();
+      return {
+        tone: 'warn',
+        icon: 'key',
+        title: 'Claude Code sign-in expired',
+        body: [
+          desktopHint
+            ? 'Open Claude Code to renew it, or keep the Claude desktop app open. The overlay recovers on its own.'
+            : 'Open Claude Code to renew it — the overlay recovers on its own.',
+        ],
+        action: OPEN_CLAUDE_CODE,
+      };
+    },
+    'no-credentials': () => {
+      const desktop = desktopHint ? ', or open the Claude desktop app' : '';
+      if (st.status.reason === 'free-plan') {
+        return { ...signIn('No Claude Code on this plan'), body: [`Claude Code needs a Pro, Max, Team or Enterprise plan. Sign in with such an account${desktop}.`] };
+      }
+      if (st.status.reason === 'sign-in-ended' && claudeCode.installed) return signInAgain();
+      if (!claudeCode.installed) {
+        return {
+          ...signIn('Claude Code isn’t installed'),
+          body: [`Claude Usage reads your limits through Claude Code. Install it, then sign in through your browser${desktop}.`],
+        };
+      }
+      const body = st.addedAccount
+        ? 'This account’s folder has no sign-in yet. Sign in with Claude Code through your browser.'
+        : `Sign in with Claude Code through your browser${desktop}. The overlay picks it up by itself.`;
+      return { ...signIn(st.addedAccount ? 'Not signed in to Claude Code' : 'Not signed in'), body: [claudeCode.signingIn ? SIGNING_IN : body] };
+    },
     'desktop-unavailable': () => ({
       tone: 'warn',
       icon: 'clock',
@@ -491,10 +516,11 @@ function expandedView(st: AppState, now: Date): HTMLElement {
 }
 
 function compactStatusText(st: AppState): string {
+  const next = claudeCodeAction(st.status, st.claudeCode);
   const texts: Partial<Record<StatusKind, string>> = {
     loading: 'Loading…',
-    'no-credentials': 'Not signed in',
-    'token-expired': 'Sign-in expired',
+    'no-credentials': !st.claudeCode.installed ? 'No Claude Code' : st.status.reason === 'sign-in-ended' ? 'Sign in again' : 'Not signed in',
+    'token-expired': st.claudeCode.renewing ? 'Renewing sign-in…' : next === 'open' ? 'Sign-in expired' : 'Sign in again',
     'desktop-unavailable': 'No Desktop data',
     'rate-limited': 'Rate limited',
     'network-error': 'Offline',

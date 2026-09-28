@@ -25,6 +25,9 @@ export const MOCK_SCENARIOS = [
   'other-account',
   'update-ready',
   'several-accounts',
+  'first-run',
+  'renewing',
+  'sign-in-again',
 ] as const;
 export type MockScenario = (typeof MOCK_SCENARIOS)[number];
 
@@ -116,6 +119,8 @@ export interface MockSetup {
   updateReady: boolean;
   /** More accounts, each in a window of its own after the main one (Phase 7). */
   extraWindows: Array<{ folder: { dir: string; account: ClaudeCodeAccount }; sources: Record<SourceId, UsageSource> }>;
+  /** The user's Claude Code (Phase 8): found or not, and a background renewal that never ends (`renewing`). */
+  claudeCode: { installed: boolean; renewing: boolean };
 }
 
 /**
@@ -145,11 +150,14 @@ export function createMockSource(scenario: MockScenario): MockSetup {
   const credentials: ClaudeCredentials = {
     accessToken: 'mock-token',
     expiresAt: now + 8 * HOUR,
+    refreshTokenExpiresAt: null,
     subscriptionType: 'max',
     rateLimitTier: 'default_claude_max_20x',
     source: 'file',
   };
   const expired = { ...credentials, expiresAt: now - 2 * HOUR };
+  /** Expired, and the sign-in itself is over (the refresh token's expiry has passed). */
+  const ended = { ...expired, refreshTokenExpiresAt: now - HOUR };
   const staleSnapshot = (ageMs: number): UsageSnapshot => ({
     ...parseUsage(mockRawUsage(now - ageMs, LEVELS.normal), 'Max 20×', new Date(now - ageMs)),
     account: accountInfo(MOCK_ACCOUNT),
@@ -180,6 +188,7 @@ export function createMockSource(scenario: MockScenario): MockSetup {
       folder?: MockSetup['folder'];
       updateReady?: boolean;
       extraWindows?: MockSetup['extraWindows'];
+      claudeCode?: Partial<MockSetup['claudeCode']>;
     } = {},
   ): MockSetup => ({
     sources: {
@@ -193,6 +202,7 @@ export function createMockSource(scenario: MockScenario): MockSetup {
     folder: options.folder ?? null,
     updateReady: options.updateReady ?? false,
     extraWindows: options.extraWindows ?? [],
+    claudeCode: { installed: true, renewing: false, ...options.claudeCode },
   });
   const withLevels = (levels: Levels, account = MOCK_ACCOUNT) =>
     claudeCode(() => delay(credentials, 0), () => delay(mockRawUsage(Date.now(), levels)), account);
@@ -261,5 +271,14 @@ export function createMockSource(scenario: MockScenario): MockSetup {
           ],
         },
       );
+    case 'first-run':
+      // Neither Claude Code nor Claude Desktop on this computer: the card offers to install Claude Code.
+      return setup({}, { claudeCode: { installed: false } });
+    case 'renewing':
+      // Expired hours ago; Claude Code renews it in the background (here: without end).
+      return setup({ 'claude-code': claudeCode(() => delay(expired, 0)) }, { initialSnapshot: staleSnapshot(5 * HOUR + 40 * MIN), claudeCode: { renewing: true } });
+    case 'sign-in-again':
+      // The sign-in itself is over: renewing can't help, only signing in again.
+      return setup({ 'claude-code': claudeCode(() => delay(ended, 0)) }, { initialSnapshot: staleSnapshot(3 * DAY + 2 * HOUR) });
   }
 }

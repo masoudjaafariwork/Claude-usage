@@ -79,12 +79,38 @@ export type StatusKind =
   | 'network-error'
   | 'error';
 
+/**
+ * Why Claude Code's sign-in can't be used (Phase 8):
+ * - 'expired': the access token's time is up (Claude Code renews it itself when it runs);
+ * - 'rejected': the API refused the token (401 / 403);
+ * - 'sign-in-ended': the sign-in itself is over (its refresh token expired) — only signing in again helps;
+ * - 'free-plan': the account has no plan that includes Claude Code.
+ */
+export type StatusReason = 'expired' | 'rejected' | 'sign-in-ended' | 'free-plan';
+
 export interface Status {
   kind: StatusKind;
   /** Short human-readable detail for non-ok states. */
   message?: string;
+  /** For 'token-expired' and 'no-credentials': why (Phase 8). */
+  reason?: StatusReason;
   /** ISO timestamp of the next automatic attempt, when one is scheduled. */
   nextAttemptAt?: string;
+}
+
+/**
+ * The user's own Claude Code as it concerns this window's account (Phase 8): the overlay signs in
+ * and renews only through it, never on its own (D3, D28).
+ */
+export interface ClaudeCodeView {
+  /** A Claude Code the overlay can run was found; false → the card offers to install it. */
+  installed: boolean;
+  /** Claude Code runs its local `/usage` command in the background, which renews its own sign-in. */
+  renewing: boolean;
+  /** The sign-in itself is gone (renewing can't help): the card asks to sign in again. */
+  signInEnded: boolean;
+  /** A sign-in terminal was opened for this account and the overlay is waiting for its result. */
+  signingIn: boolean;
 }
 
 /** Settings the renderer needs to know about. */
@@ -115,6 +141,8 @@ export interface AppState {
   selectedAccount: AccountInfo | null;
   /** True when this window shows an added config folder instead of the default account (Phase 6). */
   addedAccount: boolean;
+  /** Sign-in through Claude Code: install / sign in / renewing (Phase 8). */
+  claudeCode: ClaudeCodeView;
   /**
    * More than one overlay window is open (one per account, Phase 7): this one can be closed on its
    * own, so it shows a close button. The last window can only be hidden.
@@ -147,6 +175,10 @@ export interface OverlayApi {
   closeWindow(): void;
   /** Open the user's Claude Code (VS Code or a terminal) so it renews its own sign-in. */
   openClaudeCode(): void;
+  /** Sign this account in through Claude Code (`claude auth login` in a terminal, the browser does the rest). */
+  signIn(): void;
+  /** Install Claude Code with Anthropic's installer (after a confirmation), then sign in. */
+  installClaudeCode(): void;
   /** Whether the page is hidden (Page Visibility API): hidden while the window is shown means Chromium stopped drawing it (D60). */
   pageVisibility(hidden: boolean): void;
 }

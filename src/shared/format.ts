@@ -1,6 +1,6 @@
 // Pure time/text formatting helpers (unit-tested in format.test.ts). Used by the renderer and by the
 // main process (notification text), so no DOM and no Node APIs here.
-import type { LimitMeter } from './types';
+import type { ClaudeCodeView, LimitMeter, Status } from './types';
 
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
@@ -73,6 +73,21 @@ export function shortenEmail(email: string, max: number): string {
   const keep = max - domain.length - 1;
   if (keep >= 3) return `${chars.slice(0, keep).join('')}…${domain.join('')}`;
   return `${chars.slice(0, max - 1).join('')}…`;
+}
+
+/** What the card and the menus offer for an account's sign-in (Phase 8). */
+export type ClaudeCodeAction = 'install' | 'sign-in' | 'open';
+
+/**
+ * Not signed in: sign in through Claude Code, or install it first. Expired: nothing while Claude
+ * Code renews it in the background; *Open Claude Code* while it may still renew it (D34); sign in
+ * again once the sign-in itself is over. Null: nothing to offer.
+ */
+export function claudeCodeAction(status: Status, claudeCode: ClaudeCodeView): ClaudeCodeAction | null {
+  const signIn = claudeCode.installed ? 'sign-in' : 'install';
+  if (status.kind === 'no-credentials') return signIn;
+  if (status.kind !== 'token-expired' || claudeCode.renewing) return null;
+  return status.reason === 'sign-in-ended' || claudeCode.signInEnded ? signIn : 'open';
 }
 
 /** Avatar letters, as on claude.ai: "Ada Lovelace" → "AL", "ada@example.com" → "A", nothing → "". */

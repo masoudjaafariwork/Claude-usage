@@ -91,6 +91,20 @@ export function chooseFolder(
   return { claudeCodeDirs: [...dirs, dir].slice(-MAX_FOLDERS), account: dir };
 }
 
+/**
+ * Where *Add account (sign in)…* keeps a new account (Phase 8): `~/.claude-account-2`, `-3`, … —
+ * next to Claude Code's own `~/.claude`, the first number that is neither on disk nor in the list.
+ * The app picks it so adding an account is one click (owner's choice, 2026-09-28); the folder is
+ * that account's CLAUDE_CONFIG_DIR from then on.
+ */
+export function nextAccountFolder(home: string, dirs: readonly string[], platform: NodeJS.Platform, exists: (dir: string) => boolean): string {
+  const path = pathFor(platform);
+  for (let n = 2; ; n++) {
+    const dir = path.join(home, `.claude-account-${n}`);
+    if (!exists(dir) && !dirs.some((d) => sameFolder(d, dir, platform))) return dir;
+  }
+}
+
 /** `~` for the home folder, and a middle cut for paths longer than `max` characters. */
 export function folderLabel(dir: string, home: string, platform: NodeJS.Platform, max = MAX_FOLDER_LABEL): string {
   const path = pathFor(platform);

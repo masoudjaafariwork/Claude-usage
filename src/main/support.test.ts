@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
 import { inflateSync } from 'node:zlib';
-import { accountInfo, parseClaudeCodeAccount, parseCredentials } from './credentials';
+import { accountInfo, isSignedOutCredentials, parseClaudeCodeAccount, parseCredentials } from './credentials';
 import { DEFAULT_SETTINGS, sanitizeSettings, stepScale } from './settings';
 import { loadSnapshot } from './snapshot-cache';
 import { BRAND_RGB, encodePng, renderDot, renderRing } from './tray-icon';
@@ -15,11 +15,12 @@ import { parseRetryAfter } from './usage-errors';
 test('parseCredentials extracts the Claude Code OAuth block', () => {
   const text = JSON.stringify({
     mcpOAuth: { other: 'ignored' },
-    claudeAiOauth: { accessToken: 'abc', refreshToken: 'r', expiresAt: 123, subscriptionType: 'max', rateLimitTier: 't' },
+    claudeAiOauth: { accessToken: 'abc', refreshToken: 'r', expiresAt: 123, refreshTokenExpiresAt: 1_790_000_000_000, subscriptionType: 'max', rateLimitTier: 't' },
   });
   assert.deepEqual(parseCredentials(text, 'file'), {
     accessToken: 'abc',
     expiresAt: 123,
+    refreshTokenExpiresAt: 1_790_000_000_000,
     subscriptionType: 'max',
     rateLimitTier: 't',
     source: 'file',
@@ -31,6 +32,25 @@ test('parseCredentials rejects missing or malformed data', () => {
   assert.equal(parseCredentials('{}', 'file'), null);
   assert.equal(parseCredentials(JSON.stringify({ claudeAiOauth: { accessToken: '' } }), 'file'), null);
   assert.equal(parseCredentials(JSON.stringify({ claudeAiOauth: { accessToken: 'x' } }), 'keychain')?.expiresAt, null);
+  assert.equal(parseCredentials(JSON.stringify({ claudeAiOauth: { accessToken: 'x' } }), 'keychain')?.refreshTokenExpiresAt, null);
+});
+
+test('isSignedOutCredentials: Claude Code emptied its tokens (it signed the account out) — not the same as no sign-in', () => {
+  const block = (accessToken: unknown) => JSON.stringify({ claudeAiOauth: { accessToken, refreshToken: '', expiresAt: 1, scopes: [] } });
+  assert.equal(isSignedOutCredentials(block('')), true);
+  assert.equal(parseCredentials(block(''), 'file'), null, 'and it is no usable sign-in');
+  assert.equal(isSignedOutCredentials(block('abc')), false);
+  assert.equal(isSignedOutCredentials('{}'), false);
+  assert.equal(isSignedOutCredentials('not json'), false);
+  assert.equal(isSignedOutCredentials('null'), false);
+});
+
+test('parseCredentials reads the sign-in end in milliseconds, also when it is given in seconds', () => {
+  const at = (value: unknown) => parseCredentials(JSON.stringify({ claudeAiOauth: { accessToken: 'x', refreshTokenExpiresAt: value } }), 'file')?.refreshTokenExpiresAt;
+  assert.equal(at(1_790_000_000), 1_790_000_000_000);
+  assert.equal(at(1_790_000_000_000), 1_790_000_000_000);
+  assert.equal(at('soon'), null);
+  assert.equal(at(-5), null);
 });
 
 test('parseClaudeCodeAccount reads oauthAccount from .claude.json', () => {
@@ -107,6 +127,28 @@ test('sanitizeSettings: settings from before Phase 7 (one window) become the fir
   assert.deepEqual(s.windows, [{ account: 'E:\\work', position: { x: 1500, y: 20 }, compact: true }]);
   assert.ok(!('position' in s) && !('compact' in s) && !('claudeCodeDir' in s), 'the old keys are gone');
   assert.equal(sanitizeSettings({ ...old, claudeCodeDirs: [] }).windows[0]?.account, null, 'a folder not in the list');
+});
+
+test('sanitizeSettings: background renewal on by default; stops only for accounts that exist (Phase 8)', () => {
+  assert.equal(DEFAULT_SETTINGS.autoRenew, true);
+  assert.deepEqual(DEFAULT_SETTINGS.renewStopped, []);
+  assert.equal(sanitizeSettings({ autoRenew: false }).autoRenew, false);
+  assert.equal(sanitizeSettings({ autoRenew: 'no' }).autoRenew, true);
+  const s = sanitizeSettings({
+    claudeCodeDirs: ['E:\\work'],
+    renewStopped: [
+      { account: null, claudeVersion: '2.1.283' },
+      { account: 'E:\\work', claudeVersion: '2.1.290' },
+      { account: 'F:\\removed', claudeVersion: '2.1.283' },
+      { account: null, claudeVersion: '2.1.300' },
+      { account: 'E:\\work' },
+      'junk',
+    ],
+  });
+  assert.deepEqual(s.renewStopped, [
+    { account: null, claudeVersion: '2.1.283' },
+    { account: 'E:\\work', claudeVersion: '2.1.290' },
+  ]);
 });
 
 test('sanitizeSettings keeps known source modes only', () => {

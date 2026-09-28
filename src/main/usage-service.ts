@@ -51,13 +51,20 @@ export function autoStatus(unavailable: readonly Status[]): Status {
     const hit = unavailable.find((status) => status.kind === kind);
     if (hit) return hit;
   }
-  return { kind: 'no-credentials', message: 'Sign in to Claude Code, or open the Claude desktop app.' };
+  // Signed out by Claude Code, or on a plan without Claude Code: say so rather than "not signed in".
+  const why = unavailable.find((status) => status.kind === 'no-credentials' && status.reason !== undefined);
+  return why ?? { kind: 'no-credentials', message: 'Sign in to Claude Code, or open the Claude desktop app.' };
 }
 
 export class UsageService extends EventEmitter<{ change: [] }> {
   snapshot: UsageSnapshot | null;
   status: Status = { kind: 'loading' };
   refreshing = false;
+  /**
+   * Why sources were unavailable in the last round — also when Auto went on to the next one, e.g.
+   * Claude Code's expired sign-in behind Claude Desktop's numbers (Phase 8 renews it).
+   */
+  unavailable: Partial<Record<SourceId, Status>> = {};
 
   private readonly deps: UsageServiceDeps;
   private timer: NodeJS.Timeout | null = null;
@@ -110,6 +117,7 @@ export class UsageService extends EventEmitter<{ change: [] }> {
     this.generation++;
     this.snapshot = snapshot;
     this.status = { kind: 'loading' };
+    this.unavailable = {};
     this.failures = 0;
     this.lastLogged = '';
     this.emit('change');
@@ -139,6 +147,15 @@ export class UsageService extends EventEmitter<{ change: [] }> {
     if (mode !== 'claude-desktop' && (onDesktop || UNAVAILABLE_KINDS.has(this.status.kind))) this.sourcesChanged();
   }
 
+  /**
+   * Claude Code renewed its sign-in in the background (Phase 8): a token the API refused before may
+   * work now (Claude Code used it, or wrote a new one), so look again at once.
+   */
+  signInRenewed(): void {
+    for (const source of Object.values(this.deps.sources)) source.signInRenewed?.();
+    this.credentialsChanged();
+  }
+
   /** Re-plan the next automatic poll, e.g. after the interval setting changed. */
   reschedule(): void {
     if (this.running && !this.refreshing && this.status.kind === 'ok') this.schedule(this.nextOkDelaySec());
@@ -165,6 +182,7 @@ export class UsageService extends EventEmitter<{ change: [] }> {
     const mode = this.deps.mode();
     const order = mode === 'auto' ? AUTO_ORDER : [mode];
     const unavailable: Status[] = [];
+    const bySource: Partial<Record<SourceId, Status>> = {};
     for (const id of order) {
       const shown = this.snapshot;
       const shownFetchedAt = mode === 'auto' && shown && shown.source !== id ? Date.parse(shown.fetchedAt) : null;
@@ -174,6 +192,7 @@ export class UsageService extends EventEmitter<{ change: [] }> {
         if (generation !== this.generation) return MIN_GAP_SEC;
         this.snapshot = snapshot;
         this.status = { kind: 'ok' };
+        this.unavailable = bySource;
         this.failures = 0;
         this.logState(`ok via ${SOURCE_LABELS[id]}`);
         return this.nextOkDelaySec();
@@ -181,14 +200,17 @@ export class UsageService extends EventEmitter<{ change: [] }> {
         if (generation !== this.generation) return MIN_GAP_SEC;
         if (err instanceof SourceUnavailableError) {
           unavailable.push(err.status);
+          bySource[id] = err.status;
           continue;
         }
+        this.unavailable = bySource;
         this.failures++;
         const delay = this.handleFetchError(err);
         this.logState(`${SOURCE_LABELS[id]}: ${this.status.kind} — ${this.status.message ?? ''}`, 'warn');
         return delay;
       }
     }
+    this.unavailable = bySource;
     this.status = mode === 'auto' ? autoStatus(unavailable) : (unavailable[0] ?? { kind: 'error' });
     this.logState(`no usable source (${mode}): ${unavailable.map((s) => s.kind).join(', ')}`);
     return RECHECK_CREDENTIALS_SEC;
