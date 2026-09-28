@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| **Status** | ✅ Done (2026-09-28) — real install, browser sign-in and renewal of a really expired token are the owner's manual tests |
+| **Status** | ✅ Done (2026-09-28), released as 1.4.0 — real install, browser sign-in and renewal of a really expired token are the owner's manual tests |
 | **Depends on** | Phase 6 (accounts), Phase 7 (a window per account), D34 / D53 (Open Claude Code) |
 | **Size** | One Claude Code session |
 

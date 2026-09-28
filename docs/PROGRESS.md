@@ -13,7 +13,7 @@ Living record of where the project stands. Update it at the end of every session
 | [5 — App auto-update](phases/phase-5-auto-update.md) | ✅ Done (2026-09-26) — real release test: 1.0.0 found and downloaded 1.1.0 (owner, *Check for updates*) |
 | [6 — Several Claude Code accounts (config folders) with a switcher](phases/phase-6-accounts.md) | ✅ Done (2026-09-26) — released as 1.1.0 |
 | [7 — A window per Claude Code account](phases/phase-7-account-windows.md) | ✅ Done (2026-09-28) — released as 1.3.0 |
-| [8 — Sign in through Claude Code, keep the sign-in fresh](phases/phase-8-sign-in.md) | ✅ Done (2026-09-28) — browser sign-in, install and renewal of a really expired token: owner's manual tests |
+| [8 — Sign in through Claude Code, keep the sign-in fresh](phases/phase-8-sign-in.md) | ✅ Done (2026-09-28) — released as 1.4.0; browser sign-in, install and renewal of a really expired token: owner's manual tests |
 
 Each phase has its own plan file in [`phases/`](phases/) (scope, notes, acceptance criteria,
 ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLOG.md).
@@ -188,6 +188,7 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D68 | **Why a sign-in can't be used (`Status.reason`) and what the card offers (`claudeCodeAction`):** `expired` / `rejected` → renewal, else *Open Claude Code* (D34); `sign-in-ended` — the credentials' `refreshTokenExpiresAt` has passed, or Claude Code **emptied its tokens** (it signed the account out), or two renewals in a row had no plan usage — → *Sign in again* with *Sign in*; `free-plan` — the API refused a token whose `subscriptionType` is `free` → "No Claude Code on this plan"; nothing found → *Install Claude Code*, not signed in → *Sign in*. After a renewal with usage output, a token the API refused earlier is tried again | Found with a fake expired sign-in (a scratch folder, made-up tokens): Claude Code 2.1.283 couldn't renew it, printed only its cost block and wrote `accessToken: ""`, `refreshToken: ""` into `.credentials.json`. "Not logged in" never appeared in `/usage` output. A free-plan message exists nowhere in Claude Code's strings, so the plan is the only hint (unverified). |
 | D69 | ***Add account (sign in)…*** (menu → *Claude Code account*): the app creates `~/.claude-account-2`, `-3`, … (the first number neither on disk nor added), a terminal signs Claude Code in with it, and once `.credentials.json` or an `oauthAccount` appears, the folder is added and opened in a window of its own (D62). Without a sign-in it is removed again — when the terminal window closes (Windows), after 15 min, or when the app quits — but only if it holds no sign-in. One at a time | Owner's choice (2026-09-28): "just *Add account*, the app decides where the files go — the simplest, most direct way for the user". Next to Claude Code's own `~/.claude`, short and without spaces for a `.bat`'s `CLAUDE_CONFIG_DIR`; outside `userData`, so an uninstall doesn't take an account with it. |
 | D70 | **Terminals for sign-in and install:** Windows — a plain-ASCII `.cmd` in `%TEMP%` that takes every value from environment variables with delayed expansion (`!CLAUDE_USAGE_CLAUDE!`, `!CLAUDE_USAGE_EMAIL!`, the folder in `CLAUDE_CONFIG_DIR`), started by `cmd /d /v:on /c start "<title>" /wait cmd /d /c call "!CLAUDE_USAGE_SCRIPT!"`; the launcher exits when the window closes. macOS — a `.command` script in Terminal; Linux — a `.sh` script in the first terminal found; both wait for Enter at the end. The e-mail is passed only when it is a plain address. Claude Code itself is found by `findClaudeBinary()` (PATH `claude.exe`, npm's shim resolved to its `bin/claude.exe`, `~/.local/bin`, WinGet `Links`, Homebrew, the VS Code extension's binary), on every use | Batch files are read in the console's code page and cmd interprets `&`, `%`, `^` in anything expanded before parsing — a user name, a folder or an e-mail must never become part of a command line. Checked with a folder named `a & b (test)` and a value with `&` and `Ä`. `start /wait` is the only way to learn on Windows that a sign-in window was closed (to remove an unused account folder at once); elsewhere the 15-minute limit covers it. A running app doesn't see PATH changes, so the installers' folders are searched directly. |
+| D71 | **Version 1.4.0** for Phase 8 (sign in through Claude Code, background renewal) | Semantic Versioning, as D49 / D55 / D65: new features, nothing breaks. Settings of 1.3.0 are read unchanged (the two new keys get their defaults). The owner asked for the release right after the phase, before the manual tests; a fix found there becomes 1.4.1. |
 | D49 | **Version 1.0.0** for the first release with the updater (0.2.0 → 1.0.0; no 0.3.x). The real-release updater test becomes 1.0.0 → 1.0.1. README says openly that only Windows 11 is tested; macOS and Linux builds are CI-built but never run | Owner's choice (2026-09-26): all planned phases are done. Recommended first was 0.3.0 → 0.3.1 for the test and 1.0.0 once it passed; the owner preferred 1.0.0 now. Technically the same: a broken updater in the first updater version needs one manual install either way. |
 
 ## Usage API notes (observed 2026-09-24)
@@ -967,3 +968,13 @@ Kept for the record in case Anthropic ever offers an official way.
 - README (*Signing in* section, features, requirements, troubleshooting), CLAUDE.md (modules, mock
   scenarios, hard rules 1 and 7, two gotchas), BACKLOG. Electron book v3.0: chapter on child
   processes without a shell.
+
+### 2026-09-28 — Session 27: release 1.4.0
+
+- The owner asked for a new release right after Phase 8 (before the manual tests). Since v1.3.0:
+  Phase 8 and the FSEvents test fix → 1.4.0 (D71). `npm run check` passed (173 tests); `npm version
+  1.4.0 --no-git-tag-version`; commit, `main` pushed, tag `v1.4.0` pushed → the release workflow
+  builds the draft; the owner publishes it by hand (README → *Releasing a new version*). Release
+  notes drafted for the owner.
+- Docs: phase 8 marked "released as 1.4.0" (PROGRESS, BACKLOG, phase file). Electron book v3.1:
+  changelog entry and roadmap.
