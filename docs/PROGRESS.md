@@ -836,6 +836,12 @@ Kept for the record in case Anthropic ever offers an official way.
   --no-git-tag-version`; commit, `main` pushed, tag `v1.3.0` pushed → the release workflow builds
   the draft; the owner publishes it by hand (README → *Releasing a new version*). Release notes
   drafted for the owner.
+- The macOS job failed in `npm run check` on the first attempt (Windows and Linux passed; the step
+  took 7 s against 2–3 s elsewhere — the 5 s wait of the `watchDesktopHistory` test, i.e. no
+  FSEvents call at all). The owner re-ran it and it passed. The likely cause: libuv starts the
+  FSEvents stream asynchronously and drops changes made before it runs, and the test wrote right
+  after starting the watch. The test now waits 500 ms before writing (after the tag, so not part
+  of 1.3.0; only the test changed). The app is unaffected: its watchers run for hours.
 - Docs: phase 7 marked "released as 1.3.0" (PROGRESS, BACKLOG, phase file); the known issue of
   D61 now names 1.3.0; the release-workflow line no longer says "not run yet".
 - Electron book v2.9: changelog entry and roadmap (phase 7 released as 1.3.0).

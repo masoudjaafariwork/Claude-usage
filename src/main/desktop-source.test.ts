@@ -190,9 +190,12 @@ test('watchDesktopHistory fires (debounced) when Desktop atomically replaces the
   let calls = 0;
   // macOS (FSEvents) reports changes late and sometimes in more than one batch, so the debounce is
   // generous and the test waits for the call instead of a fixed time (it failed on a macOS runner).
+  // FSEvents also starts its stream asynchronously and drops what happens before that, so the
+  // writes wait a moment after the watch starts (failed again for v1.3.0: no call within 5 s).
   const stop = watchDesktopHistory([join(root, 'missing'), root], () => calls++, 300);
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
   try {
+    await sleep(500);
     // Like Desktop's writeFileAtomic: write a temp file, then rename it over the history file.
     for (let i = 0; i < 3; i++) {
       writeFileSync(join(root, 'tmp.json'), REAL_TEXT);
