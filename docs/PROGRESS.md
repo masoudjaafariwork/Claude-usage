@@ -13,6 +13,7 @@ Living record of where the project stands. Update it at the end of every session
 | [5 — App auto-update](phases/phase-5-auto-update.md) | ✅ Done (2026-09-26) — real release test: 1.0.0 found and downloaded 1.1.0 (owner, *Check for updates*) |
 | [6 — Several Claude Code accounts (config folders) with a switcher](phases/phase-6-accounts.md) | ✅ Done (2026-09-26) — released as 1.1.0 |
 | [7 — A window per Claude Code account](phases/phase-7-account-windows.md) | ✅ Done (2026-09-28) — released as 1.3.0 |
+| [8 — Sign in through Claude Code, keep the sign-in fresh](phases/phase-8-sign-in.md) | ⏭️ Next (planned 2026-09-28) |
 
 Each phase has its own plan file in [`phases/`](phases/) (scope, notes, acceptance criteria,
 ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLOG.md).
@@ -854,3 +855,23 @@ Kept for the record in case Anthropic ever offers an official way.
   matches `menu.ts` (restart, about, launch at login, test notification, *Open Claude Code*,
   *Restart to update*). Troubleshooting names 1.2.0 / 1.3.0 for the two Windows fixes and ends with
   *Anything else*. No UI change, so no image re-render.
+
+### 2026-09-28 — Session 25: how competitors sign in; Phase 8 planned (no code change)
+
+- The owner asked whether the app should sign in like some competitors ("open the browser, log in
+  to Claude, and the app is signed in") to make first use simpler. Researched competitors' source
+  code (10 apps), Anthropic's docs and Claude Code 2.1.283's own code; findings and sources in the
+  Background of `phases/phase-8-sign-in.md`. In short: the requested browser sign-in exists in
+  three competitors only by impersonating Claude Code's OAuth client and keeping their own tokens,
+  which the legal page forbids (text unchanged, D28 stands); the compliant way to get the same
+  experience is to let Claude Code sign in (`claude auth login`), as CodexBar does. The data after
+  it is identical to today's (same flow as `/login`, same files).
+- Found in Claude Code's code and tried once on the owner's default account:
+  `claude -p "/usage" --no-session-persistence` is a local command (no model request, 6 s) whose
+  usage fetch lets Claude Code renew its own expired token — a way to keep an unused account
+  signed in without breaking D3. This changes the reason recorded in D34 for rejecting `claude -p`.
+- Mistake during the research: the first try ran from Git Bash, which rewrote `/usage` into a
+  Windows path, so Claude Code sent it to the model as a real prompt (one small request on the
+  default account). The plan requires spawning Claude Code directly and checking its output.
+- Phase 8 planned (sign in, install help, *Add account (sign in)…*, background renewal); BACKLOG
+  row added. Nothing implemented.

@@ -15,6 +15,7 @@ technical notes, acceptance criteria, a manual test checklist, a ready-to-paste 
 | 5 | App auto-update | ✅ Done (2026-09-26) — real-release test (1.0.0 → 1.1.0) by the owner | [phase-5-auto-update.md](phases/phase-5-auto-update.md) |
 | 6 | Several Claude Code accounts (config folders) with a switcher | ✅ Done (2026-09-26) — version 1.1.0 | [phase-6-accounts.md](phases/phase-6-accounts.md) |
 | 7 | A window per Claude Code account (several shown at once, each closable) | ✅ Done (2026-09-28) — released as 1.3.0 | [phase-7-account-windows.md](phases/phase-7-account-windows.md) |
+| 8 | Sign in through Claude Code (`claude auth login`), install help, background renewal | ⏭️ Next | [phase-8-sign-in.md](phases/phase-8-sign-in.md) |
 
 **Running a phase:** open a new Claude Code session in this repo, open the phase file, copy the
 text in its **Prompt** block, paste it, send. Run phases in order, one per session.
