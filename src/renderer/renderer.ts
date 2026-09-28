@@ -53,6 +53,7 @@ const ICON_PATHS = {
   key: ['M10 2.5a3.5 3.5 0 1 1-2.9 5.4L2.5 12.5v1h2v-1.5H6V10.5h1.5l.4-.4', 'M10.5 5.5h.01'],
   lock: ['M4.5 7.25h7a1 1 0 0 1 1 1v4.25a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1V8.25a1 1 0 0 1 1-1z', 'M5.75 7.25V5.5a2.25 2.25 0 0 1 4.5 0v1.75'],
   user: ['M8 8.25a2.75 2.75 0 1 0 0-5.5 2.75 2.75 0 0 0 0 5.5z', 'M3 13.5c.6-2.3 2.6-3.5 5-3.5s4.4 1.2 5 3.5'],
+  close: ['M4.5 4.5l7 7', 'M11.5 4.5l-7 7'],
 } as const;
 
 type IconName = keyof typeof ICON_PATHS;
@@ -238,6 +239,11 @@ function compactAccountLine(st: AppState): HTMLElement | null {
   return line;
 }
 
+/** Closes this account's window; only while another window is open (Phase 7). */
+function closeButton(st: AppState): HTMLButtonElement | null {
+  return st.canClose ? button('close', 'Close this window', () => api.closeWindow()) : null;
+}
+
 /** Refresh button; spins while a fetch runs (and briefly after a click, even if the fetch is throttled). */
 function refreshButton(st: AppState): HTMLButtonElement {
   const refresh = button('refresh', 'Refresh now', (btn) => {
@@ -264,6 +270,7 @@ function header(st: AppState): HTMLElement {
           refreshButton(st),
           button('collapse', 'Compact view', () => api.setCompact(true)),
           updateDot(st, button('menu', 'Menu', () => api.showMenu()), 'Menu — an update is ready'),
+          closeButton(st),
         ),
   );
 }
@@ -526,6 +533,7 @@ function compactView(st: AppState): HTMLElement {
             'actions',
             refreshButton(st),
             updateDot(st, button('expand', 'Expand', () => api.setCompact(false)), 'Expand — an update is ready (menu)'),
+            closeButton(st),
           ),
     ),
   );

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { resizedBounds, type Rect } from './window-core';
+import { freeSpot, resizedBounds, type Rect } from './window-core';
 
 // A 1920 × 1032 work area (taskbar at the bottom) with the primary display's origin.
 const area: Rect = { x: 0, y: 0, width: 1920, height: 1032 };
@@ -68,4 +68,21 @@ test('resizedBounds never lets a window that already sticks out grow further out
     width: 312,
     height: 348,
   });
+});
+
+test('freeSpot: the top-right corner, else side by side to the left of the other windows', () => {
+  const size = { width: 312, height: 400 };
+  assert.deepEqual(freeSpot(area, size, []), { x: 1592, y: 16 });
+  const first = { x: 1592, y: 16, width: 312, height: 420 };
+  assert.deepEqual(freeSpot(area, size, [first]), { x: 1272, y: 16 }, 'left of it, 8 px apart');
+  const second = { x: 1272, y: 16, width: 250, height: 60 }; // a compact pill
+  assert.deepEqual(freeSpot(area, size, [first, second]), { x: 1272 - 8 - 312, y: 16 });
+  // A window moved elsewhere doesn't block; one lower down the display neither.
+  assert.deepEqual(freeSpot(area, size, [{ x: 200, y: 600, width: 312, height: 400 }]), { x: 1592, y: 16 });
+  // Another display (work area not at the origin).
+  const right: Rect = { x: 1920, y: 159, width: 1080, height: 1872 };
+  assert.deepEqual(freeSpot(right, size, [{ x: 2672, y: 175, width: 312, height: 300 }]), { x: 2352, y: 175 });
+  // The top row is full: back to the corner.
+  const row = [0, 1, 2, 3, 4, 5].map((i) => ({ x: 1592 - i * 320, y: 16, width: 312, height: 400 }));
+  assert.deepEqual(freeSpot(area, size, row), { x: 1592, y: 16 });
 });

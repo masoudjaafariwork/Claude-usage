@@ -24,6 +24,7 @@ export const MOCK_SCENARIOS = [
   'locked',
   'other-account',
   'update-ready',
+  'several-accounts',
 ] as const;
 export type MockScenario = (typeof MOCK_SCENARIOS)[number];
 
@@ -113,6 +114,8 @@ export interface MockSetup {
   folder: { dir: string; account: ClaudeCodeAccount } | null;
   /** Pretend a downloaded update waits for a restart (the coral dots, D56). */
   updateReady: boolean;
+  /** More accounts, each in a window of its own after the main one (Phase 7). */
+  extraWindows: Array<{ folder: { dir: string; account: ClaudeCodeAccount }; sources: Record<SourceId, UsageSource> }>;
 }
 
 /**
@@ -176,6 +179,7 @@ export function createMockSource(scenario: MockScenario): MockSetup {
       history?: HistoryPoint[];
       folder?: MockSetup['folder'];
       updateReady?: boolean;
+      extraWindows?: MockSetup['extraWindows'];
     } = {},
   ): MockSetup => ({
     sources: {
@@ -188,6 +192,7 @@ export function createMockSource(scenario: MockScenario): MockSetup {
     history: options.history ?? [],
     folder: options.folder ?? null,
     updateReady: options.updateReady ?? false,
+    extraWindows: options.extraWindows ?? [],
   });
   const withLevels = (levels: Levels, account = MOCK_ACCOUNT) =>
     claudeCode(() => delay(credentials, 0), () => delay(mockRawUsage(Date.now(), levels)), account);
@@ -240,5 +245,21 @@ export function createMockSource(scenario: MockScenario): MockSetup {
       );
     case 'update-ready':
       return setup({ 'claude-code': withLevels(LEVELS.normal) }, { updateReady: true });
+    case 'several-accounts':
+      // The default account and a second one in its own window, each with its own numbers.
+      return setup(
+        { 'claude-code': withLevels(LEVELS.normal) },
+        {
+          extraWindows: [
+            {
+              folder: MOCK_FOLDER,
+              sources: {
+                'claude-code': withLevels(LEVELS.warning, MOCK_FOLDER.account),
+                'claude-desktop': desktop(null, MOCK_FOLDER.account, 'strict'),
+              },
+            },
+          ],
+        },
+      );
   }
 }

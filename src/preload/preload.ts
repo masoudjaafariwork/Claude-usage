@@ -18,6 +18,7 @@ const api: OverlayApi = {
   setCompact: (compact) => ipcRenderer.send('view:set-compact', compact),
   resize: (width, height) => ipcRenderer.send('window:resize', width, height),
   showMenu: () => ipcRenderer.send('menu:show'),
+  closeWindow: () => ipcRenderer.send('window:close'),
   openClaudeCode: () => ipcRenderer.send('claude-code:open'),
   pageVisibility: (hidden) => ipcRenderer.send('page:visibility', hidden),
 };

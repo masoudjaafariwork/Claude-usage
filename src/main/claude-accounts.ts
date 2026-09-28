@@ -75,44 +75,50 @@ export function accountStateKey(dir: string, platform: NodeJS.Platform): string 
 }
 
 /**
- * The folder settings after choosing `dir` (null = the default account): the default account's own
- * folder selects the default entry, a known folder is selected as stored, a new one is added.
+ * The account `dir` names (null = the default account) and the folder list after choosing it: the
+ * default account's own folder is the default account, a known folder is used as stored, a new one
+ * is added.
  */
 export function chooseFolder(
   dirs: readonly string[],
   dir: string | null,
   defaultDir: string,
   platform: NodeJS.Platform,
-): { claudeCodeDirs: string[]; claudeCodeDir: string | null } {
-  if (dir === null || sameFolder(dir, defaultDir, platform)) return { claudeCodeDirs: [...dirs], claudeCodeDir: null };
+): { claudeCodeDirs: string[]; account: string | null } {
+  if (dir === null || sameFolder(dir, defaultDir, platform)) return { claudeCodeDirs: [...dirs], account: null };
   const known = dirs.find((d) => sameFolder(d, dir, platform));
-  if (known !== undefined) return { claudeCodeDirs: [...dirs], claudeCodeDir: known };
-  return { claudeCodeDirs: [...dirs, dir].slice(-MAX_FOLDERS), claudeCodeDir: dir };
+  if (known !== undefined) return { claudeCodeDirs: [...dirs], account: known };
+  return { claudeCodeDirs: [...dirs, dir].slice(-MAX_FOLDERS), account: dir };
 }
 
-/** `~` for the home folder, and a middle cut for very long paths. */
-export function folderLabel(dir: string, home: string, platform: NodeJS.Platform): string {
+/** `~` for the home folder, and a middle cut for paths longer than `max` characters. */
+export function folderLabel(dir: string, home: string, platform: NodeJS.Platform, max = MAX_FOLDER_LABEL): string {
   const path = pathFor(platform);
   const inHome = sameFolder(dir, home, platform) || comparable(dir, platform).startsWith(comparable(home, platform) + path.sep.toLowerCase());
   const shown = inHome ? `~${normalizeFolder(dir, platform).slice(normalizeFolder(home, platform).length)}` : dir;
   const chars = Array.from(shown);
-  if (chars.length <= MAX_FOLDER_LABEL) return shown;
-  const half = Math.floor((MAX_FOLDER_LABEL - 1) / 2);
-  return `${chars.slice(0, half).join('')}…${chars.slice(chars.length - (MAX_FOLDER_LABEL - 1 - half)).join('')}`;
+  if (chars.length <= max) return shown;
+  const half = Math.floor((max - 1) / 2);
+  return `${chars.slice(0, half).join('')}…${chars.slice(chars.length - (max - 1 - half)).join('')}`;
 }
 
 export interface AccountMenuEntry {
   /** Added folder, or null for the default account. */
   dir: string | null;
   label: string;
+  /** The account of the window whose menu this is. */
   selected: boolean;
+  /** The account has an overlay window of its own (Phase 7). */
+  hasWindow: boolean;
 }
 
 export interface AccountMenuInput {
   /** Folders the user added. */
   dirs: readonly string[];
-  /** Selected folder, or null for the default account. */
-  selected: string | null;
+  /** The account of the window whose menu this is (null = the default one); undefined for all windows (tray). */
+  selected: string | null | undefined;
+  /** The accounts that have a window. */
+  windows: ReadonlyArray<string | null>;
   /** The default account's folder (for its label). */
   defaultDir: string;
   /** E-mail per folder (`emailOf(null)` = the default account), when known. */
@@ -130,7 +136,21 @@ export function accountMenuEntries(input: AccountMenuInput): AccountMenuEntry[] 
     const folder = folderLabel(dir ?? input.defaultDir, input.home, input.platform) + (dir === null ? ' (default)' : '');
     return email ? `${shortenEmail(email, MAX_EMAIL_LABEL)} — ${folder}` : folder;
   };
-  return [null, ...input.dirs].map((dir) => ({ dir, label: label(dir), selected: dir === input.selected }));
+  return [null, ...input.dirs].map((dir) => ({ dir, label: label(dir), selected: dir === input.selected, hasWindow: input.windows.includes(dir) }));
+}
+
+/**
+ * A short name for an account where space is tight (tray tooltip, notifications, with several
+ * windows open): its e-mail, or its folder while *Show account* is off or the e-mail is unknown.
+ */
+export function accountShortLabel(dir: string | null, email: string | null, showEmail: boolean, home: string, platform: NodeJS.Platform): string {
+  if (showEmail && email) return shortenEmail(email, 28);
+  return dir === null ? 'default account' : folderLabel(dir, home, platform, 28);
+}
+
+/** How the log names an account: no folder paths (they can hold user names), just a short key. */
+export function accountLogName(dir: string | null, platform: NodeJS.Platform): string {
+  return dir === null ? 'default' : `folder ${accountStateKey(dir, platform).slice(0, 6)}`;
 }
 
 /**

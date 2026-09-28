@@ -24,6 +24,7 @@ const ALL = [
   'locked',
   'other-account',
   'update-ready',
+  'several-accounts',
 ];
 
 /** Extra renders: file-name suffix → scenario + flags. */

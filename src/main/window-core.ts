@@ -27,3 +27,30 @@ export function resizedBounds(current: Rect, area: Rect, width: number, height: 
   y = Math.max(Math.min(area.y, current.y), Math.min(y, bottom - height));
   return { x, y, width, height };
 }
+
+/** Gap from the display edge for a window placed in a corner. */
+export const EDGE_MARGIN = 16;
+/** Gap between overlay windows placed side by side. */
+export const WINDOW_GAP = 8;
+
+function overlaps(a: Rect, b: Rect): boolean {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+}
+
+/**
+ * Where a window of `size` goes on a display with work area `area` (Phase 7): its top-right corner,
+ * or — when other overlay windows are in the way — the first spot to their left along the top edge
+ * that none of them covers. When the top row is full, the top-right corner after all.
+ */
+export function freeSpot(area: Rect, size: { width: number; height: number }, others: readonly Rect[]): { x: number; y: number } {
+  const y = area.y + EDGE_MARGIN;
+  const corner = area.x + area.width - size.width - EDGE_MARGIN;
+  let x = corner;
+  while (x >= area.x) {
+    const spot = { x, y, ...size };
+    const blocking = others.filter((other) => overlaps(spot, other));
+    if (blocking.length === 0) return { x, y };
+    x = Math.min(...blocking.map((other) => other.x)) - WINDOW_GAP - size.width;
+  }
+  return { x: corner, y };
+}

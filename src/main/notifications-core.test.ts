@@ -132,4 +132,9 @@ test('notificationText', () => {
   assert.equal(notificationText({ kind: 'threshold', meter: session(100), threshold: 100 }, now).title, 'Current session: limit reached');
   assert.equal(notificationText({ kind: 'threshold', meter: session(100, null), threshold: 100 }, now).body, 'It resets automatically.');
   assert.deepEqual(notificationText({ kind: 'reset', meter: session(3) }, now), { title: 'Current session has reset', body: 'Usage is back to 3%.' });
+  // Several account windows: the account leads the body.
+  assert.deepEqual(notificationText({ kind: 'reset', meter: session(3) }, now, null, 'ops@revaal.example'), {
+    title: 'Current session has reset',
+    body: 'ops@revaal.example · Usage is back to 3%.',
+  });
 });

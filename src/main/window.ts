@@ -3,12 +3,10 @@
 import { BrowserWindow, screen, type Display, type Rectangle } from 'electron';
 import { join } from 'node:path';
 import type { Settings } from './settings';
-import { resizedBounds } from './window-core';
+import { freeSpot, resizedBounds } from './window-core';
 
 /** Initial size before the renderer reports its real content size (the card; no margin around it). */
 const INITIAL_SIZE = { width: 312, height: 248 };
-/** Gap from the screen edge when placing the overlay in a corner. */
-const EDGE_MARGIN = 16;
 /** App icon copied to dist/ by scripts/build.mjs (Windows/macOS take theirs from the packaged app). */
 export const APP_ICON_PATH = join(__dirname, '../icon.png');
 
@@ -27,9 +25,9 @@ function isReachable(bounds: Rectangle): boolean {
   });
 }
 
-function topRightOf(display: Display, width: number): { x: number; y: number } {
-  const area = display.workArea;
-  return { x: area.x + area.width - width - EDGE_MARGIN, y: area.y + EDGE_MARGIN };
+/** The display's top-right corner, or the first free spot left of the other overlay windows there. */
+function spotOn(display: Display, size: { width: number; height: number }, others: readonly Rectangle[]): { x: number; y: number } {
+  return freeSpot(display.workArea, size, others);
 }
 
 export interface OverlayWindow {
@@ -39,16 +37,22 @@ export interface OverlayWindow {
 }
 
 /**
- * Creates the overlay window. With `previous` (the bounds of a window that is being rebuilt, see
- * main.ts) it takes exactly that place; otherwise the saved position or the primary display's
- * top-right corner, at the initial size until the renderer reports the content size.
+ * Creates an overlay window. With `previous` (the bounds of a window that is being rebuilt, see
+ * overlay.ts) it takes exactly that place; otherwise its saved position, or the primary display's
+ * top-right corner — left of the `others` (the other overlay windows) when they are there — at the
+ * initial size until the renderer reports the content size.
  */
-export function createOverlayWindow(settings: Readonly<Settings>, previous?: Rectangle): OverlayWindow {
+export function createOverlayWindow(
+  settings: Readonly<Settings>,
+  savedPosition: { x: number; y: number } | null,
+  others: readonly Rectangle[],
+  previous?: Rectangle,
+): OverlayWindow {
   const width = previous?.width ?? Math.round(INITIAL_SIZE.width * settings.scale);
   const height = previous?.height ?? Math.round(INITIAL_SIZE.height * settings.scale);
-  const saved = previous ? { x: previous.x, y: previous.y } : settings.position;
+  const saved = previous ? { x: previous.x, y: previous.y } : savedPosition;
   const restoredPosition = saved !== null && isReachable({ ...saved, width, height });
-  const position = restoredPosition ? saved : topRightOf(screen.getPrimaryDisplay(), width);
+  const position = restoredPosition ? saved : spotOn(screen.getPrimaryDisplay(), { width, height }, others);
 
   const win = new BrowserWindow({
     ...position,
@@ -131,16 +135,28 @@ export function fitToContent(win: BrowserWindow, contentWidth: number, contentHe
   win.setBounds(resizedBounds(current, area, width, height, keepNearestEdge));
 }
 
-export function moveToDisplay(win: BrowserWindow, display: Display): void {
-  const { x, y } = topRightOf(display, win.getBounds().width);
+/** Puts the window at the top of `display`: its top-right corner, or next to the other overlay windows there. */
+export function moveToDisplay(win: BrowserWindow, display: Display, others: readonly Rectangle[] = []): void {
+  const { x, y } = spotOn(display, win.getBounds(), others);
   win.setPosition(x, y);
 }
 
-export function resetPosition(win: BrowserWindow): void {
-  moveToDisplay(win, screen.getPrimaryDisplay());
+export function resetPosition(win: BrowserWindow, others: readonly Rectangle[] = []): void {
+  moveToDisplay(win, screen.getPrimaryDisplay(), others);
+}
+
+/** Several overlay windows side by side along the top of `display`, from its top-right corner. */
+export function arrangeOnDisplay(wins: readonly BrowserWindow[], display: Display): void {
+  const placed: Rectangle[] = [];
+  for (const win of wins) {
+    const { width, height } = win.getBounds();
+    const { x, y } = spotOn(display, { width, height }, placed);
+    win.setPosition(x, y);
+    placed.push({ x, y, width, height });
+  }
 }
 
 /** Brings the window back if its display was unplugged or rearranged. */
-export function ensureOnScreen(win: BrowserWindow): void {
-  if (!isReachable(win.getBounds())) resetPosition(win);
+export function ensureOnScreen(win: BrowserWindow, others: readonly Rectangle[] = []): void {
+  if (!isReachable(win.getBounds())) resetPosition(win, others);
 }

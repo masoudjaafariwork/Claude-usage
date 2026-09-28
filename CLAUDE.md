@@ -52,9 +52,10 @@ The book is local only: do **not** publish or republish it to claude.ai (owner's
 | `npm run make-icon` | Regenerate `build/icon.png` (committed) |
 
 Mock scenarios: `normal`, `warning`, `critical`, `expired`, `no-credentials`, `rate-limited`,
-`offline`, `loading`, `via-desktop`, `desktop-unavailable`, `forecast`, `locked`, `other-account`, `update-ready` (defined in `src/main/mock.ts`).
+`offline`, `loading`, `via-desktop`, `desktop-unavailable`, `forecast`, `locked`, `other-account`, `update-ready`,
+`several-accounts` (two windows) (defined in `src/main/mock.ts`).
 Extra flags: `--compact`, `--expanded`, `--theme=<system|dark|light>`, `--scale=<0.9|1|1.15|1.3|1.5>`,
-`--screenshot=<file>` (render, save PNG, quit), `--keep-occlusion` (Windows: leave Chromium's window
+`--screenshot=<file>` (render, save PNG, quit; more windows → `<file>-2.png` …), `--keep-occlusion` (Windows: leave Chromium's window
 occlusion tracker on, to test the blank-overlay watchdog, D60). Mock runs use a separate userData dir and keep
 notification records and usage history in memory; screenshot runs never notify or grab shortcuts.
 
@@ -65,7 +66,8 @@ src/
   shared/types.ts        Type-only contracts between main, preload, renderer (no runtime values)
   shared/format.ts       Time/text formatting for the renderer and notification text          [pure]
   main/                  Electron main process
-    main.ts              Wiring: settings, service, window, tray, IPC, power/display events, CLI flags
+    main.ts              Wiring: settings, the window list, tray, menu, IPC (routed per window), power/display events, CLI flags
+    overlay.ts           One window + its account: usage service, cache, history, notifier, credentials watch, fit/drag/hover/rebuild/watchdog (Phase 7)
     credentials.ts       READ-ONLY access to Claude Code's OAuth token (file / macOS Keychain)   [pure]
     claude-accounts.ts   Several accounts: config folder → sign-in / .claude.json / Keychain name, menu, --claude-config-dir [pure]
     usage-api.ts         net.fetch GET api.anthropic.com/api/oauth/usage
@@ -91,9 +93,9 @@ src/
     login-item-core.ts   Reconcile setting ↔ OS, Task Manager flag parsing, Linux .desktop entry  [pure]
     snapshot-cache.ts    last-usage.json — last good snapshot, shown as stale on startup
     window.ts            Frameless transparent always-on-top window, fit-to-content, multi-monitor, lock
-    window-core.ts       Where a resized window goes (edge anchoring, stays on its display)       [pure]
+    window-core.ts       Where a resized window goes (edge anchoring, stays on its display); free spot for a new one [pure]
     tray.ts / tray-icon.ts  Tray with a live progress ring drawn into a PNG at runtime  [tray-icon pure]
-    menu.ts              Context menu shared by tray, ⋯ button and right-click
+    menu.ts              Context menu: one window's (⋯, right-click) or all windows' (tray with several)
     mock.ts              Fake data sources for dev and screenshots                                [pure]
     fixtures/            Real API responses used by tests
   preload/preload.ts     contextBridge → window.overlay (OverlayApi)
@@ -106,17 +108,20 @@ docs/                    PROGRESS.md, BACKLOG.md (phase index), phases/ (one pla
                          preview, from `npm run social-preview`)
 ```
 
-Data flow: `UsageService` (main) asks the sources in order — Auto: Claude Code (credentials → fetch
-→ parse), then Claude Desktop's history — → emits `change` → main sends `AppState` to the renderer
-(`state:changed`) and updates the tray; while Opacity < 100 % it also pushes `hover:changed` (D57). Each fresh `ok` snapshot first goes into the history (pace
+Data flow (per overlay window, `overlay.ts`): its `UsageService` asks the sources in order — Auto: Claude Code (credentials → fetch
+→ parse), then Claude Desktop's history — → emits `change` → the window gets its `AppState`
+(`state:changed`) and main updates the tray; while Opacity < 100 % it also pushes `hover:changed` (D57). Each fresh `ok` snapshot first goes into the history (pace
 forecast in `AppState.forecast`) and through the notification check. A source throws `SourceUnavailableError` to hand over to the
 next one; other errors are reported as they are (no fallback on network errors). The renderer sends back
-`usage:refresh`, `view:set-compact`, `window:resize` (content size), `menu:show`, `page:visibility`
-(blank-overlay watchdog, D60).
-One Claude Code account (config folder, `settings.claudeCodeDir`) is read at a time; switching moves
-the credentials watch, cached snapshot, pace history and notification records to that account
-(`userData/accounts/<key>/` for added folders) and discards a request still running for the old one.
-Claude Desktop's samples count only for the shown account's org (D51).
+`usage:refresh`, `view:set-compact`, `window:resize` (content size), `menu:show`, `window:close`,
+`page:visibility` (blank-overlay watchdog, D60); main routes each to the window whose `webContents`
+sent it.
+Every window shows one Claude Code account (config folder), never one another window shows
+(`settings.windows`: account, position, compact; the first is the main window, D62). Switching a
+window moves its credentials watch, cached snapshot, pace history and notification records to that
+account (`userData/accounts/<key>/` for added folders) and discards a request still running for the
+old one. Look, lock, source, interval and notifications settings are global. Claude Desktop's
+samples count only for the shown account's org (D51).
 
 `[pure]` modules must not import `electron`, so `npm test` can run them under plain Node.
 

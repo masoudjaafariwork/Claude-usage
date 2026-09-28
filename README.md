@@ -23,8 +23,8 @@ Windows · macOS · Linux — Electron + TypeScript.
   rings). Menu → *Show account* hides it, e.g. while you share your screen.
 - **Several Claude Code accounts**: if you keep each account in its own Claude Code config folder
   (`CLAUDE_CONFIG_DIR`, e.g. one VS Code per account), add the folders in menu → *Claude Code
-  account* and switch between them — or let each account's launch script switch the overlay
-  ([below](#several-claude-code-accounts)).
+  account* and switch between them — or give each account **a window of its own** and see them all
+  at once, closing any one on its own ([below](#several-claude-code-accounts)).
 - Tray / menu-bar icon that shows a live ring for your most-constrained limit.
 - **Notifications** when a limit reaches 75 %, 90 % and 100 % — once per limit and usage window —
   and, optionally, when it resets (menu → *Notifications*).
@@ -152,17 +152,29 @@ it off there. The option only works in the installed app, not with `npm start`.
 Claude Code keeps an account's sign-in in its config folder: `~/.claude` by default, or the folder
 in the `CLAUDE_CONFIG_DIR` environment variable. If you run several accounts that way — for example
 a VS Code per account, each started from a script that sets `CLAUDE_CONFIG_DIR` — the overlay can
-show any of them, one at a time:
+show any of them, in one window you switch or in a window per account:
 
 - Menu → **Claude Code account** → **Add folder…** and pick the account's config folder (the one
   `CLAUDE_CONFIG_DIR` points to; it contains `.claude.json`). The menu then lists the default
   account and every added folder by e-mail; click one to switch. **Remove folder** takes one out.
+- **A window per account:** menu → **Claude Code account** → **Open in its own window** → pick an
+  account. It opens next to the other overlay, and each window shows its own account's numbers,
+  e-mail and warnings. While more than one is open, each has a **×** button (and *Close this
+  window* in its menu; Alt+F4 works too) that closes just that one; the last window can only be
+  hidden. A window's menu (⋯ or right-click) is about that window: switching its account, compact
+  mode, moving it. The tray menu is about all of them: tick or untick accounts under *Claude Code
+  account* to open or close their windows; show/hide, lock, size, opacity and theme always apply
+  to every window. The tray icon shows the fullest limit of all windows, its tooltip one line per
+  account, and notifications name the account.
 - Each account keeps its own last data, pace forecast and notifications. The overlay starts with
-  the account you picked last.
-- Or switch from the command line — also when the overlay is already running:
+  the windows and accounts you had last.
+- Each open window checks its own account's usage (one small request per account per refresh
+  interval); an account without a window costs nothing.
+- Or pick the account from the command line — also when the overlay is already running:
   `"Claude Usage.exe" --claude-config-dir="D:\Work\claude-config"` (`--claude-config-dir=default`
-  goes back to the default account). Put it in the account's own script, next to the line that
-  starts its VS Code:
+  goes back to the default account). If that account has a window of its own, the overlay just
+  shows up; otherwise the main (first) window switches to it. Put it in the account's own script,
+  next to the line that starts its VS Code:
 
   ```bat
   @echo off
@@ -206,7 +218,7 @@ npm start
 
 - **Move:** drag the card.
 - **Menu:** the ⋯ button, right-click, or the tray icon. The menu has show/hide, lock, the data
-  source, the Claude Code account, compact mode and which limits it shows, show account, always on top, size, opacity,
+  source, the Claude Code account (and a window per account), compact mode and which limits it shows, show account, always on top, size, opacity,
   theme, refresh interval, move to display, reset position, notifications, keyboard shortcuts, the
   settings and logs folders, check for updates, and quit.
 - **Keyboard:** `Ctrl+Alt+U` shows/hides the overlay and `Ctrl+Alt+Shift+U` locks/unlocks it from
@@ -223,7 +235,7 @@ npm start
 | --- | --- |
 | `npm start` | Build and run with real data |
 | `npm run start:mock` | Run with fake data |
-| `node scripts/start.mjs --mock=critical` | Other scenarios: `normal`, `warning`, `critical`, `expired`, `no-credentials`, `rate-limited`, `offline`, `loading`, `via-desktop`, `desktop-unavailable`, `forecast`, `locked`, `other-account`, `update-ready`; add `--theme=light` or `--scale=1.5` to try those |
+| `node scripts/start.mjs --mock=critical` | Other scenarios: `normal`, `warning`, `critical`, `expired`, `no-credentials`, `rate-limited`, `offline`, `loading`, `via-desktop`, `desktop-unavailable`, `forecast`, `locked`, `other-account`, `update-ready`, `several-accounts` (two windows); add `--theme=light` or `--scale=1.5` to try those |
 | `npm run screenshot` | Render every mock scenario (plus light-theme and size variants) to `screenshots/` |
 | `npm run screenshot:readme` | Re-render the screenshots at the top of this README (`docs/images/`) |
 | `npm run social-preview` | Render the image link previews show for this repository (`docs/images/social-preview.png`; upload it in the repository's *Settings → Social preview*) |

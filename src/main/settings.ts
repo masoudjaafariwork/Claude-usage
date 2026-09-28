@@ -10,10 +10,21 @@ import { DEFAULT_SHORTCUTS, isValidShortcut } from './shortcuts-core';
 /** Overlay colours: 'system' follows the OS light/dark setting. */
 export type ThemeSetting = 'system' | 'dark' | 'light';
 
-export interface Settings {
-  /** Top-left corner of the overlay in screen DIPs; null = default spot on the primary display. */
+/** One overlay window (Phase 7): the Claude Code account it shows, where it is, how it looks. */
+export interface WindowSettings {
+  /** The account shown: an added config folder (one of `claudeCodeDirs`), or null for the default one. */
+  account: string | null;
+  /** Top-left corner in screen DIPs; null = the first free spot at the top of the primary display. */
   position: { x: number; y: number } | null;
   compact: boolean;
+}
+
+export interface Settings {
+  /**
+   * The open overlay windows, one per account (never two for the same one); the first is the main
+   * window, which the tray menu and --claude-config-dir switch. Always at least one.
+   */
+  windows: WindowSettings[];
   /** Weekly meter ids (e.g. "weekly_all", "weekly_scoped:fable") hidden from the compact pill. */
   compactHidden: string[];
   /** Show whose usage it is (the account's e-mail) in both views. */
@@ -28,8 +39,6 @@ export interface Settings {
   source: SourceMode;
   /** Claude Code config folders the user added (several accounts, one CLAUDE_CONFIG_DIR each). */
   claudeCodeDirs: string[];
-  /** The added folder whose account is shown; null = the default (the app's CLAUDE_CONFIG_DIR, or ~/.claude). */
-  claudeCodeDir: string | null;
   /** Click-through: the overlay ignores the mouse. Unlocked from the tray menu or the lock shortcut. */
   locked: boolean;
   /** Zoom factor of the overlay, one of SCALE_OPTIONS. */
@@ -45,9 +54,10 @@ export interface Settings {
   lockShortcut: string;
 }
 
+export const DEFAULT_WINDOW: Readonly<WindowSettings> = { account: null, position: null, compact: false };
+
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
-  position: null,
-  compact: false,
+  windows: [{ ...DEFAULT_WINDOW }],
   compactHidden: [],
   showAccount: true,
   alwaysOnTop: true,
@@ -56,7 +66,6 @@ export const DEFAULT_SETTINGS: Readonly<Settings> = {
   launchAtLogin: false,
   source: 'auto',
   claudeCodeDirs: [],
-  claudeCodeDir: null,
   locked: false,
   scale: 1,
   theme: 'dark',
@@ -92,14 +101,34 @@ function sanitizeStringList(v: unknown, maxLength = 100, maxCount = 50): string[
   return [...new Set(items)].slice(0, maxCount);
 }
 
+function sanitizePosition(v: unknown): { x: number; y: number } | null {
+  const pos = v as Record<string, unknown> | null | undefined;
+  return pos && isFiniteNumber(pos.x) && isFiniteNumber(pos.y) ? { x: Math.round(pos.x), y: Math.round(pos.y) } : null;
+}
+
+/**
+ * The window list: entries whose account is the default one or an added folder, one per account.
+ * Settings from before Phase 7 had one window — `position`, `compact` and the selected folder
+ * `claudeCodeDir` — and become its entry.
+ */
+function sanitizeWindows(r: Record<string, unknown>, dirs: readonly string[]): WindowSettings[] {
+  const list = Array.isArray(r.windows) ? r.windows : [{ account: r.claudeCodeDir, position: r.position, compact: r.compact }];
+  const windows: WindowSettings[] = [];
+  for (const item of list) {
+    const w = (typeof item === 'object' && item !== null ? item : {}) as Record<string, unknown>;
+    const account = typeof w.account === 'string' && dirs.includes(w.account) ? w.account : null;
+    // An entry whose folder was removed (or never valid) falls back to the default account.
+    if (windows.some((known) => known.account === account)) continue;
+    windows.push({ account, position: sanitizePosition(w.position), compact: typeof w.compact === 'boolean' ? w.compact : DEFAULT_WINDOW.compact });
+  }
+  return windows.length > 0 ? windows : [{ ...DEFAULT_WINDOW }];
+}
+
 export function sanitizeSettings(raw: unknown): Settings {
   const r = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
-  const pos = r.position as Record<string, unknown> | null | undefined;
   const claudeCodeDirs = sanitizeStringList(r.claudeCodeDirs, 1024, MAX_FOLDERS);
   return {
-    position:
-      pos && isFiniteNumber(pos.x) && isFiniteNumber(pos.y) ? { x: Math.round(pos.x), y: Math.round(pos.y) } : null,
-    compact: typeof r.compact === 'boolean' ? r.compact : DEFAULT_SETTINGS.compact,
+    windows: sanitizeWindows(r, claudeCodeDirs),
     compactHidden: sanitizeStringList(r.compactHidden),
     showAccount: typeof r.showAccount === 'boolean' ? r.showAccount : DEFAULT_SETTINGS.showAccount,
     alwaysOnTop: typeof r.alwaysOnTop === 'boolean' ? r.alwaysOnTop : DEFAULT_SETTINGS.alwaysOnTop,
@@ -110,7 +139,6 @@ export function sanitizeSettings(raw: unknown): Settings {
     launchAtLogin: typeof r.launchAtLogin === 'boolean' ? r.launchAtLogin : DEFAULT_SETTINGS.launchAtLogin,
     source: SOURCE_MODES.includes(r.source as SourceMode) ? (r.source as SourceMode) : DEFAULT_SETTINGS.source,
     claudeCodeDirs,
-    claudeCodeDir: typeof r.claudeCodeDir === 'string' && claudeCodeDirs.includes(r.claudeCodeDir) ? r.claudeCodeDir : null,
     locked: typeof r.locked === 'boolean' ? r.locked : DEFAULT_SETTINGS.locked,
     scale: SCALE_OPTIONS.find((option) => option === r.scale) ?? DEFAULT_SETTINGS.scale,
     theme: THEMES.includes(r.theme as ThemeSetting) ? (r.theme as ThemeSetting) : DEFAULT_SETTINGS.theme,

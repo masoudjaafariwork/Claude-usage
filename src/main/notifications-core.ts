@@ -111,8 +111,21 @@ export function sanitizeRecords(raw: unknown): NotifyRecord[] {
   });
 }
 
-/** Title and body of a notification. `limitAt` = projected time of 100 % at the current pace, if any. */
-export function notificationText(event: NotifyEvent, now: Date, limitAt: number | null = null): { title: string; body: string } {
+/**
+ * Title and body of a notification. `limitAt` = projected time of 100 % at the current pace, if any.
+ * `account` names whose limit it is while several accounts have a window (Phase 7): it leads the body.
+ */
+export function notificationText(
+  event: NotifyEvent,
+  now: Date,
+  limitAt: number | null = null,
+  account: string | null = null,
+): { title: string; body: string } {
+  const { title, body } = plainText(event, now, limitAt);
+  return { title, body: account ? `${account} · ${body}` : body };
+}
+
+function plainText(event: NotifyEvent, now: Date, limitAt: number | null): { title: string; body: string } {
   const { meter } = event;
   const percent = Math.round(meter.percent);
   if (event.kind === 'reset') {

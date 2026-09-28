@@ -12,11 +12,12 @@ Living record of where the project stands. Update it at the end of every session
 | [4 — UX: notifications, click-through, shortcut, size, pace forecast, theme](phases/phase-4-ux.md) | ✅ Done (2026-09-26) |
 | [5 — App auto-update](phases/phase-5-auto-update.md) | ✅ Done (2026-09-26) — real release test: 1.0.0 found and downloaded 1.1.0 (owner, *Check for updates*) |
 | [6 — Several Claude Code accounts (config folders) with a switcher](phases/phase-6-accounts.md) | ✅ Done (2026-09-26) — released as 1.1.0 |
+| [7 — A window per Claude Code account](phases/phase-7-account-windows.md) | ✅ Done (2026-09-28) — not released yet |
 
 Each phase has its own plan file in [`phases/`](phases/) (scope, notes, acceptance criteria,
 ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLOG.md).
 
-## What works today (Phases 1–6)
+## What works today (Phases 1–7)
 
 - Frameless, transparent, always-on-top overlay; drag anywhere; position remembered; stays reachable
   when monitors change; "Move to display" menu for multi-monitor setups. The window is exactly the
@@ -94,6 +95,14 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
   account's own `.bat` can switch the overlay. *Open Claude Code* for an added folder runs `claude`
   in a terminal with that folder. Claude Desktop's samples only count when they are of the shown
   account's org (D50–D54).
+- **A window per account (Phase 7):** menu → *Claude Code account* → *Open in its own window*
+  gives an account an overlay of its own, next to the others; each window polls, caches and
+  notifies for its own account and keeps its own position and compact mode. While several are open
+  each has a × (and *Close this window*, Alt+F4) that closes only it; the last one can only be
+  hidden. A window's menu is about that window; the tray menu about all (account checkboxes open
+  and close windows). Show/hide, lock and the look are global. The tray ring shows the fullest limit
+  of all windows, the tooltip one line per account, notifications name the account. Without a
+  second window everything is as in 1.2 (D62–D64).
 
 ## Decisions
 
@@ -159,6 +168,9 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D59 | **Name stays "Claude Usage"** (D25); findability comes from the repo's About text, topics, README and links instead. About (set by hand): *"Always-on-top desktop widget for your Claude plan usage limits — 5-hour session, weekly and per-model limits with reset countdowns, pace forecast and alerts. Windows, macOS, Linux. Reads Claude Code's existing sign-in (read-only); no claude.ai login."* Topics (20, GitHub's maximum): claude, claude-code, claude-ai, anthropic, claude-usage, usage-tracker, usage-monitor, rate-limit, overlay, widget, desktop-widget, system-tray, menu-bar, always-on-top, electron, typescript, windows, macos, linux, cross-platform | Owner's choice (2026-09-26) after weighing a rename to "Claude Usage Widget": `claude-usage-widget` is already another Windows project's repo name, "widget" also means the OS widget boards, and a product rename moves userData and installer names. Description and topics survive a repo rename, so they didn't need to wait. The field of similar tools is crowded (10+ open-source trackers, mostly single-OS tray / menu-bar apps); what sets this one apart — floating overlay, one app for three OSes, several accounts, pace forecast, Claude Desktop fallback, read-only token — goes into every text. |
 | D60 | **Windows: Chromium's native window occlusion tracker is switched off** (`app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion')` before `ready`; `--keep-occlusion` keeps it on for tests) **and the app heals itself.** The page reports its Page-Visibility state (`page:visibility`); a page hidden for 5 s while its window is shown, always on top and the screen unlocked means Chromium stopped drawing the overlay → the window is rebuilt in place (`recreateWindow`: a new `BrowserWindow` at the old bounds, shown if the old one was), and if the new one is hidden too within a minute the state is process-wide → the app restarts itself (`app.relaunch`, once per 30 min). Also: a crashed renderer → `webContents.reload()`; a dead GPU process → window rebuilt (3 per 10 min each, `AttemptBudget`); menu → *Restart Claude Usage* (installs a downloaded update on the way; the portable exe and the AppImage relaunch their outer file); *Show overlay* also re-asserts always-on-top and schedules a repaint; show/hide, lock/unlock, display changes and process deaths are logged. Watchdog on Windows only | Owner's bug (2026-09-26, twice in one day): after a Win+Shift+S screenshot the overlay vanished; tray click, Show/Hide, Compact (a resize), Reset position (another display), Size and Lock did nothing; only a restart helped. The stuck app, inspected live: all processes alive, window `WS_VISIBLE` + topmost + not cloaked, nothing drawn. Chromium's tracker (`ui/aura/native_window_occlusion_tracker_win.cc`) marks a window OCCLUDED when a visible, opaque, non-tool, non-popup window covers it, on session lock and on display-off, and then hides the page and stops its frames — measured on a mock with a bordered topmost window over it: 62 → 0 frames/s and `visibilityState` hidden, 62 again when uncovered. The Snipping Tool's capture overlay covers every monitor; when the "uncovered" recalculation goes missing the window stays occluded for the process's lifetime — exactly the symptom — and the same flag is the known workaround in VS Code's and Codex's issue trackers (Electron's docs still say Windows doesn't track occlusion). An always-on-top overlay gains nothing from the tracker. The watchdog is insurance for a cause the flag doesn't cover; macOS hides an occluded page by design, so no watchdog there. Tool and popup windows were the trap in the first two reproduction attempts (the tracker ignores them). |
 | D61 | **Always-on-top level: `'pop-up-menu'` on Windows, `'floating'` elsewhere** (`applyAlwaysOnTop()` in `window.ts`, the only place that calls `setAlwaysOnTop`). On Windows the overlay is now a plain `HWND_TOPMOST` window, above the taskbar too | Owner's bug (2026-09-27, 1.2.0): with *Always on top* on, clicking another window put it over the overlay; hide/show didn't help. The live window had lost `WS_EX_TOPMOST` and sat directly behind `Shell_TrayWnd`. Electron on Windows moves a window of level `floating` … `status` behind the taskbar (`SetWindowPos(hwnd, taskbar)`) on every `setAlwaysOnTop` and every activation, and Win32 drops a topmost window's topmost status when it is placed after a non-topmost one. The primary taskbar wasn't topmost at the time (cause unknown; the secondary taskbars were). Measured in a standalone Electron 44 test on this machine: `floating` lost topmost at once (after show, activation and re-assert), `pop-up-menu` and `screen-saver` kept it; on Windows those two are the same. `pop-up-menu` is the lowest level Electron doesn't move behind the taskbar. macOS keeps `floating` (real window levels there; `pop-up-menu` would cover the Dock and menus), Linux ignores the level. |
+| D62 | **A window per Claude Code account (Phase 7).** `settings.windows` replaces `position` / `compact` / `claudeCodeDir`: one entry per open overlay window — its account (null = default, else one of `claudeCodeDirs`), position and compact mode; the first entry is the main window; never two windows for one account; at least one window. Old settings become the first entry (in the sanitizer, no separate migration). Each window (`overlay.ts`) owns what Phase 6 switched per account: its `UsageService` (one request per interval), cached snapshot, pace history, notification records and credentials watch; switching a window's account keeps Phase 6's generation guard (D52). Everything else stays global (look, lock, always on top, size, opacity, theme, source, interval, notification choices, shortcuts). Replaces D50's "one account at a time" with "one account per window" | Owner's request (2026-09-28): "a separate, dedicated window for each account, and each one can be closed separately". One window per account keeps hard rule 2: every open account is polled with its own token at the same rate as when it was the one shown, and an account without a window costs nothing; a second window of the same account would double its requests for the same numbers. Keeping the per-account machinery inside the window reuses Phase 6's tested switch instead of a second, shared-session design. Per-window look settings were left out (a longer menu for little gain). |
+| D63 | **Menus and closing with several windows.** A window's menu (⋯, right-click) is about that window: the *Claude Code account* radio switches it (accounts shown in another window are greyed out, "(in its own window)"), *Open in its own window ▸* lists the accounts without a window, *Close this window*; compact mode, Move to display, Reset position and Refresh act on it. The tray menu with several windows is about all of them: *Claude Code account* is a checkbox per account (window open / closed), compact mode / Refresh / Move to display / Reset position act on every window (placed side by side), one *Open Claude Code — (account)* per account whose sign-in is gone. With one window the tray menu is that window's menu, i.e. as in 1.2. Show / hide (tray click, shortcut) and lock act on all windows. A × button (card header and compact pill) appears only while several windows are open; Alt+F4 closes that window too; the last window can only be hidden. *Add folder…* switches the window it was opened from (from the tray with several windows: opens a new window). *Remove folder* closes that folder's window (or switches the last window to the default account) | The owner asked to close each window on its own; a visible × is the direct way, the menu item and Alt+F4 the usual ones. Context menus follow the object they are opened from (the common practice); the tray belongs to no window, so it gets the view of all. Keeping the last window means the tray always has something to show, as before (the reason the old Alt+F4 only hid the overlay). |
+| D64 | **Placement, tray, notifications, logs with several windows.** A window without a saved position goes to the first free spot along the top of the primary display, right to left from its top-right corner (`freeSpot` in `window-core.ts`; the corner again when the row is full); the tray's *Reset position* / *Move to display* line all windows up that way. Tray ring = the most constrained limit of all windows; tooltip one line per account (`<e-mail>: <n>% <limit>`, a short status when not ok). Notifications put the account (e-mail, or the folder while *Show account* is off) at the start of the body while several windows are open. Log lines of a window's service start with `[default]` or `[folder <6 hex of the state key>]`. `--claude-config-dir`: if that account has a window, the overlay just shows; otherwise the main window switches (Phase 6 behaviour) | A new window on top of the old one would look as if nothing happened. Heights differ (card vs pill, banners), widths hardly — so side by side, not stacked. The tray has one icon, and the fullest limit is the one that needs attention. Windows toasts and the 127-character tooltip are short, so the account goes where it costs least; the folder instead of the e-mail keeps screen sharing private, as *Show account* promises. Folder paths can hold user names, so the log gets a hash instead (D31). |
 | D49 | **Version 1.0.0** for the first release with the updater (0.2.0 → 1.0.0; no 0.3.x). The real-release updater test becomes 1.0.0 → 1.0.1. README says openly that only Windows 11 is tested; macOS and Linux builds are CI-built but never run | Owner's choice (2026-09-26): all planned phases are done. Recommended first was 0.3.0 → 0.3.1 for the test and 1.0.0 once it passed; the owner preferred 1.0.0 now. Technically the same: a broken updater in the first updater version needs one manual install either way. |
 
 ## Usage API notes (observed 2026-09-24)
@@ -303,6 +315,20 @@ Kept for the record in case Anthropic ever offers an official way.
   - Menu labels show folders as typed; on Windows an `&` in a folder name may show as an underlined
     mnemonic.
   - Mock runs reset the account folders to what the scenario needs (only `other-account` has one).
+- **A window per account (Phase 7):**
+  - Every open window polls its own account: three windows are three requests per interval (to
+    three tokens). Not tested with more than two accounts, nor on macOS / Linux (tray checkboxes,
+    several always-on-top windows, Wayland placement).
+  - The look settings (size, opacity, theme, always on top, lock) are shared by all windows.
+  - Mock runs reset their windows to the scenario on every start (only `several-accounts` has two).
+  - With *Show account* off, two windows can only be told apart by their numbers (by design: no
+    e-mail while screen sharing).
+  - Settings written by this version have no `position` / `compact` / `claudeCodeDir` any more:
+    going back to 1.2 or older starts that version at the default corner, expanded, on the default
+    account.
+  - The native menu clicked with a real mouse, the × clicked with a real mouse and a notification
+    naming the account weren't seen on screen here (driven through the inspector instead; see the
+    session log).
 - **No margin around the card (D42):** no drop shadow any more; over a background of the card's
   own colour only the 1 px border separates them. The first start after this change keeps the
   saved window position, so the card shows up 16 px further left and 12 px higher (× Size) than
@@ -773,3 +799,31 @@ Kept for the record in case Anthropic ever offers an official way.
   still not topmost. `npm run check`: 147 tests pass. No UI change, so no screenshots.
 - README: troubleshooting entry. CLAUDE.md: gotcha. Electron book v2.7: new chapter
   `c-always-on-top` after `c-blank-window`; the level section of `c-window` updated.
+
+### 2026-09-28 — Session 23: Phase 7 (a window per Claude Code account)
+
+- Owner's request: "when I have several accounts, a separate dedicated window for each, and each
+  one can be closed separately". Planned as Phase 7 (`phases/phase-7-account-windows.md`) and
+  built in the same session; it changes D50 ("one account at a time") on the owner's request and
+  keeps hard rule 2 (one request per open account per interval, D62).
+- New `overlay.ts` (class `Overlay`): everything that was per window or per account in `main.ts` —
+  usage service, history, forecast, notifier records, credentials watch, fit / drag guard / hover /
+  rebuild / blank watchdog. `main.ts` keeps the global wiring and a list of windows; IPC is routed to
+  the sending window. `settings.windows` replaces `position` / `compact` / `claudeCodeDir` (old files
+  become the first window). Menus scoped to a window or to all windows (D63); `freeSpot()` placement,
+  tray over all windows, account in notifications, `[account]` log prefix (D64). × button in the
+  renderer (`closeWindow()` / `window:close`). Mock scenario `several-accounts`; screenshot runs save
+  every window (`<file>-2.png`). Tests 147 → 151 (plus updated ones).
+- Verified on Windows 11: a mock run (`other-account`) driven through the main-process inspector
+  (`Menu.prototype.popup` patched to capture the menu, items clicked with `MenuItem.click()`): *Open
+  in its own window* → a second window 8 px left of the first, both saved in `settings.windows`; the
+  second window's menu (the first window's account greyed out, *Close this window*); the tray menu
+  with checkboxes and one *Open Claude Code — …* per account; compact on one window only; × → closed,
+  the other lost its ×; Alt+F4 closes the second window and only hides the last; *Show overlay*,
+  *Hide overlays* / *Show overlays*. A real run in a separate `--user-data-dir` (installed app not
+  touched): started on `D:\Revaal\claude-config`, opened the default account beside it — each
+  window with its own e-mail and numbers (HTTP 200 each); restarted: both windows back at their
+  places, each polled once, the folder's files in `accounts/<key>/`. All mock screenshots reviewed;
+  the README and social-preview images are unaffected (one window in their scenarios).
+- Electron book v2.8: a chapter on several windows (one class per window, IPC routed by sender,
+  a window's menu vs the tray's).

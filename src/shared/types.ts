@@ -109,12 +109,17 @@ export interface AppState {
   view: ViewSettings;
   sourceMode: SourceMode;
   /**
-   * The Claude Code account picked in the menu, read from its `.claude.json` now. Shown while there
+   * The Claude Code account this window shows, read from its `.claude.json` now. Shown while there
    * is no snapshot yet; a snapshot's own account wins otherwise (D41).
    */
   selectedAccount: AccountInfo | null;
-  /** True when an added config folder is picked instead of the default account (Phase 6). */
+  /** True when this window shows an added config folder instead of the default account (Phase 6). */
   addedAccount: boolean;
+  /**
+   * More than one overlay window is open (one per account, Phase 7): this one can be closed on its
+   * own, so it shows a close button. The last window can only be hidden.
+   */
+  canClose: boolean;
   /**
    * An update waits for the user (its menu item is at the top of the menu, D47): the ⋯ button, the
    * compact pill's expand button, the lock badge and the tray icon show a coral dot (D56).
@@ -138,6 +143,8 @@ export interface OverlayApi {
   /** Ask the main process to fit the window to the rendered content (CSS pixels). */
   resize(width: number, height: number): void;
   showMenu(): void;
+  /** Close this window (only while another one is open; one window per account, Phase 7). */
+  closeWindow(): void;
   /** Open the user's Claude Code (VS Code or a terminal) so it renews its own sign-in. */
   openClaudeCode(): void;
   /** Whether the page is hidden (Page Visibility API): hidden while the window is shown means Chromium stopped drawing it (D60). */

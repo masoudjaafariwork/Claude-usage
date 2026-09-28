@@ -1,6 +1,6 @@
 // The context menu, shared by the tray icon, the overlay's ⋯ button and right-click.
 import { Menu, app, nativeImage, screen, type MenuItemConstructorOptions, type NativeImage } from 'electron';
-import type { SourceMode, StatusKind } from '../shared/types';
+import type { SourceMode } from '../shared/types';
 import type { AccountMenuEntry } from './claude-accounts';
 import { NOTIFY_THRESHOLDS } from './notifications-core';
 import { OPACITY_OPTIONS, REFRESH_INTERVAL_OPTIONS_SEC, SCALE_OPTIONS, type Settings, type ThemeSetting } from './settings';
@@ -34,8 +34,14 @@ const THEME_ITEMS: ReadonlyArray<{ theme: ThemeSetting; label: string }> = [
   { theme: 'light', label: 'Light' },
 ];
 
+/**
+ * What the menu items do. Items about one window (its account, view and position) act on the window
+ * whose menu it is — or, in the tray menu while several windows are open, on all of them.
+ */
 export interface MenuActions {
   toggleWindow(): void;
+  /** Close this window (Phase 7; only offered while another window is open). */
+  closeWindow(): void;
   refresh(): void;
   setCompact(compact: boolean): void;
   setCompactMeterVisible(id: string, visible: boolean): void;
@@ -50,15 +56,18 @@ export interface MenuActions {
   resetPosition(): void;
   setLaunchAtLogin(on: boolean): void;
   setSource(mode: SourceMode): void;
-  /** Show another Claude Code account: an added config folder, or null for the default one. */
+  /** Show another Claude Code account in this window: an added config folder, or null for the default one. */
   setClaudeCodeDir(dir: string | null): void;
+  /** Open a window of its own for an account, or close that window (Phase 7). */
+  setAccountWindow(dir: string | null, open: boolean): void;
   addClaudeCodeDir(): void;
   removeClaudeCodeDir(dir: string): void;
   setNotifyAt(threshold: number, on: boolean): void;
   setNotifyReset(on: boolean): void;
   testNotification(): void;
   setShortcutsEnabled(on: boolean): void;
-  openClaudeCode(): void;
+  /** Open Claude Code for an account whose sign-in is missing or expired, so it renews it (D34). */
+  openClaudeCode(dir: string | null): void;
   openSettingsFolder(): void;
   openLogsFolder(): void;
   checkForUpdates(): void;
@@ -72,13 +81,23 @@ export interface MenuActions {
 
 export interface MenuContext {
   windowVisible: boolean;
+  /** How many overlay windows are open (one per account, Phase 7). */
+  windowCount: number;
+  /**
+   * 'window': the menu of one window (⋯ button, right-click; the tray while there is one window).
+   * 'all': the tray menu while several windows are open.
+   */
+  scope: 'window' | 'all';
+  /** Compact mode of that window, or of every window. */
+  compact: boolean;
   /** Launch at login works only in the packaged app. */
   loginItemAvailable: boolean;
   /** Weekly limits in the current data, offered as compact-pill toggles. */
   weeklyMeters: ReadonlyArray<{ id: string; label: string }>;
   /** The default Claude Code account and the added config folders (claude-accounts.ts). */
   accounts: readonly AccountMenuEntry[];
-  statusKind: StatusKind;
+  /** Accounts whose sign-in is missing or expired, each with its *Open Claude Code* label. */
+  claudeCodeLaunches: ReadonlyArray<{ dir: string | null; label: string }>;
   shortcuts: ShortcutsStatus;
   notificationsSupported: boolean;
   /** The updates item: at the top when there is something to do, else next to About. */
@@ -90,8 +109,47 @@ function accelerator(shortcut: ShortcutState): Pick<MenuItemConstructorOptions, 
   return shortcut.registered ? { accelerator: shortcut.accelerator, registerAccelerator: false } : {};
 }
 
+/**
+ * *Claude Code account*: in a window's menu, radio items switch that window (an account shown in
+ * another window can't be picked) and *Open in its own window* opens one for an account without a
+ * window; in the tray menu with several windows, a checkbox per account opens or closes its window.
+ */
+function accountItems(context: MenuContext, actions: MenuActions): MenuItemConstructorOptions[] {
+  if (context.scope === 'all') {
+    return context.accounts.map((entry) => ({
+      label: entry.label,
+      type: 'checkbox',
+      checked: entry.hasWindow,
+      enabled: !entry.hasWindow || context.windowCount > 1, // the last window can only be hidden
+      click: (item) => actions.setAccountWindow(entry.dir, item.checked),
+    }));
+  }
+  const withoutWindow = context.accounts.filter((entry) => !entry.hasWindow);
+  return [
+    ...context.accounts.map(
+      (entry): MenuItemConstructorOptions => ({
+        label: entry.hasWindow && !entry.selected ? `${entry.label} (in its own window)` : entry.label,
+        type: 'radio',
+        checked: entry.selected,
+        enabled: entry.selected || !entry.hasWindow,
+        click: () => actions.setClaudeCodeDir(entry.dir),
+      }),
+    ),
+    ...(withoutWindow.length > 0
+      ? [
+          { type: 'separator' as const },
+          {
+            label: 'Open in its own window',
+            submenu: withoutWindow.map(({ dir, label }) => ({ label, click: () => actions.setAccountWindow(dir, true) })),
+          },
+        ]
+      : []),
+  ];
+}
+
 export function buildMenu(settings: Readonly<Settings>, context: MenuContext, actions: MenuActions): Menu {
   const { windowVisible, loginItemAvailable, shortcuts, notificationsSupported } = context;
+  const several = context.windowCount > 1;
   const displays = screen.getAllDisplays();
   const primaryId = screen.getPrimaryDisplay().id;
   const shortcutInfo = (name: string, shortcut: ShortcutState): MenuItemConstructorOptions => ({
@@ -116,10 +174,11 @@ export function buildMenu(settings: Readonly<Settings>, context: MenuContext, ac
   const template: MenuItemConstructorOptions[] = [
     ...(update.prominent ? [updateItem, { type: 'separator' as const }] : []),
     {
-      label: windowVisible ? 'Hide overlay' : 'Show overlay',
+      label: `${windowVisible ? 'Hide' : 'Show'} ${several ? 'overlays' : 'overlay'}`,
       ...accelerator(shortcuts.toggle),
       click: () => actions.toggleWindow(),
     },
+    ...(context.scope === 'window' && several ? [{ label: 'Close this window', click: () => actions.closeWindow() }] : []),
     {
       label: 'Lock (click-through)',
       type: 'checkbox',
@@ -141,14 +200,7 @@ export function buildMenu(settings: Readonly<Settings>, context: MenuContext, ac
     {
       label: 'Claude Code account',
       submenu: [
-        ...context.accounts.map(
-          (entry): MenuItemConstructorOptions => ({
-            label: entry.label,
-            type: 'radio',
-            checked: entry.selected,
-            click: () => actions.setClaudeCodeDir(entry.dir),
-          }),
-        ),
+        ...accountItems(context, actions),
         { type: 'separator' },
         { label: 'Add folder…', click: () => actions.addClaudeCodeDir() },
         ...(added.length > 0
@@ -162,11 +214,9 @@ export function buildMenu(settings: Readonly<Settings>, context: MenuContext, ac
       ],
     },
     // Claude Code renews its own sign-in when it starts (the overlay never does, D3).
-    ...(context.statusKind === 'token-expired' || context.statusKind === 'no-credentials'
-      ? [{ label: 'Open Claude Code', click: () => actions.openClaudeCode() }]
-      : []),
+    ...context.claudeCodeLaunches.map(({ dir, label }) => ({ label, click: () => actions.openClaudeCode(dir) })),
     { type: 'separator' },
-    { label: 'Compact mode', type: 'checkbox', checked: settings.compact, click: (item) => actions.setCompact(item.checked) },
+    { label: 'Compact mode', type: 'checkbox', checked: context.compact, click: (item) => actions.setCompact(item.checked) },
     {
       label: 'Compact mode shows',
       submenu: [

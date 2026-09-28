@@ -71,12 +71,42 @@ test('accountInfo leaves out the personal org name but keeps a team org', () => 
 
 test('sanitizeSettings fills defaults and clamps values', () => {
   assert.deepEqual(sanitizeSettings(undefined), DEFAULT_SETTINGS);
-  const s = sanitizeSettings({ position: { x: 10.4, y: 'bad' }, opacity: 5, refreshIntervalSec: 5, compact: true });
-  assert.equal(s.position, null);
+  const s = sanitizeSettings({ windows: [{ position: { x: 10.4, y: 'bad' }, compact: true }], opacity: 5, refreshIntervalSec: 5 });
+  assert.deepEqual(s.windows, [{ account: null, position: null, compact: true }]);
   assert.equal(s.opacity, 1);
   assert.equal(s.refreshIntervalSec, 60);
-  assert.equal(s.compact, true);
-  assert.deepEqual(sanitizeSettings({ position: { x: 10.4, y: -20.6 } }).position, { x: 10, y: -21 });
+  assert.deepEqual(sanitizeSettings({ windows: [{ position: { x: 10.4, y: -20.6 } }] }).windows[0]?.position, { x: 10, y: -21 });
+});
+
+test('sanitizeSettings: one window per account, the default or an added folder, at least one (Phase 7)', () => {
+  assert.deepEqual(DEFAULT_SETTINGS.windows, [{ account: null, position: null, compact: false }]);
+  const claudeCodeDirs = ['D:\\Revaal\\claude-config', 'E:\\work'];
+  const s = sanitizeSettings({
+    claudeCodeDirs,
+    windows: [
+      { account: 'E:\\work', position: { x: 1, y: 2 }, compact: true },
+      { account: null },
+      { account: 'E:\\work', position: { x: 9, y: 9 } }, // a second window for the same account
+      { account: 'F:\\removed' }, // not an added folder: the default account, which has a window already
+      'junk',
+    ],
+  });
+  assert.deepEqual(s.windows, [
+    { account: 'E:\\work', position: { x: 1, y: 2 }, compact: true },
+    { account: null, position: null, compact: false },
+  ]);
+  assert.deepEqual(sanitizeSettings({ windows: [] }).windows, DEFAULT_SETTINGS.windows);
+  assert.deepEqual(sanitizeSettings({ windows: [{ account: 'F:\\removed', compact: true }] }).windows, [
+    { account: null, position: null, compact: true },
+  ]);
+});
+
+test('sanitizeSettings: settings from before Phase 7 (one window) become the first window', () => {
+  const old = { position: { x: 1500, y: 20 }, compact: true, claudeCodeDirs: ['E:\\work'], claudeCodeDir: 'E:\\work' };
+  const s = sanitizeSettings(old);
+  assert.deepEqual(s.windows, [{ account: 'E:\\work', position: { x: 1500, y: 20 }, compact: true }]);
+  assert.ok(!('position' in s) && !('compact' in s) && !('claudeCodeDir' in s), 'the old keys are gone');
+  assert.equal(sanitizeSettings({ ...old, claudeCodeDirs: [] }).windows[0]?.account, null, 'a folder not in the list');
 });
 
 test('sanitizeSettings keeps known source modes only', () => {
@@ -133,14 +163,14 @@ test('sanitizeSettings keeps compactHidden as a list of unique ids', () => {
   );
 });
 
-test('sanitizeSettings keeps Claude Code folders, and a selected folder only when it is in the list', () => {
-  assert.deepEqual([DEFAULT_SETTINGS.claudeCodeDirs, DEFAULT_SETTINGS.claudeCodeDir], [[], null]);
+test('sanitizeSettings keeps Claude Code folders, and a window’s folder only when it is in the list', () => {
+  assert.deepEqual(DEFAULT_SETTINGS.claudeCodeDirs, []);
   const dirs = ['D:\\Revaal\\claude-config', 'E:\\work', 'D:\\Revaal\\claude-config', ' ', 42, 'x'.repeat(1025)];
-  const clean = sanitizeSettings({ claudeCodeDirs: dirs, claudeCodeDir: 'E:\\work' });
+  const clean = sanitizeSettings({ claudeCodeDirs: dirs, windows: [{ account: 'E:\\work' }] });
   assert.deepEqual(clean.claudeCodeDirs, ['D:\\Revaal\\claude-config', 'E:\\work']);
-  assert.equal(clean.claudeCodeDir, 'E:\\work');
-  assert.equal(sanitizeSettings({ claudeCodeDirs: ['E:\\work'], claudeCodeDir: 'F:\\gone' }).claudeCodeDir, null);
-  assert.equal(sanitizeSettings({ claudeCodeDir: 'E:\\work' }).claudeCodeDir, null, 'not in the list');
+  assert.equal(clean.windows[0]?.account, 'E:\\work');
+  assert.equal(sanitizeSettings({ claudeCodeDirs: ['E:\\work'], windows: [{ account: 'F:\\gone' }] }).windows[0]?.account, null);
+  assert.equal(sanitizeSettings({ windows: [{ account: 'E:\\work' }] }).windows[0]?.account, null, 'not in the list');
   assert.equal(sanitizeSettings({ claudeCodeDirs: Array.from({ length: 30 }, (_, i) => `D:\\a${i}`) }).claudeCodeDirs.length, 20);
 });
 

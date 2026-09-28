@@ -3,7 +3,9 @@ import { createHash } from 'node:crypto';
 import { test } from 'node:test';
 import {
   MAX_FOLDERS,
+  accountLogName,
   accountMenuEntries,
+  accountShortLabel,
   accountStateKey,
   chooseFolder,
   claudeCodeLocation,
@@ -58,10 +60,10 @@ test('folders compare resolved, without trailing separators, ignoring case on Wi
 test('choosing a folder: the default one selects the default entry, a known one is reused, a new one added', () => {
   const dirs = ['D:\\Revaal\\claude-config'];
   const def = 'C:\\Users\\ada\\.claude';
-  assert.deepEqual(chooseFolder(dirs, null, def, 'win32'), { claudeCodeDirs: dirs, claudeCodeDir: null });
-  assert.deepEqual(chooseFolder(dirs, 'c:\\users\\ada\\.claude\\', def, 'win32'), { claudeCodeDirs: dirs, claudeCodeDir: null });
-  assert.deepEqual(chooseFolder(dirs, 'd:\\revaal\\claude-config', def, 'win32'), { claudeCodeDirs: dirs, claudeCodeDir: 'D:\\Revaal\\claude-config' });
-  assert.deepEqual(chooseFolder(dirs, 'E:\\work', def, 'win32'), { claudeCodeDirs: [...dirs, 'E:\\work'], claudeCodeDir: 'E:\\work' });
+  assert.deepEqual(chooseFolder(dirs, null, def, 'win32'), { claudeCodeDirs: dirs, account: null });
+  assert.deepEqual(chooseFolder(dirs, 'c:\\users\\ada\\.claude\\', def, 'win32'), { claudeCodeDirs: dirs, account: null });
+  assert.deepEqual(chooseFolder(dirs, 'd:\\revaal\\claude-config', def, 'win32'), { claudeCodeDirs: dirs, account: 'D:\\Revaal\\claude-config' });
+  assert.deepEqual(chooseFolder(dirs, 'E:\\work', def, 'win32'), { claudeCodeDirs: [...dirs, 'E:\\work'], account: 'E:\\work' });
   const full = Array.from({ length: MAX_FOLDERS }, (_, i) => `D:\\a${i}`);
   const added = chooseFolder(full, 'E:\\new', def, 'win32');
   assert.equal(added.claudeCodeDirs.length, MAX_FOLDERS);
@@ -82,7 +84,8 @@ test('folder labels use ~ for the home folder and cut very long paths in the mid
 test('account menu entries: default first, e-mails only when known and shown', () => {
   const input = {
     dirs: ['D:\\Revaal\\claude-config', 'E:\\other'],
-    selected: 'D:\\Revaal\\claude-config',
+    selected: 'D:\\Revaal\\claude-config' as string | null | undefined,
+    windows: ['D:\\Revaal\\claude-config'],
     defaultDir: 'C:\\Users\\ada\\.claude',
     emailOf: (dir: string | null) => (dir === null ? 'ada@example.com' : dir.startsWith('D:') ? 'ops@revaal.example' : null),
     showEmail: true,
@@ -90,9 +93,9 @@ test('account menu entries: default first, e-mails only when known and shown', (
     platform: 'win32' as const,
   };
   assert.deepEqual(accountMenuEntries(input), [
-    { dir: null, label: 'ada@example.com — ~\\.claude (default)', selected: false },
-    { dir: 'D:\\Revaal\\claude-config', label: 'ops@revaal.example — D:\\Revaal\\claude-config', selected: true },
-    { dir: 'E:\\other', label: 'E:\\other', selected: false },
+    { dir: null, label: 'ada@example.com — ~\\.claude (default)', selected: false, hasWindow: false },
+    { dir: 'D:\\Revaal\\claude-config', label: 'ops@revaal.example — D:\\Revaal\\claude-config', selected: true, hasWindow: true },
+    { dir: 'E:\\other', label: 'E:\\other', selected: false, hasWindow: false },
   ]);
   assert.deepEqual(
     accountMenuEntries({ ...input, selected: null, showEmail: false }).map((e) => [e.label, e.selected]),
@@ -102,6 +105,25 @@ test('account menu entries: default first, e-mails only when known and shown', (
       ['E:\\other', false],
     ],
   );
+  // The tray menu with several windows belongs to no window: nothing selected, the windows ticked.
+  assert.deepEqual(
+    accountMenuEntries({ ...input, selected: undefined, windows: [null, 'E:\\other'] }).map((e) => [e.selected, e.hasWindow]),
+    [
+      [false, true],
+      [false, false],
+      [false, true],
+    ],
+  );
+});
+
+test('short account labels (tray, notifications) and log names', () => {
+  assert.equal(accountShortLabel(null, 'ada@example.com', true, WIN_HOME, 'win32'), 'ada@example.com');
+  assert.equal(accountShortLabel(null, 'ada@example.com', false, WIN_HOME, 'win32'), 'default account', 'Show account off: no e-mail');
+  assert.equal(accountShortLabel('C:\\Users\\ada\\work', null, true, WIN_HOME, 'win32'), '~\\work');
+  assert.ok(Array.from(accountShortLabel('D:\\a-very-long-folder-name\\and-another-one\\claude-config', null, true, WIN_HOME, 'win32')).length <= 28);
+  assert.equal(accountLogName(null, 'win32'), 'default');
+  assert.match(accountLogName('D:\\Revaal\\claude-config', 'win32'), /^folder [0-9a-f]{6}$/);
+  assert.equal(accountLogName('d:\\revaal\\CLAUDE-config', 'win32'), accountLogName('D:\\Revaal\\claude-config', 'win32'));
 });
 
 test('--claude-config-dir: a folder (resolved), default, or nothing', () => {

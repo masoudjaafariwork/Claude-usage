@@ -14,7 +14,7 @@ const KEEP_SHOWN = 10;
 export interface NotifierOptions {
   /** Where the records live; null = memory only (mock runs). Per Claude Code account (useRecords). */
   file: string | null;
-  /** Clicking a notification (shows the overlay). */
+  /** Clicking a notification (shows the overlays). */
   onClick(): void;
   log: LogFn;
 }
@@ -40,8 +40,11 @@ export class Notifier {
     return Notification.isSupported();
   }
 
-  /** Checks a freshly fetched snapshot. `forecast`: meter id → ISO time of the projected 100 %. */
-  check(snapshot: UsageSnapshot, prefs: NotifyPrefs, forecast: Readonly<Record<string, string>>): void {
+  /**
+   * Checks a freshly fetched snapshot. `forecast`: meter id → ISO time of the projected 100 %;
+   * `account`: whose limits they are, named while several accounts have a window (Phase 7).
+   */
+  check(snapshot: UsageSnapshot, prefs: NotifyPrefs, forecast: Readonly<Record<string, string>>, account: string | null = null): void {
     const now = Date.now();
     const { events, records } = checkThresholds(snapshot.meters, this.records, prefs, now);
     if (JSON.stringify(records) !== JSON.stringify(this.records)) {
@@ -50,7 +53,7 @@ export class Notifier {
     }
     for (const event of events) {
       const limitAt = forecast[event.meter.id];
-      this.show(notificationText(event, new Date(now), limitAt ? Date.parse(limitAt) : null));
+      this.show(notificationText(event, new Date(now), limitAt ? Date.parse(limitAt) : null, account));
     }
   }
 

@@ -1,16 +1,17 @@
-// Entry point of the Electron main process: wires settings, the usage service, the overlay
-// window, the tray icon and IPC together.
+// Entry point of the Electron main process: wires settings, the overlay windows (one per Claude
+// Code account the user opened, overlay.ts), the tray icon, the menu and IPC together.
 //
 // Dev flags:
 //   --mock[=scenario]      fake data (scenarios in mock.ts), separate userData directory
-//   --screenshot=<file>    render, save a PNG of the overlay to <file>, then quit
+//   --screenshot=<file>    render, save a PNG of the overlay to <file> (more windows: <file>-2.png …), then quit
 //   --compact / --expanded override the view mode for this run
 //   --theme=<system|dark|light>, --scale=<0.9|1|1.15|1.3|1.5> override theme and size (screenshots)
 //   --keep-occlusion       Windows: leave Chromium's window occlusion tracker on (to test the
 //                          blank-overlay watchdog, D60)
 // User option:
-//   --claude-config-dir=<folder|default>  show that Claude Code account (config folder); a running
-//                          copy switches to it (claude-accounts.ts)
+//   --claude-config-dir=<folder|default>  show that Claude Code account (config folder): its own
+//                          window if it has one, else the main window switches to it; a running copy
+//                          does the same (claude-accounts.ts)
 import {
   app,
   BrowserWindow,
@@ -23,14 +24,16 @@ import {
   shell,
   type IpcMainEvent,
   type IpcMainInvokeEvent,
+  type Menu,
 } from 'electron';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { writeFile } from 'node:fs/promises';
-import { homedir, tmpdir } from 'node:os';
+import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
-import type { AppState, SourceId, UsageSnapshot } from '../shared/types';
 import {
+  accountLogName,
   accountMenuEntries,
+  accountShortLabel,
   accountStateKey,
   chooseFolder,
   claudeCodeLocation,
@@ -38,39 +41,26 @@ import {
   normalizeFolder,
   type ClaudeCodeLocation,
 } from './claude-accounts';
-import { gatherLaunchFacts, launchClaudeCode, planClaudeCodeLaunch } from './claude-code-launcher';
 import { accountInfo, readClaudeCodeAccount, readCredentials, type ClaudeCodeAccount } from './credentials';
 import { DesktopSource, desktopDataDirs, readDesktopHistory, watchDesktopHistory } from './desktop-source';
-import { watchFileInDirs } from './file-watch';
-import { HoverWatch } from './hover';
 import { AttemptBudget, describeProcessGone, isCleanExit, relaunchOptions } from './recovery-core';
 import { RotatingLog, describeError } from './log';
 import { createLoginItem } from './login-item';
 import { reconcileLoginItem } from './login-item-core';
 import { buildMenu, type MenuActions } from './menu';
-import { MOCK_SCENARIOS, createMockSource, isMockScenario, type MockScenario } from './mock';
+import { MOCK_SCENARIOS, createMockSource, isMockScenario, type MockScenario, type MockSetup } from './mock';
 import { Notifier } from './notifications';
-import { UsageHistory, type HistoryPoint } from './pace';
-import { SCALE_OPTIONS, SettingsStore, THEMES, stepScale, type ThemeSetting } from './settings';
+import { Overlay, type OverlayHost, type OverlaySetup } from './overlay';
+import { DEFAULT_WINDOW, SCALE_OPTIONS, SettingsStore, THEMES, type ThemeSetting } from './settings';
 import { registerShortcuts, unregisterShortcuts } from './shortcuts';
 import { shortcutLabel, type ShortcutsStatus } from './shortcuts-core';
-import { loadSnapshot, saveSnapshot } from './snapshot-cache';
+import { loadSnapshot } from './snapshot-cache';
 import { TrayController } from './tray';
 import { updateMode, type UpdateMenuItem } from './update-core';
 import { Updater } from './updater';
 import { fetchUsageJson } from './usage-api';
-import { UsageService } from './usage-service';
-import { ClaudeCodeSource, type UsageSource } from './usage-source';
-import {
-  APP_ICON_PATH,
-  applyAlwaysOnTop,
-  applyLocked,
-  createOverlayWindow,
-  ensureOnScreen,
-  fitToContent,
-  moveToDisplay,
-  resetPosition,
-} from './window';
+import { ClaudeCodeSource } from './usage-source';
+import { APP_ICON_PATH, arrangeOnDisplay } from './window';
 
 interface CliOptions {
   mock: MockScenario | null;
@@ -129,6 +119,9 @@ if (!app.requestSingleInstanceLock()) {
   });
 }
 
+/** Menu items that act on the window whose menu it is, or on all windows (menuFor below). */
+type WindowAction = 'closeWindow' | 'refresh' | 'setCompact' | 'setClaudeCodeDir' | 'addClaudeCodeDir' | 'moveToDisplay' | 'resetPosition';
+
 function start(): void {
   if (process.platform === 'darwin') app.dock?.hide();
   if (process.platform === 'win32') app.setAppUserModelId(APP_ID);
@@ -139,7 +132,6 @@ function start(): void {
   app.setAppLogsPath(cli.mock ? join(userData, 'logs') : undefined);
   const log = new RotatingLog(app.getPath('logs'));
   const settings = new SettingsStore(join(userData, 'settings.json'), !cli.screenshot);
-  if (cli.compact !== null) settings.update({ compact: cli.compact });
   if (cli.theme) settings.update({ theme: cli.theme });
   if (cli.scale) settings.update({ scale: cli.scale });
   // Sets prefers-color-scheme for the overlay page; styles.css switches its colours with it.
@@ -159,7 +151,7 @@ function start(): void {
   }
 
   // Several Claude Code accounts (Phase 6): the default one plus config folders added from the menu
-  // or with --claude-config-dir; one is shown at a time.
+  // or with --claude-config-dir. Each open window shows one of them (Phase 7).
   const home = homedir();
   const startDir = folderFromArgs(process.argv.slice(1), process.cwd());
   // An account's launch script sets CLAUDE_CONFIG_DIR for its own VS Code and passes it to us with
@@ -168,85 +160,69 @@ function start(): void {
   if (startDir !== undefined) delete process.env.CLAUDE_CONFIG_DIR;
   const locationOf = (dir: string | null): ClaudeCodeLocation => claudeCodeLocation(dir, process.platform, process.env, home);
   const defaultLocation = locationOf(null);
-  if (startDir !== undefined) settings.update(chooseFolder(settings.get().claudeCodeDirs, startDir, defaultLocation.dir, process.platform));
-  let location = locationOf(settings.get().claudeCodeDir);
   const accountStateDir = (dir: string) => join(userData, 'accounts', accountStateKey(dir, process.platform));
-  /** The shown account's own files: cached snapshot, pace history, notification records. */
-  const accountFile = (name: string) => {
-    const dir = settings.get().claudeCodeDir;
-    return dir === null ? join(userData, name) : join(accountStateDir(dir), name);
-  };
+  /** An account's own files: cached snapshot, pace history, notification records (mock runs: memory only). */
+  const accountFile = (dir: string | null, name: string): string | null =>
+    cli.mock ? null : dir === null ? join(userData, name) : join(accountStateDir(dir), name);
   /** Every account as its `.claude.json` says (null key = the default account): menu and card. */
   const accounts = new Map<string | null, ClaudeCodeAccount | null>();
 
   const userAgent = `ClaudeUsage/${app.getVersion()} (${process.platform}; Electron ${process.versions.electron})`;
   const desktopDirs = desktopDataDirs(process.platform, process.env, home);
-  let sources: Record<SourceId, UsageSource>;
-  let initialSnapshot: UsageSnapshot | null;
-  let initialHistory: HistoryPoint[] = [];
+  let mock: MockSetup | null = null;
   /** Mock runs: pretend an update is ready (`update-ready` scenario), so the dot can be screenshotted. */
   let mockUpdate: UpdateMenuItem | null = null;
   if (cli.mock) {
-    const mock = createMockSource(cli.mock);
-    sources = mock.sources;
-    initialSnapshot = mock.initialSnapshot;
-    initialHistory = mock.history;
-    // Scenarios decide the account too, so a folder picked in an earlier mock run doesn't carry over.
+    mock = createMockSource(cli.mock);
+    // Scenarios decide the accounts and windows too, so folders picked in an earlier mock run don't
+    // carry over (a window keeps its position when its account comes back).
+    const extra = mock.extraWindows.map((w) => w.folder);
+    const folders = [...(mock.folder ? [mock.folder] : []), ...extra];
+    const before = settings.get().windows;
     settings.update({
       source: mock.mode,
       locked: mock.locked,
-      claudeCodeDirs: mock.folder ? [mock.folder.dir] : [],
-      claudeCodeDir: mock.folder?.dir ?? null,
+      claudeCodeDirs: folders.map((folder) => folder.dir),
+      windows: [mock.folder?.dir ?? null, ...extra.map((folder) => folder.dir)].map((account) => ({
+        ...DEFAULT_WINDOW,
+        ...before.find((w) => w.account === account),
+        account,
+      })),
     });
-    if (mock.folder) accounts.set(mock.folder.dir, mock.folder.account);
+    for (const folder of folders) accounts.set(folder.dir, folder.account);
     if (mock.updateReady) mockUpdate = { label: 'Restart to update to v9.9.9', enabled: true, action: null, prominent: true };
-  } else {
-    sources = {
-      'claude-code': new ClaudeCodeSource({
-        readCredentials: () => readCredentials(location),
-        fetchUsage: (token) => fetchUsageJson(token, userAgent, log.write),
-        readAccount: () => readClaudeCodeAccount(location),
-        now: Date.now,
-      }),
-      'claude-desktop': new DesktopSource({
-        readHistory: () => readDesktopHistory(desktopDirs),
-        claudeCodeAccount: () => readClaudeCodeAccount(location),
-        orgMatch: () => (settings.get().claudeCodeDir !== null ? 'strict' : settings.get().source === 'auto' ? 'if-known' : 'off'),
-        now: Date.now,
-      }),
-    };
-    initialSnapshot = loadSnapshot(accountFile('last-usage.json'));
+  }
+  const compact = cli.compact;
+  if (compact !== null) settings.update({ windows: settings.get().windows.map((w) => ({ ...w, compact })) });
+  // --claude-config-dir at start: that account's window, or the main window shows it (as in Phase 6).
+  if (startDir !== undefined) {
+    const account = resolveAccount(startDir);
+    const { windows } = settings.get();
+    if (!windows.some((w) => w.account === account)) settings.update({ windows: windows.map((w, i) => (i === 0 ? { ...w, account } : w)) });
   }
   log.info(
     `Claude Usage ${app.getVersion()} starting (${process.platform}, Electron ${process.versions.electron}, ` +
       `${app.isPackaged ? 'installed' : 'dev'}${cli.mock ? `, mock=${cli.mock}` : ''}, source=${settings.get().source}, ` +
-      `account=${accountLogName()})`,
+      `windows=${settings.get().windows.map((w) => accountLogName(w.account, process.platform)).join(' + ')})`,
   );
-  const service = new UsageService(
-    { sources, mode: () => settings.get().source, intervalSec: () => settings.get().refreshIntervalSec, log: log.write },
-    initialSnapshot,
-  );
-  // Claude Desktop rewrites its history about every 15 min; pick new samples up right away.
-  const stopWatchingDesktop = cli.mock ? () => {} : watchDesktopHistory(desktopDirs, () => service.desktopHistoryChanged());
-  // Claude Code rewrites its credentials file when it renews its token: recover in seconds, not 60 s.
-  // `/login` rewrites it too, so the menu's e-mails are read again.
-  const watchCredentials = () =>
-    cli.mock
-      ? () => {}
-      : watchFileInDirs([location.dir], '.credentials.json', () => {
-          service.credentialsChanged();
-          void readAccounts();
-        });
-  let stopWatchingCredentials = watchCredentials();
-  let lastClaudeCodeLaunch = 0;
-  // Snapshot history for the pace forecast (last 24 h, per account; mock runs keep theirs in memory).
-  let history = new UsageHistory(cli.mock ? null : accountFile('usage-history.json'), initialHistory);
-  let forecast: Record<string, string> = {};
-  const notifier = new Notifier({
-    file: cli.mock ? null : accountFile('notifications.json'),
-    onClick: () => showOverlay(),
-    log: log.write,
-  });
+
+  /** The open overlay windows, one per account; the first is the main window. */
+  const overlays: Overlay[] = [];
+  let quitting = false;
+  let screenLocked = false;
+  let shortcuts: ShortcutsStatus = {
+    enabled: false,
+    toggle: { accelerator: settings.get().toggleShortcut, registered: false },
+    lock: { accelerator: settings.get().lockShortcut, registered: false },
+  };
+  // Crash loops: windows are rebuilt after a GPU death at most 3 times in 10 minutes; the app
+  // restarts itself for a blank overlay at most once per 30 minutes (D60).
+  const rebuildBudget = new AttemptBudget(3, 10 * 60_000);
+  const relaunchBudget = new AttemptBudget(1, 30 * 60_000);
+
+  // Notices that belong to no account (updates, the test notification); each window's account has
+  // its own Notifier with its own records (overlay.ts).
+  const notices = new Notifier({ file: null, onClick: () => showAll(), log: log.write });
   // Updates from GitHub Releases (installed builds only; dev, mock and screenshot runs never update).
   const updater = new Updater({
     mode: updateMode({
@@ -258,7 +234,7 @@ function start(): void {
     currentVersion: app.getVersion(),
     log: log.write,
     onChange: () => broadcast(), // the overlay shows a dot while an update waits (D56)
-    notify: (notice) => notifier.show(notice, notice.opensDownloadPage ? () => updater.openDownloadPage() : undefined),
+    notify: (notice) => notices.show(notice, notice.opensDownloadPage ? () => updater.openDownloadPage() : undefined),
     openUrl: (url) => void shell.openExternal(url),
     beforeInstall: () => settings.flush(),
     onAppImageMoved: (path) => {
@@ -270,94 +246,82 @@ function start(): void {
       }
     },
   });
-  let shortcuts: ShortcutsStatus = {
-    enabled: false,
-    toggle: { accelerator: settings.get().toggleShortcut, registered: false },
-    lock: { accelerator: settings.get().lockShortcut, registered: false },
-  };
 
-  // The overlay window. `let`: it is rebuilt in place after the GPU process dies and from menu →
-  // Reload overlay (recreateWindow below); every closure here reads the current one.
-  let { win, restoredPosition } = createOverlayWindow(settings.get());
-  let quitting = false;
-  /** False until the renderer's first size report has fitted (and shown) the current window. */
-  let shown = false;
-  /** Whether that first fit shows the window: at start always; a rebuilt window only if the old one was visible. */
-  let showWhenFitted = true;
-  /** Last content size reported by the renderer, in CSS pixels (the window needs it × zoom factor). */
-  let contentSize: { width: number; height: number } | null = null;
-  /** True while the user drags the overlay (Windows; see the 'will-move' handler). */
-  let dragging = false;
-  // Crash loops: the page is reloaded / the window rebuilt at most 3 times in 10 minutes.
-  const reloadBudget = new AttemptBudget(3, 10 * 60_000);
-  const rebuildBudget = new AttemptBudget(3, 10 * 60_000);
-
-  // A see-through overlay turns fully opaque while the cursor is over it (D57). Windows and Linux
-  // compare physical pixels: with displays at different scale factors, the DIP bounds of a window
-  // lying across two of them don't line up with the cursor's DIP position.
-  const physical = process.platform !== 'darwin';
-  const hover = new HoverWatch({
-    cursor: () => (physical ? screen.dipToScreenPoint(screen.getCursorScreenPoint()) : screen.getCursorScreenPoint()),
-    bounds: () => (physical ? screen.dipToScreenRect(win, win.getBounds()) : win.getBounds()),
-    onChange: (hovered) => {
-      if (!win.isDestroyed()) win.webContents.send('hover:changed', hovered);
+  const host: OverlayHost = {
+    settings,
+    log,
+    mock: Boolean(cli.mock),
+    screenshot: Boolean(cli.screenshot),
+    home,
+    locationOf,
+    accountFile,
+    accountInfo: (account) => accountInfo(accounts.get(account) ?? null),
+    notificationLabel: (account) => (overlays.length > 1 ? shortLabel(account) : null),
+    otherBounds: (overlay) => overlays.filter((o) => o !== overlay && !o.win.isDestroyed()).map((o) => o.win.getBounds()),
+    canClose: () => overlays.length > 1,
+    updateReady: () => (mockUpdate ?? updater.menuItem).prominent,
+    unlockShortcut: () => (shortcuts.lock.registered ? shortcutLabel(shortcuts.lock.accelerator, process.platform) : null),
+    isQuitting: () => quitting,
+    isScreenLocked: () => screenLocked,
+    changed: () => updateTray(),
+    showMenu: (overlay) => menuFor(overlay).popup({ window: overlay.win }),
+    requestClose: (overlay) => closeWindow(overlay, 'window closed'),
+    setScale: (scale) => actions.setScale(scale),
+    showAll: () => showAll(),
+    credentialsChanged: () => void readAccounts(),
+    shownFirstTime: () => {
+      updateTray();
+      if (cli.screenshot) captureOnce(cli.screenshot);
     },
-  });
-  /** Watches only while it matters: see-through, visible, clickable (locked stays as set); never in screenshots. */
-  const updateHover = () => {
-    const { opacity, locked } = settings.get();
-    hover.setActive(!cli.screenshot && !win.isDestroyed() && win.isVisible() && !locked && opacity < 1);
+    blankAfterRebuild: () => {
+      if (!relaunchBudget.take()) {
+        log.error('Still blank after a rebuild; not restarting again within 30 min (menu → Restart Claude Usage)');
+        return;
+      }
+      log.warn('Restarting the app');
+      relaunchApp();
+    },
   };
 
-  const state = (): AppState => {
-    const current = settings.get();
+  /** The sources and starting data of a window's account (mock runs: the scenario's). */
+  function setupFor(account: string | null, show: boolean): OverlaySetup {
+    if (mock) {
+      const extra = mock.extraWindows.find((w) => w.folder.dir === account);
+      if (extra) return { account, show, sources: () => extra.sources, initialSnapshot: null };
+      const { sources, initialSnapshot, history } = mock;
+      return { account, show, sources: () => sources, initialSnapshot, initialHistory: history };
+    }
+    const cache = accountFile(account, 'last-usage.json');
     return {
-      snapshot: service.snapshot,
-      status: service.status,
-      refreshing: service.refreshing,
-      view: {
-        compact: current.compact,
-        opacity: current.opacity,
-        compactHidden: current.compactHidden,
-        locked: current.locked,
-        unlockShortcut: shortcuts.lock.registered ? shortcutLabel(shortcuts.lock.accelerator, process.platform) : null,
-        showAccount: current.showAccount,
-      },
-      sourceMode: current.source,
-      selectedAccount: accountInfo(accounts.get(current.claudeCodeDir) ?? null),
-      addedAccount: current.claudeCodeDir !== null,
-      updateReady: (mockUpdate ?? updater.menuItem).prominent,
-      forecast: service.status.kind === 'ok' ? forecast : {},
+      account,
+      show,
+      sources: (overlay) => ({
+        'claude-code': new ClaudeCodeSource({
+          readCredentials: () => readCredentials(overlay.location),
+          fetchUsage: (token) => fetchUsageJson(token, userAgent, log.write),
+          readAccount: () => readClaudeCodeAccount(overlay.location),
+          now: Date.now,
+        }),
+        'claude-desktop': new DesktopSource({
+          readHistory: () => readDesktopHistory(desktopDirs),
+          claudeCodeAccount: () => readClaudeCodeAccount(overlay.location),
+          orgMatch: () => (overlay.account !== null ? 'strict' : settings.get().source === 'auto' ? 'if-known' : 'off'),
+          now: Date.now,
+        }),
+      }),
+      initialSnapshot: cache ? loadSnapshot(cache) : null,
     };
-  };
-
-  const showOverlay = () => {
-    if (!win.isVisible()) actions.toggleWindow();
-  };
-  /** Shows the window and makes sure it can be seen: on a display, back on top, repainted. */
-  function showWindow(): void {
-    ensureOnScreen(win);
-    win.showInactive();
-    applyAlwaysOnTop(win, settings.get().alwaysOnTop); // a fresh HWND_TOPMOST: above windows that came later
-    win.webContents.invalidate();
-    log.info('Overlay shown');
   }
 
-  const actions: MenuActions = {
-    toggleWindow: () => {
-      if (win.isVisible()) {
-        win.hide();
-        log.info('Overlay hidden');
-      } else {
-        showWindow();
-      }
-      updateTray();
-    },
-    refresh: () => service.refreshNow(),
-    setCompact: (compact) => {
-      settings.update({ compact });
-      broadcast();
-    },
+  function addOverlay(account: string | null, show: boolean): Overlay {
+    const overlay = new Overlay(host, setupFor(account, show));
+    overlays.push(overlay);
+    overlay.start();
+    return overlay;
+  }
+
+  const actions: Omit<MenuActions, WindowAction> = {
+    toggleWindow: () => toggleAll(),
     setCompactMeterVisible: (id, visible) => {
       const others = settings.get().compactHidden.filter((hidden) => hidden !== id);
       settings.update({ compactHidden: visible ? others : [...others, id] });
@@ -369,28 +333,25 @@ function start(): void {
     },
     setLocked: (on) => {
       settings.update({ locked: on });
-      applyLocked(win, on);
-      updateHover();
+      for (const overlay of overlays) overlay.applyLocked(on);
       log.info(on ? 'Locked (click-through)' : 'Unlocked');
-      showOverlay();
+      showAll();
       broadcast();
     },
     setAlwaysOnTop: (on) => {
       settings.update({ alwaysOnTop: on });
-      applyAlwaysOnTop(win, on);
+      for (const overlay of overlays) overlay.applyAlwaysOnTop(on);
       updateTray();
     },
     setScale: (scale) => {
       if (scale === settings.get().scale) return;
       settings.update({ scale });
-      win.webContents.setZoomFactor(scale);
-      fit(true);
+      for (const overlay of overlays) overlay.applyScale(scale);
       updateTray();
     },
     setOpacity: (opacity) => {
       settings.update({ opacity });
-      hover.holdUntilLeave(); // the menu opens over the overlay: show the new value right away
-      updateHover();
+      for (const overlay of overlays) overlay.holdHover(); // the menu opens over the overlay: show the new value right away
       broadcast();
     },
     setTheme: (theme) => {
@@ -400,17 +361,8 @@ function start(): void {
     },
     setRefreshInterval: (seconds) => {
       settings.update({ refreshIntervalSec: seconds });
-      service.reschedule();
+      for (const overlay of overlays) overlay.service.reschedule();
       updateTray();
-    },
-    moveToDisplay: (displayId) => {
-      const display = screen.getAllDisplays().find((d) => d.id === displayId);
-      if (display) moveToDisplay(win, display);
-      showOverlay();
-    },
-    resetPosition: () => {
-      resetPosition(win);
-      showOverlay();
     },
     restart: () => {
       log.info('Restart from the menu');
@@ -433,12 +385,19 @@ function start(): void {
       settings.update({ source: mode });
       log.info(`Source mode → ${mode}`);
       broadcast();
-      service.sourcesChanged();
+      for (const overlay of overlays) overlay.service.sourcesChanged();
     },
-    setClaudeCodeDir: (dir) => switchAccount(dir),
-    addClaudeCodeDir: () => void addClaudeCodeDir(),
+    setAccountWindow: (dir, open) => {
+      if (open) openWindow(dir);
+      else {
+        const overlay = overlays.find((o) => o.account === dir);
+        if (overlay) closeWindow(overlay, 'menu');
+      }
+    },
     removeClaudeCodeDir: (dir) => {
-      if (settings.get().claudeCodeDir === dir) switchAccount(null);
+      const shown = overlays.find((o) => o.account === dir);
+      if (shown && overlays.length > 1) closeWindow(shown, 'folder removed');
+      else if (shown) switchAccount(shown, null);
       settings.update({ claudeCodeDirs: settings.get().claudeCodeDirs.filter((d) => d !== dir) });
       accounts.delete(dir);
       // Its cached snapshot, pace history and notification records go with it.
@@ -455,21 +414,13 @@ function start(): void {
       settings.update({ notifyReset: on });
       updateTray();
     },
-    testNotification: () => notifier.test(),
+    testNotification: () => notices.test(),
     setShortcutsEnabled: (on) => {
       settings.update({ shortcutsEnabled: on });
       applyShortcuts();
       broadcast();
     },
-    openClaudeCode: () => {
-      if (Date.now() - lastClaudeCodeLaunch < 5000) return; // a double click opens one window, not two
-      lastClaudeCodeLaunch = Date.now();
-      const addedFolder = settings.get().claudeCodeDir === null ? null : location.dir;
-      const plan = planClaudeCodeLaunch(gatherLaunchFacts(process.platform, process.env, home, addedFolder, tmpdir()));
-      launchClaudeCode(plan, (url) => shell.openExternal(url), log.write).catch((err: unknown) =>
-        log.warn(`Open Claude Code failed: ${describeError(err)}`),
-      );
-    },
+    openClaudeCode: (dir) => overlays.find((o) => o.account === dir)?.openClaudeCode(),
     openSettingsFolder: () => void shell.openPath(userData),
     openLogsFolder: () => {
       mkdirSync(log.dir, { recursive: true });
@@ -482,37 +433,87 @@ function start(): void {
     quit: () => app.quit(),
   };
 
-  const menu = () =>
-    buildMenu(
-      settings.get(),
+  /**
+   * The menu of one window (its ⋯ button, a right-click, or the tray while there is one window) —
+   * or, for `null`, the tray menu while several windows are open: then the window items (compact
+   * mode, refresh, position) act on all of them, and the account list opens and closes windows.
+   */
+  function menuFor(target: Overlay | null): Menu {
+    const scoped = target ? [target] : overlays;
+    const current = settings.get();
+    const weekly = new Map<string, { id: string; label: string }>();
+    for (const overlay of scoped) {
+      for (const meter of overlay.service.snapshot?.meters ?? []) if (meter.group === 'weekly' && !weekly.has(meter.id)) weekly.set(meter.id, meter);
+    }
+    const signInNeeded = scoped.filter((o) => o.service.status.kind === 'token-expired' || o.service.status.kind === 'no-credentials');
+    return buildMenu(
+      current,
       {
-        windowVisible: win.isVisible(),
+        windowVisible: overlays.some((o) => o.isVisible()),
+        windowCount: overlays.length,
+        scope: target ? 'window' : 'all',
+        compact: scoped.every((o) => o.view.compact),
         loginItemAvailable: loginItem.available,
-        weeklyMeters: (service.snapshot?.meters ?? []).filter((m) => m.group === 'weekly'),
+        weeklyMeters: [...weekly.values()],
         accounts: accountMenuEntries({
-          dirs: settings.get().claudeCodeDirs,
-          selected: settings.get().claudeCodeDir,
+          dirs: current.claudeCodeDirs,
+          selected: target ? target.account : undefined,
+          windows: overlays.map((o) => o.account),
           defaultDir: defaultLocation.dir,
           emailOf: (dir) => accounts.get(dir)?.email ?? null,
-          showEmail: settings.get().showAccount,
+          showEmail: current.showAccount,
           home,
           platform: process.platform,
         }),
-        statusKind: service.status.kind,
+        claudeCodeLaunches: signInNeeded.map((o) => ({
+          dir: o.account,
+          label: target ? 'Open Claude Code' : `Open Claude Code — ${shortLabel(o.account)}`,
+        })),
         shortcuts,
-        notificationsSupported: notifier.supported,
+        notificationsSupported: notices.supported,
         update: mockUpdate ?? updater.menuItem,
       },
-      actions,
+      {
+        ...actions,
+        closeWindow: () => {
+          if (target) closeWindow(target, 'menu');
+        },
+        refresh: () => scoped.forEach((o) => o.refresh()),
+        setCompact: (on) => {
+          for (const overlay of scoped) overlay.setCompact(on);
+          updateTray();
+        },
+        setClaudeCodeDir: (dir) => {
+          if (target) switchAccount(target, dir);
+        },
+        addClaudeCodeDir: () => void addClaudeCodeDir(target),
+        moveToDisplay: (displayId) => {
+          const display = screen.getAllDisplays().find((d) => d.id === displayId);
+          if (display && target) target.moveToDisplay(display);
+          else if (display) arrangeOnDisplay(overlays.map((o) => o.win), display);
+          showAll();
+        },
+        resetPosition: () => {
+          if (target) target.resetPosition();
+          else arrangeOnDisplay(overlays.map((o) => o.win), screen.getPrimaryDisplay());
+          showAll();
+        },
+      },
     );
-  const tray = new TrayController(() => actions.toggleWindow());
+  }
+
+  const tray = new TrayController(() => toggleAll());
 
   function updateTray(): void {
-    tray.update(state(), menu());
+    tray.update(
+      overlays.map((o) => ({ state: o.state(), who: shortLabel(o.account) })),
+      (mockUpdate ?? updater.menuItem).prominent,
+      menuFor(overlays.length === 1 ? (overlays[0] ?? null) : null),
+    );
   }
 
   function broadcast(): void {
-    if (!win.isDestroyed()) win.webContents.send('state:changed', state());
+    for (const overlay of overlays) overlay.send();
     updateTray();
   }
 
@@ -521,17 +522,60 @@ function start(): void {
     shortcuts = registerShortcuts(
       // Screenshot runs never grab keys (they may run next to the real app).
       { enabled: current.shortcutsEnabled && !cli.screenshot, toggle: current.toggleShortcut, lock: current.lockShortcut },
-      { toggle: () => actions.toggleWindow(), lock: () => actions.setLocked(!settings.get().locked) },
+      { toggle: () => toggleAll(), lock: () => actions.setLocked(!settings.get().locked) },
       log.write,
     );
   }
   applyShortcuts();
 
-  // --- Claude Code accounts -----------------------------------------------------------------------
-  function accountLogName(): string {
-    return settings.get().claudeCodeDir === null ? 'default' : 'added folder';
+  // --- Windows (one per account, Phase 7) --------------------------------------------------------
+  /** Shows every overlay window (tray click, shortcut, a notification, lock, …). */
+  function showAll(): void {
+    const hidden = overlays.filter((o) => !o.isVisible());
+    if (hidden.length === 0) return;
+    for (const overlay of hidden) overlay.show();
+    log.info('Overlay shown');
+    updateTray();
   }
 
+  /** Show / hide: all windows together. */
+  function toggleAll(): void {
+    if (!overlays.some((o) => o.isVisible())) {
+      showAll();
+      return;
+    }
+    for (const overlay of overlays) overlay.hide();
+    log.info('Overlay hidden');
+    updateTray();
+  }
+
+  /** Opens a window of its own for an account, next to the others (or shows the one it has). */
+  function openWindow(account: string | null): void {
+    if (!overlays.some((o) => o.account === account)) {
+      settings.update({ windows: [...settings.get().windows, { ...DEFAULT_WINDOW, account }] });
+      const overlay = addOverlay(account, true);
+      log.info(`[${overlay.logName}] Overlay window opened`);
+      broadcast(); // the others get their close button
+    }
+    showAll();
+  }
+
+  /** Closes one account's window for good (× button, menu, Alt+F4) — the last one is only hidden. */
+  function closeWindow(overlay: Overlay, how: string): void {
+    if (overlays.length <= 1) {
+      overlay.hide();
+      log.info(`Overlay hidden (${how})`);
+      updateTray();
+      return;
+    }
+    overlays.splice(overlays.indexOf(overlay), 1);
+    overlay.dispose();
+    settings.update({ windows: settings.get().windows.filter((w) => w.account !== overlay.account) });
+    log.info(`[${overlay.logName}] Overlay window closed (${how})`);
+    broadcast(); // with one window left, it loses its close button
+  }
+
+  // --- Claude Code accounts -----------------------------------------------------------------------
   /** --claude-config-dir from a command line: an existing folder, null for the default, else undefined. */
   function folderFromArgs(argv: readonly string[], cwd: string): string | null | undefined {
     const dir = configDirArg(argv, cwd, process.platform);
@@ -542,32 +586,34 @@ function start(): void {
     return dir;
   }
 
+  /** The account a folder stands for (null = the default one); a new folder is added to the list. */
+  function resolveAccount(dir: string | null): string | null {
+    const { claudeCodeDirs, account } = chooseFolder(settings.get().claudeCodeDirs, dir, defaultLocation.dir, process.platform);
+    settings.update({ claudeCodeDirs });
+    return account;
+  }
+
   /**
-   * Shows another account (an added config folder, or null for the default one), adding the folder
-   * when it is new. Everything that belongs to an account follows: sign-in, credentials watch, cached
-   * snapshot, pace history and notification records.
+   * Shows another account (an added config folder, or null for the default one) in `overlay`,
+   * adding the folder when it is new. An account that has a window of its own is shown there instead.
    */
-  function switchAccount(dir: string | null): void {
-    const before = settings.get().claudeCodeDir;
-    settings.update(chooseFolder(settings.get().claudeCodeDirs, dir, defaultLocation.dir, process.platform));
-    if (settings.get().claudeCodeDir === before) {
+  function switchAccount(overlay: Overlay, dir: string | null): void {
+    const account = resolveAccount(dir);
+    if (overlays.some((o) => o !== overlay && o.account === account)) {
+      showAll();
       updateTray();
       return;
     }
-    location = locationOf(settings.get().claudeCodeDir);
-    stopWatchingCredentials();
-    stopWatchingCredentials = watchCredentials();
-    history = new UsageHistory(cli.mock ? null : accountFile('usage-history.json'));
-    forecast = {};
-    notifier.useRecords(cli.mock ? null : accountFile('notifications.json'));
-    lastSeenAt = null;
-    log.info(`Claude Code account → ${accountLogName()}`);
-    service.accountChanged(cli.mock ? null : loadSnapshot(accountFile('last-usage.json')));
+    overlay.switchAccount(account);
+    updateTray();
     void readAccounts();
   }
 
-  /** Menu → Add folder…: a folder picker, with a warning when the folder has no Claude Code files. */
-  async function addClaudeCodeDir(): Promise<void> {
+  /**
+   * Menu → Add folder…: a folder picker, with a warning when the folder has no Claude Code files.
+   * From a window's menu the window shows it; from the tray (several windows) it gets its own window.
+   */
+  async function addClaudeCodeDir(target: Overlay | null): Promise<void> {
     const result = await dialog.showOpenDialog({
       title: 'Add a Claude Code config folder',
       message: 'Choose the folder that CLAUDE_CONFIG_DIR points to for that account.',
@@ -593,10 +639,14 @@ function start(): void {
       });
       if (response !== 0) return;
     }
-    switchAccount(dir);
+    if (target && overlays.includes(target)) switchAccount(target, dir);
+    else {
+      openWindow(resolveAccount(dir));
+      void readAccounts();
+    }
   }
 
-  /** Reads every account's `.claude.json` (no secrets) for the menu and the card (mock runs: none). */
+  /** Reads every account's `.claude.json` (no secrets) for the menu and the cards (mock runs: none). */
   async function readAccounts(): Promise<void> {
     if (cli.mock) return;
     const dirs = [null, ...settings.get().claudeCodeDirs];
@@ -605,180 +655,49 @@ function start(): void {
     broadcast();
   }
 
-  // Every fresh snapshot: history, forecast, notifications, cache. Stale data (status not ok) is
-  // left alone.
-  let lastSeenAt: string | null = null;
-  service.on('change', () => {
-    const snapshot = service.snapshot;
-    if (service.status.kind === 'ok' && snapshot && snapshot.fetchedAt !== lastSeenAt) {
-      lastSeenAt = snapshot.fetchedAt;
-      history.add(snapshot);
-      forecast = history.forecasts(snapshot.meters);
-      if (!cli.screenshot) {
-        const { notifyAt, notifyReset } = settings.get();
-        notifier.check(snapshot, { thresholds: notifyAt, reset: notifyReset }, forecast);
-      }
-      if (!cli.mock) saveSnapshot(accountFile('last-usage.json'), snapshot);
-    }
-    broadcast();
-  });
+  /** An account where space is tight (tray tooltip, notifications, menu items): e-mail or folder. */
+  function shortLabel(account: string | null): string {
+    const email = accounts.get(account)?.email ?? overlays.find((o) => o.account === account)?.service.snapshot?.account?.email ?? null;
+    return accountShortLabel(account, email, settings.get().showAccount, home, process.platform);
+  }
 
-  // --- IPC (only accepted from our own overlay page) -------------------------------------------
-  const fromOverlay = (event: IpcMainEvent | IpcMainInvokeEvent) => event.sender === win.webContents;
+  // --- IPC (only accepted from our own overlay pages; routed to the window that sent it) ------------
+  const overlayOf = (event: IpcMainEvent | IpcMainInvokeEvent) =>
+    overlays.find((o) => !o.win.isDestroyed() && event.sender === o.win.webContents);
 
-  ipcMain.handle('state:get', (event) => (fromOverlay(event) ? state() : null));
-  ipcMain.on('usage:refresh', (event) => {
-    if (fromOverlay(event)) service.refreshNow();
-  });
-  ipcMain.on('view:set-compact', (event, compact: unknown) => {
-    if (fromOverlay(event) && typeof compact === 'boolean') actions.setCompact(compact);
+  ipcMain.handle('state:get', (event) => overlayOf(event)?.state() ?? null);
+  ipcMain.on('usage:refresh', (event) => overlayOf(event)?.refresh());
+  ipcMain.on('view:set-compact', (event, on: unknown) => {
+    const overlay = overlayOf(event);
+    if (!overlay || typeof on !== 'boolean') return;
+    overlay.setCompact(on);
+    updateTray();
   });
   ipcMain.on('menu:show', (event) => {
-    if (fromOverlay(event)) menu().popup({ window: win });
+    const overlay = overlayOf(event);
+    if (overlay) menuFor(overlay).popup({ window: overlay.win });
   });
-  ipcMain.on('claude-code:open', (event) => {
-    if (fromOverlay(event)) actions.openClaudeCode();
+  ipcMain.on('window:close', (event) => {
+    const overlay = overlayOf(event);
+    if (overlay && overlays.length > 1) closeWindow(overlay, 'close button');
   });
+  ipcMain.on('claude-code:open', (event) => overlayOf(event)?.openClaudeCode());
   ipcMain.on('page:visibility', (event, hidden: unknown) => {
-    if (fromOverlay(event) && typeof hidden === 'boolean') onPageVisibility(hidden);
+    const overlay = overlayOf(event);
+    if (overlay && typeof hidden === 'boolean') overlay.pageVisibility(hidden);
   });
   ipcMain.on('window:resize', (event, width: unknown, height: unknown) => {
-    if (!fromOverlay(event) || typeof width !== 'number' || typeof height !== 'number') return;
-    contentSize = { width, height };
-    // Before the first show, a restored position keeps its top-left corner (see fitToContent).
-    fit(shown || !restoredPosition);
-    if (!shown) showFirstTime();
+    const overlay = overlayOf(event);
+    if (overlay && typeof width === 'number' && typeof height === 'number') overlay.resized(width, height);
   });
 
-  // --- Window behaviour ---------------------------------------------------------------------------
-  /** Fits the window to the content at the current size setting (CSS pixels x zoom factor = DIPs). */
-  function fit(keepNearestEdge: boolean): void {
-    if (!contentSize || dragging) return;
-    const { scale } = settings.get();
-    fitToContent(win, contentSize.width * scale, contentSize.height * scale, keepNearestEdge);
-  }
-
-  function showFirstTime(): void {
-    shown = true;
-    if (showWhenFitted) win.showInactive();
-    updateTray();
-    if (cli.screenshot) void captureAndQuit(win, cli.screenshot);
-  }
-
-  let firstShowTimer: NodeJS.Timeout | null = null;
-  let moveTimer: NodeJS.Timeout | null = null;
-
-  /** Wires up the current window; called again for a rebuilt one (recreateWindow). */
-  function attachWindowHandlers(): void {
-    const target = win; // events of a window that was replaced meanwhile are ignored
-
-    // Chromium remembers a zoom level per page (userData/Preferences) and prefers it to
-    // webPreferences.zoomFactor, so apply the Size setting again as soon as the page is committed.
-    win.webContents.on('did-navigate', () => win.webContents.setZoomFactor(settings.get().scale));
-    win.on('show', updateHover);
-    win.on('hide', updateHover);
-
-    // Ctrl/Cmd + plus / minus / 0 and Ctrl + mouse wheel step through the Size options, so the
-    // window always fits (plain page zoom would leave it cropped or with empty space).
-    win.webContents.on('before-input-event', (event, input) => {
-      const primary = process.platform === 'darwin' ? input.meta : input.control; // not Win+plus (Magnifier)
-      if (input.type !== 'keyDown' || !primary || input.alt) return;
-      const step = input.key === '+' || input.key === '=' ? 1 : input.key === '-' ? -1 : input.key === '0' ? 0 : null;
-      if (step === null) return;
-      event.preventDefault();
-      actions.setScale(step === 0 ? 1 : stepScale(settings.get().scale, step));
-    });
-    win.webContents.on('zoom-changed', (_event, direction) => {
-      actions.setScale(stepScale(settings.get().scale, direction === 'in' ? 1 : -1));
-    });
-
-    // Fallback in case the renderer never reports a size.
-    if (firstShowTimer) clearTimeout(firstShowTimer);
-    firstShowTimer = setTimeout(() => {
-      if (!shown && win === target) showFirstTime();
-    }, 2500);
-
-    // No resizing while the user drags the overlay. Crossing onto a display with another scale factor
-    // makes the renderer report a slightly different size mid-drag, and a setBounds then made the
-    // overlay jump back to where it crossed once it was dropped (D44). Fit after the drop instead.
-    // Windows sends 'will-move' throughout the drag and 'moved' once at its end; on macOS 'moved' is an
-    // alias of 'move', so there the flag only lasts one step; Linux sends neither.
-    win.on('will-move', () => {
-      dragging = true;
-    });
-    win.on('moved', () => {
-      dragging = false;
-      fit(true);
-    });
-    win.on('move', () => {
-      if (moveTimer) clearTimeout(moveTimer);
-      moveTimer = setTimeout(() => {
-        if (win.isDestroyed()) return;
-        const [x, y] = win.getPosition();
-        if (x !== undefined && y !== undefined) settings.update({ position: { x, y } });
-      }, 400);
-    });
-
-    // Right-clicking the drag area on Windows opens the native system menu; show ours instead.
-    win.on('system-context-menu', (event) => {
-      event.preventDefault();
-      menu().popup({ window: win });
-    });
-
-    // Alt+F4 & co. hide the overlay instead of leaving a window-less tray app.
-    win.on('close', (event) => {
-      if (quitting) return;
-      event.preventDefault();
-      win.hide();
-      log.info('Overlay hidden (window closed)');
-      updateTray();
-    });
-
-    // The page's renderer process died (crash, out of memory, killed): a transparent window then
-    // shows nothing at all, and Electron doesn't reload by itself.
-    win.webContents.on('render-process-gone', (_event, details) => {
-      if (win !== target || quitting || isCleanExit(details)) return;
-      log.error(describeProcessGone('Overlay renderer', details));
-      if (!reloadBudget.take()) {
-        log.error('The overlay page keeps crashing; not reloading it again (quit and start the app)');
-        return;
-      }
-      log.info('Reloading the overlay page');
-      win.webContents.reload();
-    });
-    win.webContents.on('unresponsive', () => log.warn('The overlay page stopped responding'));
-    win.webContents.on('responsive', () => log.info('The overlay page responds again'));
-  }
-  attachWindowHandlers();
-
-  /**
-   * Replaces the overlay window with a new one at the same place, shown if the old one was: after
-   * the GPU process died (a transparent window can stay blank afterwards; hide/show doesn't repaint
-   * it) and from menu → Reload overlay, for an overlay that is "shown" but not on the screen. For
-   * the window this is what a restart does, without restarting the app (D60).
-   */
-  function recreateWindow(reason: string): void {
-    if (quitting || cli.screenshot || win.isDestroyed()) return;
-    log.warn(`Rebuilding the overlay window: ${reason}`);
-    const old = win;
-    const bounds = old.getBounds();
-    showWhenFitted = old.isVisible();
-    hover.setActive(false);
-    old.removeAllListeners(); // destroy() skips 'close' anyway; nothing else of the old window matters now
-    old.destroy();
-    ({ win, restoredPosition } = createOverlayWindow(settings.get(), bounds));
-    shown = false;
-    contentSize = null; // the new page reports its size, then the window is fitted and shown
-    attachWindowHandlers();
-    updateTray();
-  }
-
+  // --- Displays, helper processes, power ----------------------------------------------------------
   // One log line per burst: a monitor change fires 'display-metrics-changed' several times in a row.
   let displaysLogTimer: NodeJS.Timeout | null = null;
   const onDisplaysChanged = (what: string) => () => {
     if (displaysLogTimer) clearTimeout(displaysLogTimer);
     displaysLogTimer = setTimeout(() => log.info(`Displays changed (${what}): ${screen.getAllDisplays().length} display(s)`), 1000);
-    ensureOnScreen(win);
+    for (const overlay of overlays) overlay.ensureOnScreen();
     updateTray();
   };
   screen.on('display-added', onDisplaysChanged('added'));
@@ -786,49 +705,19 @@ function start(): void {
   screen.on('display-metrics-changed', onDisplaysChanged('metrics'));
 
   // A helper process died. Chromium starts a new GPU process itself, but a transparent window can
-  // stay blank afterwards: rebuild the overlay window. Other helpers are only logged.
+  // stay blank afterwards: rebuild the overlay windows. Other helpers are only logged.
   app.on('child-process-gone', (_event, details) => {
     if (quitting || isCleanExit(details)) return;
     log.warn(describeProcessGone(details.type, details));
     if (details.type !== 'GPU') return;
     if (!rebuildBudget.take()) {
-      log.error('The GPU process keeps dying; not rebuilding the overlay window again');
+      log.error('The GPU process keeps dying; not rebuilding the overlay windows again');
       return;
     }
-    setTimeout(() => recreateWindow('the GPU process died'), 1000);
+    setTimeout(() => {
+      for (const overlay of overlays) overlay.recreateWindow('the GPU process died');
+    }, 1000);
   });
-
-  // --- Blank-overlay watchdog (D60, Windows only) -----------------------------------------------
-  // The page reports "hidden" although the window is shown and on top: Chromium has stopped drawing
-  // the overlay (its occlusion tracker believes the window is covered). With the tracker off this
-  // shouldn't happen; if it does, a new window gets a fresh calculation, and when that one is hidden
-  // too the state is process-wide — then the app restarts itself (at most once per 30 min). macOS
-  // hides the page of a covered window by design and shows it again reliably, so no watchdog there.
-  let blankTimer: NodeJS.Timeout | null = null;
-  let lastBlankRebuild = 0;
-  let screenLocked = false;
-  const relaunchBudget = new AttemptBudget(1, 30 * 60_000);
-  function onPageVisibility(hidden: boolean): void {
-    if (blankTimer) clearTimeout(blankTimer);
-    blankTimer = null;
-    if (!hidden || process.platform !== 'win32') return;
-    blankTimer = setTimeout(() => {
-      blankTimer = null;
-      if (quitting || cli.screenshot || win.isDestroyed() || !win.isVisible() || !settings.get().alwaysOnTop || screenLocked) return;
-      log.error('The overlay page is hidden while its window is shown: Chromium stopped drawing the overlay');
-      if (Date.now() - lastBlankRebuild < 60_000) {
-        if (!relaunchBudget.take()) {
-          log.error('Still blank after a rebuild; not restarting again within 30 min (menu → Restart Claude Usage)');
-          return;
-        }
-        log.warn('Restarting the app');
-        relaunchApp();
-        return;
-      }
-      lastBlankRebuild = Date.now();
-      recreateWindow('the page is hidden while the window is shown');
-    }, 5000);
-  }
 
   /** Starts the app again and quits; a downloaded update is installed on the way (it restarts too). */
   function relaunchApp(): void {
@@ -840,8 +729,18 @@ function start(): void {
     app.quit();
   }
 
+  // Claude Desktop rewrites its history about every 15 min; pick new samples up right away.
+  const stopWatchingDesktop = cli.mock
+    ? () => {}
+    : watchDesktopHistory(desktopDirs, () => {
+        for (const overlay of overlays) overlay.service.desktopHistoryChanged();
+      });
+
   // Timers are unreliable across sleep; refresh once the network is likely back.
-  const refreshSoon = () => setTimeout(() => service.refreshNow(), 5000);
+  const refreshSoon = () =>
+    setTimeout(() => {
+      for (const overlay of overlays) overlay.refresh();
+    }, 5000);
   powerMonitor.on('resume', refreshSoon);
   powerMonitor.on('unlock-screen', refreshSoon);
   powerMonitor.on('lock-screen', () => {
@@ -853,11 +752,13 @@ function start(): void {
     log.info('Screen unlocked');
   });
 
-  // Started again (e.g. from an account's own .bat with --claude-config-dir): switch, then show.
+  // Started again (e.g. from an account's own .bat with --claude-config-dir): that account's window,
+  // or the main window switches to it; then everything shows.
   app.on('second-instance', (_event, argv, workingDirectory) => {
     const dir = folderFromArgs(argv, workingDirectory);
-    if (dir !== undefined) switchAccount(dir);
-    showOverlay();
+    const main = overlays[0];
+    if (dir !== undefined && main) switchAccount(main, dir);
+    showAll();
   });
   app.on('window-all-closed', () => {
     // Keep running in the tray.
@@ -866,16 +767,23 @@ function start(): void {
     quitting = true;
     log.info('Quitting');
     stopWatchingDesktop();
-    stopWatchingCredentials();
-    hover.setActive(false);
-    service.stop();
+    for (const overlay of overlays) overlay.stop();
     updater.stop();
     settings.flush();
     tray.destroy();
   });
   app.on('will-quit', () => unregisterShortcuts());
 
-  service.start();
+  // Screenshot runs: every window is captured once the first one has been shown.
+  let captureStarted = false;
+  function captureOnce(file: string): void {
+    if (captureStarted) return;
+    captureStarted = true;
+    void captureAndQuit(() => overlays.map((o) => o.win), file);
+  }
+
+  for (const { account } of settings.get().windows) addOverlay(account, true);
+  updateTray();
   updater.start();
   void readAccounts();
 }
@@ -896,14 +804,18 @@ async function showAbout(): Promise<void> {
   });
 }
 
-async function captureAndQuit(win: BrowserWindow, file: string): Promise<void> {
+/** Saves every window to a PNG: the first to `file`, the others to `<file>-2.png`, `<file>-3.png` … */
+async function captureAndQuit(windows: () => BrowserWindow[], file: string): Promise<void> {
   await new Promise((r) => setTimeout(r, 1500)); // let data arrive and animations settle
-  try {
-    const image = await win.webContents.capturePage();
-    await writeFile(file, image.toPNG());
-    console.log(`Screenshot saved to ${file}`);
-  } catch (err) {
-    console.error('Screenshot failed:', err);
+  for (const [i, win] of windows().entries()) {
+    const target = i === 0 ? file : file.replace(/(\.png)?$/i, `-${i + 1}.png`);
+    try {
+      const image = await win.webContents.capturePage();
+      await writeFile(target, image.toPNG());
+      console.log(`Screenshot saved to ${target}`);
+    } catch (err) {
+      console.error('Screenshot failed:', err);
+    }
   }
   app.exit(0);
 }

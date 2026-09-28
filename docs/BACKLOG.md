@@ -14,6 +14,7 @@ technical notes, acceptance criteria, a manual test checklist, a ready-to-paste 
 | 4 | UX: notifications, click-through, shortcut, size, pace forecast, theme | ✅ Done (2026-09-26) | [phase-4-ux.md](phases/phase-4-ux.md) |
 | 5 | App auto-update | ✅ Done (2026-09-26) — real-release test (1.0.0 → 1.1.0) by the owner | [phase-5-auto-update.md](phases/phase-5-auto-update.md) |
 | 6 | Several Claude Code accounts (config folders) with a switcher | ✅ Done (2026-09-26) — version 1.1.0 | [phase-6-accounts.md](phases/phase-6-accounts.md) |
+| 7 | A window per Claude Code account (several shown at once, each closable) | ✅ Done (2026-09-28) — not released yet | [phase-7-account-windows.md](phases/phase-7-account-windows.md) |
 
 **Running a phase:** open a new Claude Code session in this repo, open the phase file, copy the
 text in its **Prompt** block, paste it, send. Run phases in order, one per session.
@@ -53,8 +54,8 @@ Phases table in docs/BACKLOG.md. Don't implement anything yet — show me the pl
 
 Move an idea into a phase file (with the "Plan a new phase" prompt) when it's time to build it.
 
-- Several accounts shown at the same time (Phase 6 switches between them, one at a time). (No
-  claude.ai sign-ins — D28.)
+- One combined card with every account's limits (Phase 7 gives each account its own window);
+  per-window look settings (size, opacity, theme are shared today). (No claude.ai sign-ins — D28.)
 - Weekly usage history sparkline (Claude Desktop's `plan-usage-history.json` keeps 30 days of
   samples; `desktop-source.ts` already parses it).
 - Other providers (e.g. Codex) side by side.
