@@ -17,6 +17,7 @@ technical notes, acceptance criteria, a manual test checklist, a ready-to-paste 
 | 7 | A window per Claude Code account (several shown at once, each closable) | ✅ Done (2026-09-28) — released as 1.3.0 | [phase-7-account-windows.md](phases/phase-7-account-windows.md) |
 | 8 | Sign in through Claude Code (`claude auth login`), install help, background renewal | ✅ Done (2026-09-28) — released as 1.4.0 (fix in 1.4.1); browser sign-in, install and a really expired token: owner's manual tests | [phase-8-sign-in.md](phases/phase-8-sign-in.md) |
 | 9 | Project website on GitHub Pages (landing page, downloads, FAQ) | ✅ Done (2026-09-29) — live after the owner switches Pages to *GitHub Actions* | [phase-9-website.md](phases/phase-9-website.md) |
+| 10 | Show the overlay on one virtual desktop (Windows desktops listed; macOS / Linux X11: this desktop only) | ⏭️ Next — planned 2026-09-29; `koffi` approved (D78) | [phase-10-virtual-desktops.md](phases/phase-10-virtual-desktops.md) |
 
 **Running a phase:** open a new Claude Code session in this repo, open the phase file, copy the
 text in its **Prompt** block, paste it, send. Run phases in order, one per session.

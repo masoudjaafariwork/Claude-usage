@@ -15,6 +15,7 @@ Living record of where the project stands. Update it at the end of every session
 | [7 — A window per Claude Code account](phases/phase-7-account-windows.md) | ✅ Done (2026-09-28) — released as 1.3.0 |
 | [8 — Sign in through Claude Code, keep the sign-in fresh](phases/phase-8-sign-in.md) | ✅ Done (2026-09-28) — released as 1.4.0, fix D72 in 1.4.1; browser sign-in, install and renewal of a really expired token: owner's manual tests |
 | [9 — Project website (GitHub Pages)](phases/phase-9-website.md) | ✅ Built (2026-09-29) — goes live when the owner switches Pages to *GitHub Actions* and pushes |
+| [10 — Show the overlay on one virtual desktop](phases/phase-10-virtual-desktops.md) | ⏭️ Next — planned 2026-09-29; runtime dependency `koffi` approved (D78) |
 
 Each phase has its own plan file in [`phases/`](phases/) (scope, notes, acceptance criteria,
 ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLOG.md).
@@ -203,6 +204,7 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D75 | **Download links are filled in at build time from `releases/latest`** (GitHub API; `GITHUB_TOKEN` in CI): version, date, and per installer its direct URL, name and size (`ASSETS` in `site.mjs` = D46 names). A missing file links to the release page; in CI an unreadable release fails the build, locally it falls back to the Releases page. Publishing a release rebuilds the site: the `release` run (on the tag, which the `github-pages` environment won't deploy) only starts `pages.yml` again on `main` (`gh workflow run`, allowed with `GITHUB_TOKEN`). `app.js` only picks the visitor's OS file from the links already on the page | Visitors' browsers never call the GitHub API (no 60-per-hour limit, no request to another site, works without JavaScript) and the version in the JSON-LD is right for crawlers. The release event is the only moment the links change. |
 | D76 | **The site's overlay images are generated** (`npm run site:images`: mock scenarios at 2× pixel density — dark / light hero card and pill at Size 115 %, the three severity levels, light theme, several accounts, renewing, first run, expired, via Claude Desktop, locked — plus icons from `make-icon.mjs`), committed in `site/images/` (~2.5 MB); `{{dims:…}}` reads each PNG's size at build time. CLAUDE.md → Finish: re-render with UI changes and keep the page's text as true as the README | Same rule as the README images (D43) and the social preview (D58): the page can't drift from the app. 2× keeps text sharp on high-DPI screens; sizes from the file keep a re-rendered image at its natural size. The social preview is copied in at build time (one source). |
 | D77 | **The website tracks nobody and makes no third-party request:** no analytics, cookies, web fonts or CDNs; CSP `default-src 'self'` in a meta tag (Pages can't send headers), no inline script or style. States only what the README states (only Windows 11 tested, unsigned builds, not affiliated with Anthropic); no Apple / Microsoft logos (their trademark rules) | The app's "no telemetry" promise would sound hollow on a page that tracks its visitors. The honest notes are what an open-source user checks first. |
+| D78 | **Phase 10 (one virtual desktop) on Windows = real placement:** the public, documented `IVirtualDesktopManager` (`MoveWindowToDesktop`, `GetWindowDesktopId`, `IsWindowOnCurrentVirtualDesktop`) called in the main process through **`koffi`** (second runtime dependency, MIT, Node-API, ~1 MB on Windows; approved by the owner 2026-09-29, loaded lazily on Windows only). A window on one desktop keeps a taskbar button; *All desktops* stays today's no-button state. Never the undocumented `IVirtualDesktopManagerInternal` / pinning interfaces. The dependency-free "mimic" (hide while another desktop is current) was the rejected alternative | Session 31 experiments: a window without a taskbar button belongs to no desktop (on all), `MoveWindowToDesktop` is refused for another process's window (`E_ACCESSDENIED`), so the call must run in-process, and Node / Electron have no FFI of their own; placement by Windows moves with the switch animation and needs no polling. The undocumented IIDs changed five times since 2021 (twice in monthly updates) |
 | D49 | **Version 1.0.0** for the first release with the updater (0.2.0 → 1.0.0; no 0.3.x). The real-release updater test becomes 1.0.0 → 1.0.1. README says openly that only Windows 11 is tested; macOS and Linux builds are CI-built but never run | Owner's choice (2026-09-26): all planned phases are done. Recommended first was 0.3.0 → 0.3.1 for the test and 1.0.0 once it passed; the owner preferred 1.0.0 now. Technically the same: a broken updater in the first updater version needs one manual install either way. |
 
 ## Usage API notes (observed 2026-09-24)
@@ -1067,3 +1069,29 @@ Kept for the record in case Anthropic ever offers an official way.
   frame's left edge). The stage now hugs the card (`width: fit-content`) with the same margin on
   both sides, the pill is centred under it, the editor window peeks out at the top left; `site:shot`
   also captures 1024 px (checked at 1280, 1024 and 390 px).
+
+### 2026-09-29 — Session 31: virtual desktops researched; Phase 10 planned (no code change)
+
+- The owner asked for a menu that lists the OS's virtual desktops and shows the overlay on only the
+  chosen one (one monitor: park the overlay on a desktop of its own), default all desktops. Asked to
+  check first whether it is possible, then plan the phase.
+- Found on this machine (Windows 11 23H2, three, later four desktops; throw-away off-screen test
+  windows only, the owner's desktop never switched): the installed 1.4.1 overlay belongs to no
+  desktop (`GetWindowDesktopId` = `GUID_NULL`) and is therefore on all of them — because it has no
+  taskbar button. `ITaskbarList::AddTab` puts a window on the current desktop and `DeleteTab` takes
+  it off again; `MoveWindowToDesktop` does nothing for a window without a button and returns
+  `E_ACCESSDENIED` for another process's window; after hide → show a window lands on the current
+  desktop until it is moved again. The registry (`VirtualDesktopIDs`, `CurrentVirtualDesktop`)
+  followed the owner's switches and a new desktop live; `Desktops\` held a stale GUID.
+- Spike in Electron 44.4.5 with koffi 3.3.2 in the scratchpad (not the repo): registry read in
+  1 ms, `CoCreateInstance` fine on Electron's main thread, `setSkipTaskbar(false)` + an immediate
+  `MoveWindowToDesktop` placed the window on desktop 2, re-applied after hide/show,
+  `setSkipTaskbar(true)` put it back on all desktops.
+- Web research (a subagent): no public API lists desktops on Windows or Spaces on macOS; the
+  undocumented Windows interfaces change IIDs even in monthly updates; Electron's
+  `setVisibleOnAllWorkspaces` is macOS / Linux only (X11 `false` pins to the current workspace,
+  Wayland no-op); Node 24 in Electron 44 has no FFI; Notezilla solved the same problem by giving
+  its notes top-level windows.
+- The owner chose real placement with `koffi` over a dependency-free "mimic" (D78). Phase 10
+  planned (`phases/phase-10-virtual-desktops.md`), BACKLOG row added. Nothing implemented; the
+  Electron book gets its chapter with the implementation.
