@@ -136,8 +136,10 @@ changes only.
 ## 6. Watch CI
 
 Start `npm run release:check -- ci <v> --wait` in the background (Bash `run_in_background`); it
-asks GitHub every 90 s and ends with the run's result (~10–15 min; exit 0 = success). Do steps 7
-and 10 meanwhile.
+asks GitHub every 90 s and ends with the run's result (~10–15 min; exit 0 = success). Run it as is,
+not piped into `tail`: a pipe reports `tail`'s exit code (1.6.0: a network error looked like
+success). Network errors are retried; if it still ends without a result, run `ci <v>` once. Do
+steps 7 and 10 meanwhile.
 
 - **Success** → all three builds and *Draft GitHub Release* passed; the draft exists with the files.
 - **Failure** → which job failed. Known flake: macOS `watchDesktopHistory` (FSEvents, sessions 16

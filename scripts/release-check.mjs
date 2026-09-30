@@ -296,10 +296,15 @@ async function ci(v) {
         }
       }
     } catch (err) {
-      if (!wait || !err.reset) throw err;
-      console.log(`${clock()}  ${err.message}; waiting`);
-      await sleep(Math.max(err.reset - Date.now(), 0) + 5_000);
-      continue;
+      if (!wait) throw err;
+      if (err.reset) {
+        console.log(`${clock()}  ${err.message}; waiting`);
+        await sleep(Math.max(err.reset - Date.now(), 0) + 5_000);
+        continue;
+      }
+      // fetch() rejects with a TypeError when the network is gone (e.g. the computer slept): ask again later.
+      if (err.name !== 'TypeError') throw err;
+      console.log(`${clock()}  ${err.message} (network); trying again`);
     }
     if (Date.now() - started > 60 * 60_000) {
       console.log('Still running after 60 minutes — check the Actions tab.');
