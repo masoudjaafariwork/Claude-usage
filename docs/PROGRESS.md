@@ -15,7 +15,7 @@ Living record of where the project stands. Update it at the end of every session
 | [7 — A window per Claude Code account](phases/phase-7-account-windows.md) | ✅ Done (2026-09-28) — released as 1.3.0 |
 | [8 — Sign in through Claude Code, keep the sign-in fresh](phases/phase-8-sign-in.md) | ✅ Done (2026-09-28) — released as 1.4.0, fix D72 in 1.4.1; browser sign-in, install and renewal of a really expired token: owner's manual tests |
 | [9 — Project website (GitHub Pages)](phases/phase-9-website.md) | ✅ Built (2026-09-29) — goes live when the owner switches Pages to *GitHub Actions* and pushes |
-| [10 — Show the overlay on one virtual desktop](phases/phase-10-virtual-desktops.md) | ✅ Done (2026-09-30) — not released yet; owner's manual tests pending (real tray click on another desktop, Task View drag, removed desktop) |
+| [10 — Show the overlay on one virtual desktop](phases/phase-10-virtual-desktops.md) | ✅ Done (2026-09-30) — released as 1.5.0; owner's manual tests pending (real tray click on another desktop, Task View drag, removed desktop) |
 
 Each phase has its own plan file in [`phases/`](phases/) (scope, notes, acceptance criteria,
 ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLOG.md).
@@ -221,6 +221,7 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D81 | **macOS / Linux: all or only this one.** `setVisibleOnAllWorkspaces(true, { visibleOnFullScreen })` / `(false, { visibleOnFullScreen: true, skipTransformProcessType: true })` on macOS, `setVisibleOnAllWorkspaces(!choice)` on Linux X11 after the first show; once per window. Linux now applies *All workspaces* by default (was: the first workspace). Wayland (`XDG_SESSION_TYPE=wayland` / `WAYLAND_DISPLAY`, not forced to X11) → *Not available on Wayland*. Menu *Show on workspace* on Linux | No public API lists Spaces or workspaces or moves a window to one (Apple DTS; X11 would need `wmctrl`-like native code); without `skipTransformProcessType` Electron calls `DockShow()` for the `LSUIElement` app. X11 sets sticky / `_NET_WM_DESKTOP` with a message about a mapped window. Chromium's Wayland backend ignores it. Untested (no Mac, no Linux) |
 | D82 | **koffi packaging and loading.** `"koffi": "3.3.2"` (exact), `external` in `scripts/build.mjs` (like `electron-updater`); electron-builder puts the native `.node` file into `app.asar.unpacked` by itself. Loaded with `require` inside `WindowsDesktopApi.load()` the first time a menu needs the desktop list (at startup, for the tray menu; ~10 ms), never on macOS / Linux; any failure → one log line, *Not available on this computer*, the overlay stays on all desktops. One COM object, released on quit | Native code can take the whole app down, so: pinned, lazy, failure contained. A static `import` would run at startup and a missing module would stop the app. Verified: `dist:win` → `win-unpacked` (the installer's content) and the portable exe load koffi and move the window; a renamed `node_modules/koffi` gives the disabled line |
 | D83 | **Releases go through the `/release` project skill** (`.claude/skills/release/SKILL.md`) with `npm run release:check` (`scripts/release-check.mjs`, Node built-ins + git). `pre [x.y.z]`: on `main`, clean tree, not behind `origin/main`, tag free here and on GitHub, `package.json` = lock version, release config (publish = draft, D46 file names, `latest*.yml` upload, `APP_ID` = `build.appId`), `npm ls`; the commits since the last tag with their SemVer effect (`feat` → minor; `fix` / `perf` / `refactor` / `build` / `revert` → patch; `!` or `BREAKING CHANGE` → major; scopes `site` / `docs` / `readme` / `ci` don't count; app files changed under other types → patch) and a suggested version; docs lines waiting for a version. `ci x.y.z [--wait]`: the tag's release run (every 90 s). `post x.y.z`: `releases/latest` is the version and not a pre-release, all 9 files, every `latest*.yml` names the version and points at attached files with matching size and a sha512, the website links to it. Tags are annotated from now on (`git tag -a`), pushed by name; release files are staged by name. The skill also records the release (decision, status, session log, phase files, Electron book) and drafts the notes; the owner still publishes the draft by hand. `.gitignore`'s `release/` is anchored to the root (`/release/`), so the skill's folder isn't ignored | Owner's request (2026-09-30): one repeatable procedure that keeps every rule learned so far — SemVer (D49 / D55 / D65 / D71 / D73), D46's 404 and hash traps, the pushed commit message of session 29, parallel sessions in one working tree, the flaky macOS test of sessions 16 and 24. A script makes the mechanical checks identical every time; the skill keeps the judgement (version, notes, docs). Annotated tags carry date and author and are what `git describe` uses by default; the lightweight tags up to v1.4.1 stay. GitHub is read without a token (`gh` isn't signed in here): `pre` needs none, a whole `ci --wait` ≈ 12 requests, `post` 1 plus three file downloads |
+| D84 | **Version 1.5.0** for Phase 10 (show the overlay on one virtual desktop) | Semantic Versioning: a new feature that breaks nothing is a minor version (as D49 / D55 / D65 / D71 / D73). Settings of 1.4.1 are read unchanged (every window starts on all desktops); going back to 1.4.1 only forgets the desktop choice. On Linux X11 the overlay is now on all workspaces by default (D81). First release with a native runtime dependency (koffi, D78 / D82): the local `dist:win` checked the Windows packages, the dmg / AppImage / deb are first built by this release's CI. The website (Phase 9) and the `/release` skill (D83) are in the same range but don't change the app. The first release made with `/release` |
 | D49 | **Version 1.0.0** for the first release with the updater (0.2.0 → 1.0.0; no 0.3.x). The real-release updater test becomes 1.0.0 → 1.0.1. README says openly that only Windows 11 is tested; macOS and Linux builds are CI-built but never run | Owner's choice (2026-09-26): all planned phases are done. Recommended first was 0.3.0 → 0.3.1 for the test and 1.0.0 once it passed; the owner preferred 1.0.0 now. Technically the same: a broken updater in the first updater version needs one manual install either way. |
 
 ## Usage API notes (observed 2026-09-24)
@@ -505,7 +506,7 @@ Kept for the record in case Anthropic ever offers an official way.
     hide an overlay the user can't see; after a restart it opens on the active Space. Linux X11 now
     puts the overlay on all workspaces by default.
   - koffi is loaded at startup on Windows (the tray menu needs the list), ~10 ms. CI builds of the
-    dmg / AppImage / deb with koffi haven't run yet (the next release shows it).
+    dmg / AppImage / deb with koffi haven't run yet (the 1.5.0 release run shows it).
   - Mock runs keep a chosen desktop in `mock-data/settings.json`: a mock window can open on another
     desktop.
 
@@ -1177,3 +1178,19 @@ Kept for the record in case Anthropic ever offers an official way.
 - Noticed, not changed: `rel.json` in the repo root is a GitHub API rate-limit error that was
   committed by accident in `8c06922` (a commit whose message is a shell command); the owner decides
   whether to delete it.
+
+### 2026-09-30 — Session 34: release 1.5.0
+
+- The owner asked for a new release (`/release`, the skill's first run, D83). Since v1.4.1: Phase 10
+  (D78–D82) → 1.5.0 (D84); the website (Phase 9) and the release skill are in the range but don't
+  change the app.
+- `release:check pre`: everything ok, one warning — packaging inputs changed (koffi,
+  `scripts/build.mjs`). `npm run check` passed (190 tests), `npm run build`; `npm version 1.5.0
+  --no-git-tag-version`; `npm run dist:win`: `Claude-Usage-Setup-1.5.0.exe`,
+  `Claude-Usage-1.5.0-Portable.exe`, `latest.yml` with `version: 1.5.0`; koffi in `app.asar`, its
+  `.node` file in `app.asar.unpacked/node_modules/@koromix/koffi-win32-x64` (koffi 3.3.2 ships the
+  binary in a per-platform package; the lock has the darwin / linux ones for CI). The packaged app
+  wasn't started (it shares userData with the installed copy).
+- Commit, `main` pushed, annotated tag `v1.5.0` pushed → the release workflow builds the draft; the
+  owner publishes it by hand. Release notes drafted for the owner.
+- Docs: phase 10 marked "released as 1.5.0" (PROGRESS, BACKLOG, phase file).

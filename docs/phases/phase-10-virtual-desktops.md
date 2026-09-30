@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| **Status** | ✅ Done (2026-09-30) — owner's manual tests pending (a real tray click on another desktop, a Task View drag, removing a desktop) |
+| **Status** | ✅ Done (2026-09-30) — released as 1.5.0; owner's manual tests pending (a real tray click on another desktop, a Task View drag, removing a desktop) |
 | **Depends on** | Phase 7 (a window per account: per-window settings, window vs. tray menu) |
 | **Size** | One Claude Code session |
 
@@ -382,6 +382,5 @@ same adoption), Explorer restarting (taskbar recreated), clicking the taskbar bu
 Windows 10, the very first show after start (the window is uncloaked for < 1 ms before the move; not
 measured), macOS and Linux (no machines), and CI builds on macOS / Linux with koffi.
 
-**Follow-ups:** the owner's manual tests below; a release (a new feature → 1.5.0 by D49/D55 practice,
-the owner's decision); macOS can't tell a window on another Space, so the shortcut there may hide an
+**Follow-ups:** the owner's manual tests below; released as 1.5.0 (D84); macOS can't tell a window on another Space, so the shortcut there may hide an
 overlay the user can't see (no public API).
