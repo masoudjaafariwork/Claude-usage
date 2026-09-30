@@ -40,11 +40,21 @@ export class TrayController {
   private readonly tray: Tray;
   private iconKey = '';
 
-  constructor(onClick: () => void) {
+  /**
+   * @param onHover the cursor is on the icon (Windows, macOS), e.g. to rebuild the menu with fresh
+   *   data before a right-click opens it (the virtual desktops, Phase 10); at most once a second.
+   */
+  constructor(onClick: () => void, onHover: () => void) {
     this.tray = new Tray(this.icon(null, 'normal', false, false));
     this.tray.setToolTip('Claude Usage');
     // On macOS any click opens the context menu; elsewhere a left click toggles the overlay.
     if (process.platform !== 'darwin') this.tray.on('click', onClick);
+    let lastHover = 0;
+    this.tray.on('mouse-move', () => {
+      if (Date.now() - lastHover < 1000) return;
+      lastHover = Date.now();
+      onHover();
+    });
   }
 
   /** `accounts`: one per open window; the ring shows the most constrained limit among all of them. */

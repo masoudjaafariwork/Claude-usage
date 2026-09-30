@@ -8,6 +8,7 @@ import { OPACITY_OPTIONS, REFRESH_INTERVAL_OPTIONS_SEC, SCALE_OPTIONS, type Sett
 import { shortcutLabel, type ShortcutState, type ShortcutsStatus } from './shortcuts-core';
 import { dotPng } from './tray-icon';
 import type { UpdateMenuItem } from './update-core';
+import type { DesktopChoice, DesktopMenuEntry } from './virtual-desktops-core';
 
 let updateDot: NativeImage | null = null;
 
@@ -55,6 +56,8 @@ export interface MenuActions {
   setRefreshInterval(seconds: number): void;
   moveToDisplay(displayId: number): void;
   resetPosition(): void;
+  /** Show the window on one virtual desktop, or on all of them (null) (Phase 10). */
+  setDesktop(choice: DesktopChoice | null): void;
   setLaunchAtLogin(on: boolean): void;
   setSource(mode: SourceMode): void;
   /** Show another Claude Code account in this window: an added config folder, or null for the default one. */
@@ -89,6 +92,7 @@ export interface MenuActions {
 }
 
 export interface MenuContext {
+  /** Some window can be seen on this (virtual) desktop: the first item says *Hide*, else *Show*. */
   windowVisible: boolean;
   /** How many overlay windows are open (one per account, Phase 7). */
   windowCount: number;
@@ -113,6 +117,8 @@ export interface MenuContext {
   notificationsSupported: boolean;
   /** The updates item: at the top when there is something to do, else next to About. */
   update: UpdateMenuItem;
+  /** *Show on desktop* ▸ (virtual-desktops-core.ts builds the entries). */
+  desktops: { title: string; entries: readonly DesktopMenuEntry[] };
 }
 
 /** Shows a working global shortcut next to its menu item (the menu doesn't register it again). */
@@ -285,6 +291,14 @@ export function buildMenu(settings: Readonly<Settings>, context: MenuContext, ac
         checked: settings.refreshIntervalSec === seconds,
         click: () => actions.setRefreshInterval(seconds),
       })),
+    },
+    {
+      label: context.desktops.title,
+      submenu: context.desktops.entries.map((entry): MenuItemConstructorOptions => {
+        if (entry.kind === 'separator') return { type: 'separator' };
+        if (entry.kind === 'note') return { label: entry.label, enabled: false };
+        return { label: entry.label, type: 'radio', checked: entry.checked, click: () => actions.setDesktop(entry.choice) };
+      }),
     },
   ];
 

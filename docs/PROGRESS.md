@@ -15,12 +15,12 @@ Living record of where the project stands. Update it at the end of every session
 | [7 — A window per Claude Code account](phases/phase-7-account-windows.md) | ✅ Done (2026-09-28) — released as 1.3.0 |
 | [8 — Sign in through Claude Code, keep the sign-in fresh](phases/phase-8-sign-in.md) | ✅ Done (2026-09-28) — released as 1.4.0, fix D72 in 1.4.1; browser sign-in, install and renewal of a really expired token: owner's manual tests |
 | [9 — Project website (GitHub Pages)](phases/phase-9-website.md) | ✅ Built (2026-09-29) — goes live when the owner switches Pages to *GitHub Actions* and pushes |
-| [10 — Show the overlay on one virtual desktop](phases/phase-10-virtual-desktops.md) | ⏭️ Next — planned 2026-09-29; runtime dependency `koffi` approved (D78) |
+| [10 — Show the overlay on one virtual desktop](phases/phase-10-virtual-desktops.md) | ✅ Done (2026-09-30) — not released yet; owner's manual tests pending (real tray click on another desktop, Task View drag, removed desktop) |
 
 Each phase has its own plan file in [`phases/`](phases/) (scope, notes, acceptance criteria,
 ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLOG.md).
 
-## What works today (Phases 1–9)
+## What works today (Phases 1–10)
 
 - Frameless, transparent, always-on-top overlay; drag anywhere; position remembered; stays reachable
   when monitors change; "Move to display" menu for multi-monitor setups. The window is exactly the
@@ -38,7 +38,7 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 - Stale data handling: last snapshot cached to disk and shown (desaturated, with banner) on startup,
   offline, rate-limited or expired sign-in.
 - Dev tooling: mock scenarios, screenshot mode (plus light-theme and 90 % / 150 % variants),
-  `--theme=` / `--scale=` flags, README images from `npm run screenshot:readme` (D43), 173 unit tests.
+  `--theme=` / `--scale=` flags, README images from `npm run screenshot:readme` (D43), 190 unit tests.
 - **Data sources (Phase 3):** menu → *Source*: *Auto* (Claude Code; when its sign-in is missing,
   expired or rejected, the newest Claude Desktop sample ≤ 20 min old), *Claude Code only*,
   *Claude Desktop only*. Claude Desktop's `plan-usage-history.json` is read-only, needs no sign-in
@@ -123,6 +123,15 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
   Dark and light, phone width, no requests to other sites. `scripts/site.mjs` fills in the latest
   release's files at build time; `.github/workflows/pages.yml` deploys on site changes and on every
   published release (D74–D77).
+- **A virtual desktop of its own (Phase 10):** menu → *Show on desktop* ▸ — Windows lists *All
+  desktops* (default, as before) and every Task View desktop with its name and *(current)*; the
+  overlay moves there, gets a taskbar button on that desktop (Windows ties a window to a desktop
+  through it), stays there after hide/show, a rebuild and a restart, and follows a drag in Task View
+  or a removed desktop. A tray click, the shortcut, *Show overlay* or a notification on another
+  desktop never hides an overlay the user can't see: they take Windows to its desktop when Windows
+  grants the foreground. Each window has its own choice; the tray menu with several windows moves
+  all. macOS *All desktops* / *Only this desktop*, Linux X11 the same with workspaces, Wayland a
+  disabled line. Windows calls go through `koffi` (second runtime dependency) (D78–D82).
 
 ## Decisions
 
@@ -205,6 +214,10 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D76 | **The site's overlay images are generated** (`npm run site:images`: mock scenarios at 2× pixel density — dark / light hero card and pill at Size 115 %, the three severity levels, light theme, several accounts, renewing, first run, expired, via Claude Desktop, locked — plus icons from `make-icon.mjs`), committed in `site/images/` (~2.5 MB); `{{dims:…}}` reads each PNG's size at build time. CLAUDE.md → Finish: re-render with UI changes and keep the page's text as true as the README | Same rule as the README images (D43) and the social preview (D58): the page can't drift from the app. 2× keeps text sharp on high-DPI screens; sizes from the file keep a re-rendered image at its natural size. The social preview is copied in at build time (one source). |
 | D77 | **The website tracks nobody and makes no third-party request:** no analytics, cookies, web fonts or CDNs; CSP `default-src 'self'` in a meta tag (Pages can't send headers), no inline script or style. States only what the README states (only Windows 11 tested, unsigned builds, not affiliated with Anthropic); no Apple / Microsoft logos (their trademark rules) | The app's "no telemetry" promise would sound hollow on a page that tracks its visitors. The honest notes are what an open-source user checks first. |
 | D78 | **Phase 10 (one virtual desktop) on Windows = real placement:** the public, documented `IVirtualDesktopManager` (`MoveWindowToDesktop`, `GetWindowDesktopId`, `IsWindowOnCurrentVirtualDesktop`) called in the main process through **`koffi`** (second runtime dependency, MIT, Node-API, ~1 MB on Windows; approved by the owner 2026-09-29, loaded lazily on Windows only). A window on one desktop keeps a taskbar button; *All desktops* stays today's no-button state. Never the undocumented `IVirtualDesktopManagerInternal` / pinning interfaces. The dependency-free "mimic" (hide while another desktop is current) was the rejected alternative | Session 31 experiments: a window without a taskbar button belongs to no desktop (on all), `MoveWindowToDesktop` is refused for another process's window (`E_ACCESSDENIED`), so the call must run in-process, and Node / Electron have no FFI of their own; placement by Windows moves with the switch animation and needs no polling. The undocumented IIDs changed five times since 2021 (twice in monthly updates) |
+| D79 | **Placing a window on one desktop (Phase 10, Windows).** `WindowSettings.desktop` = `{ id, number }` (GUID + 1-based Task View number; null = all desktops, also for older settings). Resolved GUID → same number → all desktops; a choice is dropped (saved as null) only when the desktop list could be read and has neither. One helper, `Overlay.placeOnDesktop()`, at creation (also a rebuilt window), after every show and on a setting change: one desktop = `setSkipTaskbar(false)` + `MoveWindowToDesktop` (only while shown), all = `setSkipTaskbar(true)` (only when the window had a button). **Where the window really is wins:** `GetWindowDesktopId` is adopted and saved before a menu is built, before hiding, rebuilding and quitting. The desktop list is read fresh for every menu (registry, ~1 ms); the tray menu is rebuilt on the icon's `mouse-move` (≤ 1/s). Logs name desktops by number only. Screenshot runs never move windows; mock runs use the real desktops | A hidden window loses its desktop and a shown one without a button can't be moved (session 31, experiments 1 and 3), so placement must follow every show and the real desktop must be read while the window is still shown — the plan's "when it shows the window" was too late. Windows 10 may give desktops new GUIDs after a sign-out; the number is the user's view of it. An unreadable registry must not lose a choice. Users name desktops after clients and projects (D31). A hide → show poller (~10⁶ samples/s, 15 cycles) never saw the window uncloaked before the move, so no opacity trick |
+| D80 | **"Visible" means visible on this desktop.** Show / hide (tray click, shortcut, menu *Show / Hide overlay*) counts a window on another desktop (`IsWindowOnCurrentVirtualDesktop` false) as hidden: it hides only windows seen here; with none here it shows hidden ones and **activates** one (the notification's own, else the first), which takes Windows to its desktop. A window that already is the foreground window first hands the foreground to the taskbar (`Shell_TrayWnd`); when Windows refuses the foreground it flashes the taskbar button on the other desktop, which is stopped (`FlashWindowEx(FLASHW_STOP)`) — then nothing changes. Only on the user's request (tray, shortcut, *Show overlay*, a notification, a second start); start, rebuilds, updates and menu choices use `showInactive`. No focus-stealing tricks. The blank-overlay watchdog (D60) and hover (D57) skip a window on another desktop | `win.isVisible()` is true for a window cloaked on another desktop: a tray click would hide what the user can't see, and a second click show it there again. Experiment with the owner's OK (test accelerator via `keybd_event`, mock run): activation switched desktops; it did nothing when the overlay was already the foreground window (just activated, then sent away by its own menu — a real case: pick a desktop from the ⋯ menu, press the shortcut); once Windows refused (the owner had just used another app). With `--keep-occlusion` a page on another desktop is hidden (measured), which would have rebuilt the window and then restarted the app |
+| D81 | **macOS / Linux: all or only this one.** `setVisibleOnAllWorkspaces(true, { visibleOnFullScreen })` / `(false, { visibleOnFullScreen: true, skipTransformProcessType: true })` on macOS, `setVisibleOnAllWorkspaces(!choice)` on Linux X11 after the first show; once per window. Linux now applies *All workspaces* by default (was: the first workspace). Wayland (`XDG_SESSION_TYPE=wayland` / `WAYLAND_DISPLAY`, not forced to X11) → *Not available on Wayland*. Menu *Show on workspace* on Linux | No public API lists Spaces or workspaces or moves a window to one (Apple DTS; X11 would need `wmctrl`-like native code); without `skipTransformProcessType` Electron calls `DockShow()` for the `LSUIElement` app. X11 sets sticky / `_NET_WM_DESKTOP` with a message about a mapped window. Chromium's Wayland backend ignores it. Untested (no Mac, no Linux) |
+| D82 | **koffi packaging and loading.** `"koffi": "3.3.2"` (exact), `external` in `scripts/build.mjs` (like `electron-updater`); electron-builder puts the native `.node` file into `app.asar.unpacked` by itself. Loaded with `require` inside `WindowsDesktopApi.load()` the first time a menu needs the desktop list (at startup, for the tray menu; ~10 ms), never on macOS / Linux; any failure → one log line, *Not available on this computer*, the overlay stays on all desktops. One COM object, released on quit | Native code can take the whole app down, so: pinned, lazy, failure contained. A static `import` would run at startup and a missing module would stop the app. Verified: `dist:win` → `win-unpacked` (the installer's content) and the portable exe load koffi and move the window; a renamed `node_modules/koffi` gives the disabled line |
 | D49 | **Version 1.0.0** for the first release with the updater (0.2.0 → 1.0.0; no 0.3.x). The real-release updater test becomes 1.0.0 → 1.0.1. README says openly that only Windows 11 is tested; macOS and Linux builds are CI-built but never run | Owner's choice (2026-09-26): all planned phases are done. Recommended first was 0.3.0 → 0.3.1 for the test and 1.0.0 once it passed; the owner preferred 1.0.0 now. Technically the same: a broken updater in the first updater version needs one manual install either way. |
 
 ## Usage API notes (observed 2026-09-24)
@@ -473,6 +486,25 @@ Kept for the record in case Anthropic ever offers an official way.
   Electron's Chromium (`npm run site:shot`, 1280 / 1024 / 390 px, dark / light) — Safari and Firefox
   untested. The images are PNGs (~2.5 MB in all, lazy-loaded below the hero); WebP would be about a
   third, not done. Every `site:images` run adds new PNGs to the repository's history.
+- **Virtual desktops (Phase 10):**
+  - While the overlay is on one desktop it has a taskbar button there and shows in Alt+Tab and Task
+    View on that desktop (Windows ties a window to a desktop through its button; by design).
+  - "Take me to the overlay" depends on Windows' foreground rules: with an injected shortcut it
+    switched 2 of 3 times; right after the user clicked in another app Windows refused (then nothing
+    changes). A real tray click and the physical shortcut are the owner's manual test; the log says
+    what happened each time.
+  - Not seen here: a real Task View drag and removing a desktop (the same adoption covers both; tested
+    with an in-process move), Explorer restarting, clicking the active overlay's taskbar button,
+    the tray menu refresh on `mouse-move`, a renamed desktop in the real menu (unit-tested), Windows
+    10 (`SessionInfo` fallback, renamed desktops, GUIDs after sign-out), the first show after start
+    (uncloaked for < 1 ms before the move; not measured).
+  - macOS / Linux untested. macOS can't tell a window on another Space, so the shortcut there may
+    hide an overlay the user can't see; after a restart it opens on the active Space. Linux X11 now
+    puts the overlay on all workspaces by default.
+  - koffi is loaded at startup on Windows (the tray menu needs the list), ~10 ms. CI builds of the
+    dmg / AppImage / deb with koffi haven't run yet (the next release shows it).
+  - Mock runs keep a chosen desktop in `mock-data/settings.json`: a mock window can open on another
+    desktop.
 
 ## Session log
 
@@ -1095,3 +1127,28 @@ Kept for the record in case Anthropic ever offers an official way.
 - The owner chose real placement with `koffi` over a dependency-free "mimic" (D78). Phase 10
   planned (`phases/phase-10-virtual-desktops.md`), BACKLOG row added. Nothing implemented; the
   Electron book gets its chapter with the implementation.
+
+### 2026-09-30 — Session 32: Phase 10 (show the overlay on one virtual desktop)
+
+- Implemented `phases/phase-10-virtual-desktops.md` (D79–D82): `virtual-desktops-core.ts` (pure, 16
+  tests), `virtual-desktops.ts` (koffi 3.3.2: registry, `IVirtualDesktopManager`, four user32 calls;
+  `setVisibleOnAllWorkspaces` on macOS / Linux), `WindowSettings.desktop`, one placement helper in
+  `overlay.ts`, adoption of the real desktop, "visible here" show / hide with activation, watchdog
+  and hover changes, the *Show on desktop* submenu, tray menu rebuilt on `mouse-move`.
+- Checked in mock runs driven through the main-process inspector, the window probed read-only from
+  another process (the owner's desktop never switched without asking): listing, moving, restart,
+  hide → show, a GPU-kill rebuild, adoption of a move made behind the app's back, all desktops,
+  two windows and the tray menu, koffi missing, `--keep-occlusion` on another desktop (page hidden,
+  no rebuild), no flash in 15 hide → show cycles. A first flash test looked alarming (730 ms
+  exposed) — the owner had switched to the mock's desktop; the poller then counted only moments
+  the window was visible and not yet on its target.
+- The experiment the plan asked for, with the owner's OK twice: a tray/shortcut activation takes
+  Windows to the overlay's desktop — except when the overlay already is the foreground window (found
+  and fixed: via the taskbar) and when Windows refuses the foreground (flash stopped). Details in the
+  phase file's Result.
+- `npm run dist:win`: `win-unpacked` (not installed over the owner's copy) and the portable exe load
+  koffi and move the window. Reading koffi's package files was blocked by the session's permission
+  classifier; the documented API from the session 31 spike was enough.
+- README (feature, *Virtual desktops*, Troubleshooting), site (feature line, FAQ), CLAUDE.md
+  (modules, hard rule 6, gotchas). Electron book 3.5: part 17 with two chapters (virtual desktops;
+  Win32 / COM with koffi). `npm run check`: 190 tests; `npm run screenshot`: no visual change.

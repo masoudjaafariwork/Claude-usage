@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| **Status** | ⏭️ Next — planned 2026-09-29; `koffi` approved by the owner the same day (D78) |
+| **Status** | ✅ Done (2026-09-30) — owner's manual tests pending (a real tray click on another desktop, a Task View drag, removing a desktop) |
 | **Depends on** | Phase 7 (a window per account: per-window settings, window vs. tray menu) |
 | **Size** | One Claude Code session |
 
@@ -68,58 +68,58 @@ instead of having it cover part of their work. By default it stays on every desk
 
 ## Scope
 
-- [ ] **Setting per window** (`WindowSettings.desktop`, like `position` — D62): absent / `null` =
+- [x] **Setting per window** (`WindowSettings.desktop`, like `position` — D62): absent / `null` =
       all desktops (default; old settings migrate to it). Windows: the chosen desktop's GUID plus
       its 1-based number (fallback when the GUID is gone). macOS / Linux X11: "only one desktop"
       (no id — see Technical notes). Sanitizer and tests.
-- [ ] **`virtual-desktops-core.ts`** `[pure]`: parse `VirtualDesktopIDs` (16-byte GUIDs in order),
+- [x] **`virtual-desktops-core.ts`** `[pure]`: parse `VirtualDesktopIDs` (16-byte GUIDs in order),
       `CurrentVirtualDesktop` and `Desktops\{GUID}\Name` into `{ id, number, name, current }[]`
       (default name `Desktop N`); resolve a saved choice against the list (GUID → else the same
       number → else all desktops); the menu entries. Unit tests with byte fixtures shaped like this
       machine's values (three desktops, one stale `Desktops\` key, no names, a named one, an empty
       list).
-- [ ] **`virtual-desktops.ts`** (Windows): loads `koffi` lazily on Windows only; reads the registry
+- [x] **`virtual-desktops.ts`** (Windows): loads `koffi` lazily on Windows only; reads the registry
       values (`RegGetValueW`, read-only) and calls the public, documented `IVirtualDesktopManager`
       (`IsWindowOnCurrentVirtualDesktop`, `GetWindowDesktopId`, `MoveWindowToDesktop`) for the
       app's own windows. Any failure (koffi missing, COM error, Windows without virtual desktops)
       → one log line, the feature reports "not available", and the overlay stays on all desktops.
       Never the undocumented interfaces.
-- [ ] **Placing a window:** one desktop → `setSkipTaskbar(false)` + `MoveWindowToDesktop`; all
+- [x] **Placing a window:** one desktop → `setSkipTaskbar(false)` + `MoveWindowToDesktop`; all
       desktops → `setSkipTaskbar(true)`. Applied at the first show, after every show (tray click,
       shortcut, notification click, menu), after a rebuild (D60) and when the setting changes — one
       helper in `overlay.ts`, not scattered calls.
-- [ ] **Menu → *Show on desktop* ▸** (next to *Move to display* / *Reset position*): ◉ *All
+- [x] **Menu → *Show on desktop* ▸** (next to *Move to display* / *Reset position*): ◉ *All
       desktops* (default), a separator, one radio per desktop in Windows' order with its name
       (*Desktop 2*, or the name the user gave it) and *(current)* on the one the user is on. With a
       single desktop: that desktop plus a disabled hint *Add a desktop: Win+Ctrl+D*. A window's
       menu acts on that window; the tray menu with several windows on all of them (D63). The list
       is read fresh whenever a menu is built (1 ms) and the tray menu is refreshed when the cursor
       reaches the tray icon (`mouse-move`), so added / renamed desktops show up.
-- [ ] **Where the window really is wins:** when the user drags the overlay to another desktop in
+- [x] **Where the window really is wins:** when the user drags the overlay to another desktop in
       Task View, or removes its desktop (Windows moves its windows to a neighbour), the app adopts
       the window's actual desktop (`GetWindowDesktopId`) the next time it builds a menu or shows
       the window, and saves it.
-- [ ] **"Visible" means visible here:** show / hide (tray click, `Ctrl+Alt+U`, the menu's
+- [x] **"Visible" means visible here:** show / hide (tray click, `Ctrl+Alt+U`, the menu's
       *Show / Hide overlay*) treats an overlay on another desktop as not visible, so a click never
       hides a window the user can't see. What a click does then — switch to the overlay's desktop by
       activating it, or only show it there — is decided by the experiment in Technical notes.
-- [ ] **Blank-overlay watchdog (D60)** and **hover polling (D57)** skip a window that is on another
+- [x] **Blank-overlay watchdog (D60)** and **hover polling (D57)** skip a window that is on another
       desktop (with the occlusion tracker on, `--keep-occlusion`, such a page may be hidden and
       must not trigger a rebuild).
-- [ ] **macOS:** *Show on desktop* ▸ *All desktops* / *Only this desktop* (the Space the user is
+- [x] **macOS:** *Show on desktop* ▸ *All desktops* / *Only this desktop* (the Space the user is
       on), through `setVisibleOnAllWorkspaces(false, { skipTransformProcessType: true, visibleOnFullScreen:
       true })`; no list.
-- [ ] **Linux X11:** the same two items (*All workspaces* / *Only this workspace*) through
+- [x] **Linux X11:** the same two items (*All workspaces* / *Only this workspace*) through
       `setVisibleOnAllWorkspaces`; the default *All* now applies on Linux too (today the overlay
       stays on its first workspace). **Wayland:** the submenu shows a disabled *Not available on
       Wayland* line.
-- [ ] **Packaging:** `koffi` in `dependencies`, `external` in `scripts/build.mjs` (like
+- [x] **Packaging:** `koffi` in `dependencies`, `external` in `scripts/build.mjs` (like
       `electron-updater`, D45); its native `.node` file must load from the packaged app
       (`app.asar.unpacked`) — checked with `npm run dist:win` and the installed / portable exe.
-- [ ] **Mock and screenshots:** mock runs use the real desktops (it only moves the mock's own
+- [x] **Mock and screenshots:** mock runs use the real desktops (it only moves the mock's own
       window); screenshot runs never move windows. Card and pill are unchanged, so README images,
       social preview and site renders are unaffected (check).
-- [ ] **Docs:** README (feature, FAQ "the overlay covers my work on one monitor", the taskbar button
+- [x] **Docs:** README (feature, FAQ "the overlay covers my work on one monitor", the taskbar button
       on one desktop), site feature line (D76), `CLAUDE.md` (modules, hard rule 6: second runtime
       dependency, gotchas below), `docs/PROGRESS.md` decisions, Electron book chapter (virtual
       desktops, calling Win32/COM with koffi, why the taskbar button matters, pitfalls).
@@ -280,6 +280,14 @@ desktop.
       is checked.
 - [ ] *All desktops*: the overlay is on every desktop again and the taskbar button is gone.
 - [ ] With two account windows: put each on a different desktop.
+- [ ] Pick another desktop from the overlay's **own** menu (⋯), then press `Ctrl+Alt+U` at once: it
+      takes you to the overlay (the case the experiment found). Menu → *Open logs folder* →
+      `claude-usage.log` says each time "Windows switched to the overlay's desktop", "stayed", or
+      "Windows refused it the foreground".
+- [ ] On the overlay's desktop, click its taskbar button (once while it is active, once after
+      clicking another window): note what happens.
+- [ ] Remove the overlay's desktop in Task View (its ×): Windows moves the overlay to a neighbour;
+      the menu then checks that one.
 
 ## Prompt
 
@@ -295,5 +303,85 @@ set its status, update docs/PROGRESS.md and docs/BACKLOG.md, and give me the man
 
 ## Result
 
-_Filled in when the phase is done: what was delivered, deviations from the plan and why,
-follow-ups, and what was / wasn't verified._
+**Delivered (session 32, 2026-09-29/30).** Menu → *Show on desktop* ▸ (next to *Move to display*):
+Windows lists *All desktops* and every Task View desktop with its name and *(current)*, a single
+desktop gets the *Add a desktop: Win+Ctrl+D* hint; macOS *All desktops* / *Only this desktop*;
+Linux X11 *All workspaces* / *Only this workspace*; Wayland and a failed Windows setup one disabled
+line. Setting per window (`WindowSettings.desktop`: GUID + number, null = all), a window's menu moves
+that window, the tray menu with several windows all of them (nothing checked while they differ).
+
+- `virtual-desktops-core.ts` [pure] + 16 tests: GUID bytes ↔ text, `VirtualDesktopIDs` /
+  `CurrentVirtualDesktop` / names → list (stale `Desktops\` key ignored, missing current → first,
+  no IDs → the current one alone), GUID → number → all, `choiceToSave` (a desktop is dropped only
+  when the list could be read and has neither its GUID nor its number), `adoptDesktop`, sanitizer,
+  Wayland detection, menu entries (`&` → `&&` on Windows), the tray's common selection, log names
+  (numbers only, never desktop names).
+- `virtual-desktops.ts`: koffi 3.3.2 (exact version, `external` in esbuild) loaded on first use on
+  Windows only — `RegGetValueW` (read-only), `ProcessIdToSessionId` (Windows 10's `SessionInfo`
+  fallback), `CoCreateInstance` of the public `VirtualDesktopManager` (vtable slots 3–5, released on
+  quit), plus `GetForegroundWindow` / `FindWindowW` / `SetForegroundWindow` / `FlashWindowEx` (see
+  below). Any failure → one log line, the submenu says *Not available on this computer*, the overlay
+  stays on all desktops. macOS / Linux: `setVisibleOnAllWorkspaces` (macOS with
+  `skipTransformProcessType`), applied once per window; Linux X11 waits for the first show.
+- `overlay.ts`: one helper, `placeOnDesktop()`, at creation (also a rebuilt window), after every
+  show and on a setting change; `syncDesktop()` adopts where the window really is before a menu is
+  built, before hiding, rebuilding and quitting; `isVisibleHere()`; `activate()`; the watchdog
+  re-checks later while the window is on another desktop (one grace round once back); hover asks
+  `onThisDesktop` only while the cursor is within the bounds.
+- `main.ts`: `toggleAll` hides only windows visible on this desktop; `revealAll` (tray click,
+  shortcut, *Show overlay*, a notification, a second start) shows hidden ones and, when none can be
+  seen here, activates one; the first menu item says *Show* when nothing is here; the tray menu is
+  rebuilt when the cursor reaches the icon (`mouse-move`, at most once a second).
+- README (feature, *Virtual desktops* section, three Troubleshooting entries), site (feature card
+  line, FAQ "I have one monitor"), CLAUDE.md, PROGRESS (D79–D82), Electron book 3.5 (two chapters).
+
+**Deviations from the plan (and why).**
+
+- *Where the window really is* is read **before hiding** (and before menus, rebuilds, quitting),
+  not "the next time it shows the window": a hidden window has no desktop any more (experiment 3),
+  so at show time there is nothing to read.
+- **Tray click / shortcut on another desktop — the experiment** (with the owner's OK, a mock run and
+  a test accelerator pressed with `keybd_event`): run 1 switched to the overlay's desktop; the way
+  back did nothing, because the overlay was still the foreground window (it had just been activated,
+  then moved by its menu) and activating the foreground window changes nothing — the same happens in
+  the real app when a desktop is picked from the overlay's own menu and the shortcut pressed right
+  after. A fresh run switched again. After the fix, one run was refused by Windows (the owner had just
+  clicked in another app). So activation is kept ("take me to the overlay", the plan's first branch)
+  with two additions: a window that already is the foreground window first hands the foreground to
+  the taskbar (`Shell_TrayWnd`, on every desktop), and a refused activation stops the flashing
+  taskbar button Windows starts on the other desktop (`FlashWindowEx(FLASHW_STOP)`), so nothing
+  changes then. Four more user32 functions, all public and documented. The log says each time
+  whether Windows switched. No focus-stealing tricks (Alt-key simulation, `AttachThreadInput`).
+- **No opacity-0 trick:** a poller in another process (~1 million samples/s) saw the window visible,
+  uncloaked and not yet on its target desktop 0 times in 15 hide → show cycles — a hidden window
+  keeps its shell cloak until it is moved.
+- koffi is loaded when the tray menu is first built, i.e. **at startup** on Windows (~10 ms), not
+  only at the first user action: the tray menu needs the desktop list.
+- With `--keep-occlusion` a page on another desktop really is `hidden` (measured), so the watchdog
+  change was necessary; with the default (tracker off) it stays `visible` there.
+
+**Verified on this machine** (Windows 11 23H2, four desktops; mock runs driven through the
+main-process inspector, the window probed read-only from another process): the default is on all
+desktops without a button (`GUID_NULL`); the menu lists the four desktops with *(current)* matching
+the registry; choosing one moves the window there (cloaked, `onCurrent=0`) and saves it; restart →
+back on its desktop; hide → show → back; a GPU-process kill → the rebuilt window goes back; a move
+behind the app's back (in-process `MoveWindowToDesktop`, standing in for a Task View drag) is
+adopted and saved when the menu opens; *All desktops* → `GUID_NULL` again; two windows: each
+window's menu moves only it, the tray menu both, *Show overlays* when none is here; koffi missing
+(folder renamed for a moment) → *Not available*, one log line, the rest works; `--keep-occlusion` on
+another desktop → no rebuild for 20 s; the packaged app (`release/win-unpacked`, i.e. what the
+installer installs — not installed over the owner's copy) and the portable exe load koffi and move
+the window. `npm run check` (190 tests), `npm run screenshot` (no visual change, so the README
+images, social preview and site renders stay as they are).
+
+**Not verified:** a real tray click and the physical shortcut on another desktop (foreground rules
+may differ from the injected key), a real Task View drag and removing a desktop (both covered by the
+same adoption), Explorer restarting (taskbar recreated), clicking the taskbar button of the active
+(non-minimizable) overlay, the refused-activation flash stop in practice, the tray menu refresh on
+`mouse-move`, a renamed desktop in the real menu (unit-tested; the owner's desktops have no names),
+Windows 10, the very first show after start (the window is uncloaked for < 1 ms before the move; not
+measured), macOS and Linux (no machines), and CI builds on macOS / Linux with koffi.
+
+**Follow-ups:** the owner's manual tests below; a release (a new feature → 1.5.0 by D49/D55 practice,
+the owner's decision); macOS can't tell a window on another Space, so the shortcut there may hide an
+overlay the user can't see (no public API).

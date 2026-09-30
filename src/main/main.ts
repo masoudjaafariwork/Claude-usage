@@ -86,6 +86,8 @@ import { updateMode, type UpdateMenuItem } from './update-core';
 import { Updater } from './updater';
 import { fetchUsageJson } from './usage-api';
 import { ClaudeCodeSource } from './usage-source';
+import { VirtualDesktops } from './virtual-desktops';
+import { commonSelection, desktopMenuEntries, desktopMenuTitle } from './virtual-desktops-core';
 import { APP_ICON_PATH, arrangeOnDisplay } from './window';
 
 interface CliOptions {
@@ -146,7 +148,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 /** Menu items that act on the window whose menu it is, or on all windows (menuFor below). */
-type WindowAction = 'closeWindow' | 'refresh' | 'setCompact' | 'setClaudeCodeDir' | 'addClaudeCodeDir' | 'moveToDisplay' | 'resetPosition';
+type WindowAction = 'closeWindow' | 'refresh' | 'setCompact' | 'setClaudeCodeDir' | 'addClaudeCodeDir' | 'moveToDisplay' | 'resetPosition' | 'setDesktop';
 
 /** How long a sign-in for a new account may take before its empty folder is removed again. */
 const NEW_ACCOUNT_WAIT_MS = 15 * 60_000;
@@ -251,7 +253,16 @@ function start(): void {
 
   // Notices that belong to no account (updates, the test notification); each window's account has
   // its own Notifier with its own records (overlay.ts).
-  const notices = new Notifier({ file: null, onClick: () => showAll(), log: log.write });
+  const notices = new Notifier({ file: null, onClick: () => revealAll(), log: log.write });
+  // Virtual desktops (Phase 10): Windows loads koffi when a menu first needs the desktop list (the tray
+  // menu, built at startup); macOS and Linux never load it.
+  const desktops = new VirtualDesktops({
+    platform: process.platform,
+    env: process.env,
+    ozonePlatform: app.commandLine.getSwitchValue('ozone-platform'),
+    ozoneHint: app.commandLine.getSwitchValue('ozone-platform-hint'),
+    log: log.write,
+  });
   // Updates from GitHub Releases (installed builds only; dev, mock and screenshot runs never update).
   const updater = new Updater({
     mode: updateMode({
@@ -296,7 +307,8 @@ function start(): void {
     showMenu: (overlay) => menuFor(overlay).popup({ window: overlay.win }),
     requestClose: (overlay) => closeWindow(overlay, 'window closed'),
     setScale: (scale) => actions.setScale(scale),
-    showAll: () => showAll(),
+    reveal: (overlay) => revealAll(overlay),
+    desktops,
     credentialsChanged: () => void readAccounts(),
     claudeCodeInstalled: () => claudeBinary() !== null,
     renewSignIn: (overlay, started) => renewSignIn(overlay, started),
@@ -487,6 +499,7 @@ function start(): void {
    */
   function menuFor(target: Overlay | null): Menu {
     const scoped = target ? [target] : overlays;
+    for (const overlay of scoped) overlay.syncDesktop(); // the menu shows where a window really is
     const current = settings.get();
     const weekly = new Map<string, { id: string; label: string }>();
     for (const overlay of scoped) {
@@ -499,10 +512,11 @@ function start(): void {
       const label = { open: 'Open Claude Code', 'sign-in': 'Sign in to Claude Code…', install: 'Install Claude Code…' }[action];
       return [{ dir: o.account, action, label: target ? label : `${label} — ${shortLabel(o.account)}` }];
     });
+    const desktopSupport = desktops.support;
     return buildMenu(
       current,
       {
-        windowVisible: overlays.some((o) => o.isVisible()),
+        windowVisible: overlays.some((o) => o.isVisibleHere()),
         windowCount: overlays.length,
         scope: target ? 'window' : 'all',
         compact: scoped.every((o) => o.view.compact),
@@ -523,6 +537,15 @@ function start(): void {
         shortcuts,
         notificationsSupported: notices.supported,
         update: mockUpdate ?? updater.menuItem,
+        desktops: {
+          title: desktopMenuTitle(process.platform),
+          entries: desktopMenuEntries({
+            support: desktopSupport,
+            platform: process.platform,
+            desktops: desktopSupport === 'list' ? desktops.list() : [], // read fresh: added and renamed desktops show up
+            selected: commonSelection(scoped.map((o) => o.view.desktop)),
+          }),
+        },
       },
       {
         ...actions,
@@ -549,11 +572,20 @@ function start(): void {
           else arrangeOnDisplay(overlays.map((o) => o.win), screen.getPrimaryDisplay());
           showAll();
         },
+        setDesktop: (choice) => {
+          for (const overlay of scoped) overlay.setDesktop(choice);
+          showAll(); // a hidden window goes straight to its desktop
+          updateTray();
+        },
       },
     );
   }
 
-  const tray = new TrayController(() => toggleAll());
+  // Hovering the tray icon rebuilds its menu, so a right-click shows the desktops as they are now.
+  const tray = new TrayController(
+    () => toggleAll(),
+    () => updateTray(),
+  );
 
   function updateTray(): void {
     tray.update(
@@ -580,7 +612,7 @@ function start(): void {
   applyShortcuts();
 
   // --- Windows (one per account, Phase 7) --------------------------------------------------------
-  /** Shows every overlay window (tray click, shortcut, a notification, lock, …). */
+  /** Shows every hidden overlay window, each on its own desktop (lock, menu actions, …). */
   function showAll(): void {
     const hidden = overlays.filter((o) => !o.isVisible());
     if (hidden.length === 0) return;
@@ -589,13 +621,29 @@ function start(): void {
     updateTray();
   }
 
-  /** Show / hide: all windows together. */
+  /**
+   * The user asked to see the overlay (tray click, shortcut, *Show overlay*, a notification, starting
+   * the app again): every window shows, and when none of them can be seen on this desktop, the one
+   * asked about — else the first — is activated, which takes Windows to its desktop (Phase 10).
+   */
+  function revealAll(preferred?: Overlay): void {
+    showAll();
+    if (overlays.some((o) => o.isVisibleHere())) return;
+    const there = preferred && overlays.includes(preferred) && preferred.isVisible() ? preferred : overlays.find((o) => o.isVisible());
+    there?.activate();
+  }
+
+  /**
+   * Show / hide, all windows together. A window on another virtual desktop counts as hidden, so a
+   * click never hides a window the user can't see: with nothing on this desktop it shows them.
+   */
   function toggleAll(): void {
-    if (!overlays.some((o) => o.isVisible())) {
-      showAll();
+    const here = overlays.filter((o) => o.isVisibleHere());
+    if (here.length === 0) {
+      revealAll();
       return;
     }
-    for (const overlay of overlays) overlay.hide();
+    for (const overlay of here) overlay.hide();
     log.info('Overlay hidden');
     updateTray();
   }
@@ -1097,7 +1145,7 @@ function start(): void {
     const dir = folderFromArgs(argv, workingDirectory);
     const main = overlays[0];
     if (dir !== undefined && main) switchAccount(main, dir);
-    showAll();
+    revealAll();
   });
   app.on('window-all-closed', () => {
     // Keep running in the tray.
@@ -1114,7 +1162,11 @@ function start(): void {
       else removeUnusedFolder(dir);
     }
     stopWatchingDesktop();
-    for (const overlay of overlays) overlay.stop();
+    for (const overlay of overlays) {
+      overlay.syncDesktop(); // moved in Task View meanwhile: it comes back there
+      overlay.stop();
+    }
+    desktops.dispose();
     updater.stop();
     settings.flush();
     tray.destroy();

@@ -54,3 +54,26 @@ test('HoverWatch switched off reports "not hovered" and forgets a hold', () => {
   hover.setActive(false);
   assert.deepEqual(changes, [true, false, true, false]);
 });
+
+test('HoverWatch: a window on another virtual desktop is never hovered (Phase 10)', () => {
+  let cursor: Point = { x: 200, y: 100 };
+  let here = false;
+  let asked = 0;
+  const changes: boolean[] = [];
+  const hover = new HoverWatch({
+    cursor: () => cursor,
+    bounds: () => bounds,
+    onThisDesktop: () => {
+      asked++;
+      return here;
+    },
+    onChange: (h) => changes.push(h),
+  });
+  hover.check(); // over its bounds, but it is on another desktop
+  here = true;
+  hover.check(); // the user switched to its desktop
+  cursor = { x: 600, y: 100 };
+  hover.check();
+  assert.deepEqual(changes, [true, false]);
+  assert.equal(asked, 2, 'asked only while the cursor is within the bounds');
+});

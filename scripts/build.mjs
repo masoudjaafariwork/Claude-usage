@@ -25,8 +25,9 @@ const configs = [
     platform: 'node',
     format: 'cjs',
     target: 'node22',
-    // Runtime dependencies stay in node_modules; electron-builder packs them into the app.
-    external: ['electron', 'electron-updater'],
+    // Runtime dependencies stay in node_modules; electron-builder packs them into the app (koffi's
+    // native .node file goes to app.asar.unpacked).
+    external: ['electron', 'electron-updater', 'koffi'],
   },
   {
     ...shared,

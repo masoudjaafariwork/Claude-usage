@@ -104,6 +104,8 @@ src/
     snapshot-cache.ts    last-usage.json — last good snapshot, shown as stale on startup
     window.ts            Frameless transparent always-on-top window, fit-to-content, multi-monitor, lock
     window-core.ts       Where a resized window goes (edge anchoring, stays on its display); free spot for a new one [pure]
+    virtual-desktops-core.ts  Desktop list from the registry values, GUID bytes, saved choice ↔ list, adoption, menu entries (Phase 10) [pure]
+    virtual-desktops.ts  Windows: koffi → registry (read-only) + IVirtualDesktopManager + user32 foreground; macOS / Linux: setVisibleOnAllWorkspaces
     tray.ts / tray-icon.ts  Tray with a live progress ring drawn into a PNG at runtime  [tray-icon pure]
     menu.ts              Context menu: one window's (⋯, right-click) or all windows' (tray with several)
     mock.ts              Fake data sources for dev and screenshots                                [pure]
@@ -135,7 +137,7 @@ Sign-in is always the user's own Claude Code (Phase 8, D66–D70): *Sign in* / *
 an expired sign-in makes the window's `Overlay` ask main to run Claude Code hidden with its local
 `/usage` command, which renews Claude Code's own token; the credentials watch then loads fresh numbers.
 Every window shows one Claude Code account (config folder), never one another window shows
-(`settings.windows`: account, position, compact; the first is the main window, D62). Switching a
+(`settings.windows`: account, position, compact, virtual desktop; the first is the main window, D62). Switching a
 window moves its credentials watch, cached snapshot, pace history and notification records to that
 account (`userData/accounts/<key>/` for added folders) and discards a request still running for the
 old one. Look, lock, source, interval and notifications settings are global. Claude Desktop's
@@ -162,8 +164,10 @@ samples count only for the shown account's org (D51).
 5. **Cross-platform by default.** Consider Windows, macOS and Linux for every feature (tray click
    behaviour, Keychain, autostart, transparency, Wayland). Record gaps in `docs/PROGRESS.md`.
 6. **Dependencies:** no new runtime dependencies without asking the user; dev deps only if justified.
-   The only runtime dependency is `electron-updater` (D45); runtime deps stay `external` in
-   `scripts/build.mjs` and electron-builder packs them into `app.asar`.
+   The runtime dependencies are `electron-updater` (D45) and `koffi` (D78, exact version, native;
+   `require`d lazily on Windows only, D82); runtime deps stay `external` in `scripts/build.mjs` and
+   electron-builder packs them into `app.asar` (koffi's `.node` file into `app.asar.unpacked`).
+   Through koffi only public, documented Windows APIs — never `IVirtualDesktopManagerInternal`.
 7. **No claude.ai sign-in in the app** (D28): Anthropic does not permit third-party apps to offer
    Claude.ai login or to collect/store claude.ai session tokens — no embedded login window, no
    browser-cookie reading, no pasted `sessionKey`, no OAuth flow of our own (not even with Claude
@@ -231,3 +235,13 @@ samples count only for the shown account's org (D51).
   site lives under `/Claude-usage/`; `404.html` uses root-relative links for that. Electron quits at
   once when an `http://` URL is on its command line (why `--shot` passes a port), and `img.decode()`
   never settles for off-screen `loading="lazy"` images.
+- Virtual desktops (Phase 10, D79–D82): on Windows a window belongs to a desktop only through its
+  taskbar button (`skipTaskbar` = on all desktops), and a hidden window loses its desktop — every show
+  must go through `Overlay.placeOnDesktop()`, and the real desktop (`syncDesktop()`) must be read
+  *before* hiding. `win.isVisible()` is true on another desktop (the window is cloaked): decide
+  show / hide with `isVisibleHere()`. `MoveWindowToDesktop` works only inside the app's own process
+  (`E_ACCESSDENIED` from a helper; reading the desktop from outside works). Activating a window
+  (`focus()`) switches the user's desktop: only on the user's request, and never in a test without the
+  owner's OK. Mock runs keep a chosen desktop in `mock-data/settings.json`, so a mock window may open
+  on another desktop. The portable exe doesn't pass its stderr on: read a test run's inspector URL
+  from `http://127.0.0.1:<port>/json`.

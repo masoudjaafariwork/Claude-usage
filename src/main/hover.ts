@@ -20,6 +20,11 @@ export interface HoverWatchDeps {
   /** Cursor position, in the same coordinates as `bounds()`. */
   cursor(): Point;
   bounds(): Rect;
+  /**
+   * False while the window is on another virtual desktop (Phase 10): it can't be hovered there.
+   * Asked only when the cursor is within the bounds.
+   */
+  onThisDesktop?(): boolean;
   /** Called on every change of the hover state (not on every poll). */
   onChange(hovered: boolean): void;
 }
@@ -56,7 +61,7 @@ export class HoverWatch {
   }
 
   check(): void {
-    const inside = containsPoint(this.deps.bounds(), this.deps.cursor());
+    const inside = containsPoint(this.deps.bounds(), this.deps.cursor()) && (this.deps.onThisDesktop?.() ?? true);
     if (!inside) this.held = false;
     this.set(inside && !this.held);
   }

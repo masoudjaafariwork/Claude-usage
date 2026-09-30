@@ -23,6 +23,8 @@ import { DEFAULT_WINDOW, stepScale, type SettingsStore, type WindowSettings } fr
 import { loadSnapshot, saveSnapshot } from './snapshot-cache';
 import { UsageService } from './usage-service';
 import type { UsageSource } from './usage-source';
+import type { VirtualDesktops } from './virtual-desktops';
+import { desktopLogName, type DesktopChoice } from './virtual-desktops-core';
 import { applyAlwaysOnTop, applyLocked, createOverlayWindow, ensureOnScreen, fitToContent, moveToDisplay, resetPosition } from './window';
 
 /** What a window needs from the rest of the app (main.ts). */
@@ -55,8 +57,10 @@ export interface OverlayHost {
   requestClose(overlay: Overlay): void;
   /** Ctrl +/-/0 or Ctrl+wheel over a window: the Size setting (all windows). */
   setScale(scale: number): void;
-  /** Clicking one of this account's notifications. */
-  showAll(): void;
+  /** Clicking one of this account's notifications: every window shows, this one on its own desktop if need be. */
+  reveal(overlay: Overlay): void;
+  /** Places windows on their virtual desktops (Phase 10). */
+  readonly desktops: VirtualDesktops;
   /** Claude Code rewrote this account's credentials (e.g. `/login`): the menu's e-mails are read again. */
   credentialsChanged(): void;
   /** A Claude Code the overlay can run was found (Phase 8): the card offers Sign in, else Install. */
@@ -127,6 +131,9 @@ export class Overlay {
   private moveTimer: NodeJS.Timeout | null = null;
   private blankTimer: NodeJS.Timeout | null = null;
   private lastBlankRebuild = 0;
+  /** The watchdog found the window on another virtual desktop: once back, it waits one more round. */
+  private blankGrace = false;
+  private activateCheckTimer: NodeJS.Timeout | null = null;
   /** Crash loops: the page is reloaded at most 3 times in 10 minutes. */
   private readonly reloadBudget = new AttemptBudget(3, 10 * 60_000);
   private readonly hover: HoverWatch;
@@ -148,12 +155,13 @@ export class Overlay {
     );
     // Snapshot history for the pace forecast (last 24 h, per account; mock runs keep theirs in memory).
     this.history = new UsageHistory(host.accountFile(setup.account, 'usage-history.json'), setup.initialHistory);
-    this.notifier = new Notifier({ file: host.accountFile(setup.account, 'notifications.json'), onClick: () => host.showAll(), log: host.log.write });
+    this.notifier = new Notifier({ file: host.accountFile(setup.account, 'notifications.json'), onClick: () => host.reveal(this), log: host.log.write });
     this.stopWatchingCredentials = this.watchCredentials();
     this.showWhenFitted = setup.show;
     const created = createOverlayWindow(settings.get(), this.view.position, host.otherBounds(this));
     this.win = created.win;
     this.restoredPosition = created.restoredPosition;
+    this.placeOnDesktop(); // macOS: Spaces before the first show; Windows moves it once shown
 
     // A see-through overlay turns fully opaque while the cursor is over it (D57). Windows and Linux
     // compare physical pixels: with displays at different scale factors, the DIP bounds of a window
@@ -162,6 +170,7 @@ export class Overlay {
     this.hover = new HoverWatch({
       cursor: () => (physical ? screen.dipToScreenPoint(screen.getCursorScreenPoint()) : screen.getCursorScreenPoint()),
       bounds: () => (physical ? screen.dipToScreenRect(this.win, this.win.getBounds()) : this.win.getBounds()),
+      onThisDesktop: () => this.isOnThisDesktop(),
       onChange: (hovered) => {
         if (!this.win.isDestroyed()) this.win.webContents.send('hover:changed', hovered);
       },
@@ -416,11 +425,22 @@ export class Overlay {
 
   // --- The window ----------------------------------------------------------------------------------
 
+  /** Shown — possibly on another virtual desktop (isVisibleHere). */
   isVisible(): boolean {
     return !this.win.isDestroyed() && this.win.isVisible();
   }
 
-  /** Shows the window and makes sure it can be seen: on a display, back on top, repainted. */
+  /** Shown on the desktop the user is on: show / hide treats a window on another desktop as hidden (Phase 10). */
+  isVisibleHere(): boolean {
+    return this.isVisible() && this.isOnThisDesktop();
+  }
+
+  /** False only while the window is on another virtual desktop (Windows; elsewhere it can't be told). */
+  isOnThisDesktop(): boolean {
+    return this.host.desktops.isOnCurrentDesktop(this.win);
+  }
+
+  /** Shows the window and makes sure it can be seen: on a display, on its desktop, back on top, repainted. */
   show(): void {
     if (!this.shown) {
       this.showWhenFitted = true; // the first fit shows it
@@ -428,13 +448,75 @@ export class Overlay {
     }
     ensureOnScreen(this.win, this.host.otherBounds(this));
     this.win.showInactive();
+    this.placeOnDesktop(); // a hidden window has lost its desktop (Windows)
     applyAlwaysOnTop(this.win, this.host.settings.get().alwaysOnTop); // a fresh HWND_TOPMOST: above windows that came later
     this.win.webContents.invalidate();
   }
 
   hide(): void {
     if (!this.shown) this.showWhenFitted = false;
+    this.syncDesktop(); // once hidden, Windows no longer says which desktop it was on
     this.win.hide();
+  }
+
+  /**
+   * Brings the shown window to the front and gives it the focus. On Windows the system switches to
+   * the virtual desktop of a window that becomes the foreground window — the user asked to see it
+   * (tray click, shortcut, a notification, *Show overlay*). Never called on the app's own initiative.
+   */
+  activate(): void {
+    if (!this.isVisible()) return;
+    const { viaTaskbar, refused } = this.host.desktops.activate(this.win);
+    applyAlwaysOnTop(this.win, this.host.settings.get().alwaysOnTop);
+    const how = viaTaskbar ? ' (it was the foreground window already: via the taskbar)' : '';
+    if (refused) {
+      // Windows keeps the foreground where the user just was: nothing changes on this desktop.
+      this.host.log.info(`[${this.logName}] Overlay on another desktop: Windows refused it the foreground${how}; it stays there`);
+      return;
+    }
+    this.host.log.info(`[${this.logName}] Overlay on another desktop: activated it${how}`);
+    // Whether Windows switched desktops, for the log (the owner's manual test, Phase 10).
+    if (this.activateCheckTimer) clearTimeout(this.activateCheckTimer);
+    this.activateCheckTimer = setTimeout(() => {
+      this.activateCheckTimer = null;
+      if (this.disposed || !this.isVisible()) return;
+      this.host.log.info(`[${this.logName}] ${this.isOnThisDesktop() ? "Windows switched to the overlay's desktop" : 'Windows stayed on this desktop'}`);
+    }, 1000);
+  }
+
+  // --- Virtual desktops (Phase 10) -------------------------------------------------------------------
+
+  /** Menu → *Show on desktop*: all desktops (null) or one; the window goes there now. */
+  setDesktop(choice: DesktopChoice | null): void {
+    this.updateView({ desktop: choice });
+    this.host.log.info(`[${this.logName}] Show on desktop → ${desktopLogName(choice)}`);
+    this.placeOnDesktop();
+  }
+
+  /**
+   * Puts the window on its desktop — all desktops, or one (a taskbar button, then moved there). The
+   * one place that does it: at creation (also a rebuilt window), after every show and when the setting
+   * changes. Screenshot runs never move windows.
+   */
+  private placeOnDesktop(): void {
+    if (this.host.screenshot || this.disposed || this.win.isDestroyed()) return;
+    const save = this.host.desktops.place(this.win, this.view.desktop);
+    if (save === undefined) return;
+    if (save === null) this.host.log.info(`[${this.logName}] Its desktop is gone: the overlay is on all desktops again`);
+    this.updateView({ desktop: save });
+  }
+
+  /**
+   * Where the window really is wins: after the user dragged it to another desktop in Task View, or
+   * removed its desktop (Windows moves its windows to a neighbour), the setting follows. Called before
+   * a menu is built, before hiding, rebuilding and quitting.
+   */
+  syncDesktop(): void {
+    if (this.host.screenshot || this.disposed || !this.isVisible()) return;
+    const actual = this.host.desktops.actualDesktop(this.win, this.view.desktop);
+    if (!actual) return;
+    this.host.log.info(`[${this.logName}] The overlay is on ${desktopLogName(actual)} now (moved in Task View, or its desktop was removed)`);
+    this.updateView({ desktop: actual });
   }
 
   setCompact(compact: boolean): void {
@@ -498,7 +580,10 @@ export class Overlay {
 
   private showFirstTime(): void {
     this.shown = true;
-    if (this.showWhenFitted) this.win.showInactive();
+    if (this.showWhenFitted) {
+      this.win.showInactive();
+      this.placeOnDesktop();
+    }
     this.host.shownFirstTime(this);
   }
 
@@ -593,6 +678,7 @@ export class Overlay {
   recreateWindow(reason: string): void {
     if (this.host.isQuitting() || this.host.screenshot || this.disposed || this.win.isDestroyed()) return;
     this.host.log.warn(`[${this.logName}] Rebuilding the overlay window: ${reason}`);
+    this.syncDesktop(); // the new window goes to the desktop the old one is on
     const old = this.win;
     const bounds = old.getBounds();
     this.showWhenFitted = old.isVisible();
@@ -602,6 +688,7 @@ export class Overlay {
     const created = createOverlayWindow(this.host.settings.get(), this.view.position, [], bounds);
     this.win = created.win;
     this.restoredPosition = created.restoredPosition;
+    this.placeOnDesktop();
     this.shown = false;
     this.contentSize = null; // the new page reports its size, then the window is fitted and shown
     this.attachWindowHandlers();
@@ -617,19 +704,31 @@ export class Overlay {
   pageVisibility(hidden: boolean): void {
     if (this.blankTimer) clearTimeout(this.blankTimer);
     this.blankTimer = null;
+    this.blankGrace = false;
     if (!hidden || process.platform !== 'win32') return;
-    this.blankTimer = setTimeout(() => {
-      this.blankTimer = null;
-      const { host } = this;
-      if (host.isQuitting() || host.screenshot || this.disposed || !this.isVisible() || !host.settings.get().alwaysOnTop || host.isScreenLocked()) return;
-      host.log.error(`[${this.logName}] The overlay page is hidden while its window is shown: Chromium stopped drawing the overlay`);
-      if (Date.now() - this.lastBlankRebuild < 60_000) {
-        host.blankAfterRebuild();
-        return;
-      }
-      this.lastBlankRebuild = Date.now();
-      this.recreateWindow('the page is hidden while the window is shown');
-    }, 5000);
+    this.blankTimer = setTimeout(() => this.blankCheck(), 5000);
+  }
+
+  private blankCheck(): void {
+    this.blankTimer = null;
+    const { host } = this;
+    if (host.isQuitting() || host.screenshot || this.disposed || !this.isVisible() || !host.settings.get().alwaysOnTop || host.isScreenLocked()) return;
+    // On another virtual desktop the window is cloaked, and with the occlusion tracker on
+    // (--keep-occlusion) Chromium hides its page there by design (Phase 10). Look again later; once the
+    // user is on its desktop the page has one more round to show before it counts as blank.
+    const here = this.isOnThisDesktop();
+    if (!here || this.blankGrace) {
+      this.blankGrace = !here;
+      this.blankTimer = setTimeout(() => this.blankCheck(), 5000);
+      return;
+    }
+    host.log.error(`[${this.logName}] The overlay page is hidden while its window is shown: Chromium stopped drawing the overlay`);
+    if (Date.now() - this.lastBlankRebuild < 60_000) {
+      host.blankAfterRebuild();
+      return;
+    }
+    this.lastBlankRebuild = Date.now();
+    this.recreateWindow('the page is hidden while the window is shown');
   }
 
   // --- Ending ----------------------------------------------------------------------------------------
@@ -647,7 +746,7 @@ export class Overlay {
   dispose(): void {
     this.disposed = true;
     this.stop();
-    for (const timer of [this.firstShowTimer, this.moveTimer, this.blankTimer]) if (timer) clearTimeout(timer);
+    for (const timer of [this.firstShowTimer, this.moveTimer, this.blankTimer, this.activateCheckTimer]) if (timer) clearTimeout(timer);
     this.service.removeAllListeners(); // a request still running ends unseen
     if (!this.win.isDestroyed()) {
       this.win.removeAllListeners();
