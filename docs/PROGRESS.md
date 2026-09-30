@@ -1262,3 +1262,9 @@ Kept for the record in case Anthropic ever offers an official way.
 - Commit, `main` pushed, annotated tag `v1.6.0` pushed → the release workflow builds the draft; the
   owner publishes it by hand. Release notes drafted for the owner.
 - Docs: phase 11 marked "released as 1.6.0" (PROGRESS, BACKLOG, phase file).
+- CI: the release run passed — Windows, macOS and Linux builds and *Draft GitHub Release*.
+- `release:check ci --wait` stopped on `fetch failed` (a network error while the run was going; it
+  only retried on the rate limit), and piping it into `tail` reported exit 0. Fixed: in `--wait`
+  mode a network error (fetch's `TypeError`) is retried after 90 s (tested with a fetch that fails
+  once); the skill says not to pipe the watch and to run `ci <v>` once if it still ends without a
+  result.
