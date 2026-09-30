@@ -16,11 +16,12 @@ Living record of where the project stands. Update it at the end of every session
 | [8 — Sign in through Claude Code, keep the sign-in fresh](phases/phase-8-sign-in.md) | ✅ Done (2026-09-28) — released as 1.4.0, fix D72 in 1.4.1; browser sign-in, install and renewal of a really expired token: owner's manual tests |
 | [9 — Project website (GitHub Pages)](phases/phase-9-website.md) | ✅ Built (2026-09-29) — goes live when the owner switches Pages to *GitHub Actions* and pushes |
 | [10 — Show the overlay on one virtual desktop](phases/phase-10-virtual-desktops.md) | ✅ Done (2026-09-30) — released as 1.5.0; owner's manual tests pending (real tray click on another desktop, Task View drag, removed desktop) |
+| [11 — Several desktops per window, and a desktop picker](phases/phase-11-desktop-sets.md) | ✅ Done (2026-09-30) — not released yet; tray-opened picker, restart and Task View drag with a set: owner's manual tests |
 
 Each phase has its own plan file in [`phases/`](phases/) (scope, notes, acceptance criteria,
 ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLOG.md).
 
-## What works today (Phases 1–10)
+## What works today (Phases 1–11)
 
 - Frameless, transparent, always-on-top overlay; drag anywhere; position remembered; stays reachable
   when monitors change; "Move to display" menu for multi-monitor setups. The window is exactly the
@@ -125,6 +126,13 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
   Dark and light, phone width, no requests to other sites. `scripts/site.mjs` fills in the latest
   release's files at build time; `.github/workflows/pages.yml` deploys on site changes and on every
   published release (D74–D77).
+- **Several desktops per window, desktop picker (Phase 11):** on Windows menu → *Show on desktops…*
+  opens a small panel (the overlay's look, at the cursor): a row per overlay window, a checkbox for
+  *All desktops* and for every desktop. It stays open while ticking (Esc, ✕ or a click elsewhere
+  close it). A window on several desktops follows the user: when they switch to one of its desktops
+  it is moved there (20–35 ms after Windows reports the switch); on a desktop outside its set it
+  stays behind. Watched through a registry change notification, only while such a window exists.
+  The Phase 10 bullet below still holds for one desktop (D85, D86).
 - **A virtual desktop of its own (Phase 10):** menu → *Show on desktop* ▸ — Windows lists *All
   desktops* (default, as before) and every Task View desktop with its name and *(current)*; the
   overlay moves there, gets a taskbar button on that desktop (Windows ties a window to a desktop
@@ -222,6 +230,8 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D82 | **koffi packaging and loading.** `"koffi": "3.3.2"` (exact), `external` in `scripts/build.mjs` (like `electron-updater`); electron-builder puts the native `.node` file into `app.asar.unpacked` by itself. Loaded with `require` inside `WindowsDesktopApi.load()` the first time a menu needs the desktop list (at startup, for the tray menu; ~10 ms), never on macOS / Linux; any failure → one log line, *Not available on this computer*, the overlay stays on all desktops. One COM object, released on quit | Native code can take the whole app down, so: pinned, lazy, failure contained. A static `import` would run at startup and a missing module would stop the app. Verified: `dist:win` → `win-unpacked` (the installer's content) and the portable exe load koffi and move the window; a renamed `node_modules/koffi` gives the disabled line |
 | D83 | **Releases go through the `/release` project skill** (`.claude/skills/release/SKILL.md`) with `npm run release:check` (`scripts/release-check.mjs`, Node built-ins + git). `pre [x.y.z]`: on `main`, clean tree, not behind `origin/main`, tag free here and on GitHub, `package.json` = lock version, release config (publish = draft, D46 file names, `latest*.yml` upload, `APP_ID` = `build.appId`), `npm ls`; the commits since the last tag with their SemVer effect (`feat` → minor; `fix` / `perf` / `refactor` / `build` / `revert` → patch; `!` or `BREAKING CHANGE` → major; scopes `site` / `docs` / `readme` / `ci` don't count; app files changed under other types → patch) and a suggested version; docs lines waiting for a version. `ci x.y.z [--wait]`: the tag's release run (every 90 s). `post x.y.z`: `releases/latest` is the version and not a pre-release, all 9 files, every `latest*.yml` names the version and points at attached files with matching size and a sha512, the website links to it. Tags are annotated from now on (`git tag -a`), pushed by name; release files are staged by name. The skill also records the release (decision, status, session log, phase files, Electron book) and drafts the notes; the owner still publishes the draft by hand. `.gitignore`'s `release/` is anchored to the root (`/release/`), so the skill's folder isn't ignored | Owner's request (2026-09-30): one repeatable procedure that keeps every rule learned so far — SemVer (D49 / D55 / D65 / D71 / D73), D46's 404 and hash traps, the pushed commit message of session 29, parallel sessions in one working tree, the flaky macOS test of sessions 16 and 24. A script makes the mechanical checks identical every time; the skill keeps the judgement (version, notes, docs). Annotated tags carry date and author and are what `git describe` uses by default; the lightweight tags up to v1.4.1 stay. GitHub is read without a token (`gh` isn't signed in here): `pre` needs none, a whole `ci --wait` ≈ 12 requests, `post` 1 plus three file downloads |
 | D84 | **Version 1.5.0** for Phase 10 (show the overlay on one virtual desktop) | Semantic Versioning: a new feature that breaks nothing is a minor version (as D49 / D55 / D65 / D71 / D73). Settings of 1.4.1 are read unchanged (every window starts on all desktops); going back to 1.4.1 only forgets the desktop choice. On Linux X11 the overlay is now on all workspaces by default (D81). First release with a native runtime dependency (koffi, D78 / D82): the local `dist:win` checked the Windows packages, the dmg / AppImage / deb are first built by this release's CI. The website (Phase 9) and the `/release` skill (D83) are in the same range but don't change the app. The first release made with `/release` |
+| D85 | **Several desktops per window (Phase 11) = the window follows the user.** `WindowSettings.desktops` (a list of `{ id, number }`, null = all) replaces `desktop` (1.5.0's value becomes a one-entry list; ≤ 50, deduplicated, empty = all). Resolved by GUIDs; only when none is left by numbers (Windows 10's new GUIDs); nothing left = all. A window of two or more desktops goes to the current desktop when it is in its set, else stays on the one of its set it is on (or was last on), else the first. A registry watch of `…\Explorer\VirtualDesktops` (`RegNotifyChangeKeyValue`, waited for on a koffi `.async` worker, re-armed before reading) runs only while such a window exists and calls `followDesktop()` (adopt, then place) on every change. Adoption for sets: a window found outside its set replaces the desktop it was on with that one. A rebuilt window keeps the old one's desktop. Following isn't logged per switch | Windows has only "one desktop" (with a taskbar button) or "all" (none); pinning to all is undocumented (D78). Hiding on unticked desktops instead would leave the overlay on screen there until the switch is noticed; following never shows it outside its set. Measured: registry notification 0–12 ms after the switch starts (6 owner switches), a move shows the window in ~2 ms, the follower shows it 20–35 ms after the notification (owner's free switching, mock run) |
+| D86 | **The desktop picker (Phase 11):** on Windows *Show on desktop ▸* became one item, *Show on desktops…*, that opens a small window (`desktop-picker.ts`, `picker.html` / `picker.ts` / `picker.css`, `picker-preload.ts` with four calls, sender checked): a row per overlay window (the account), a column for *All desktops* and one per desktop (name, *current*); the row of the window whose menu opened it is marked. Ticking the last missing desktop = *All desktops*; a window's last desktop stays ticked and locked; unticking *All desktops* = only the current desktop. Frameless, transparent, always on top, no taskbar button (on every desktop), at the Size setting, opened at the cursor (`popupBounds`, above it from the tray); Esc, ✕ or losing the focus close it. Checkboxes drawn in CSS. macOS / Linux keep their two radio items (a submenu per window in the tray with several windows) | Native menus close on every click. The owner tried checkboxes in the submenu, then a list that reopened itself after each click ("nothing may close — neither the menu nor the submenu"), and chose the picker over rebuilding the whole menu in HTML (big and risky). Like Task Manager's *Select columns*. Chromium greys out a ticked disabled checkbox, which would read as "not on this desktop" |
 | D49 | **Version 1.0.0** for the first release with the updater (0.2.0 → 1.0.0; no 0.3.x). The real-release updater test becomes 1.0.0 → 1.0.1. README says openly that only Windows 11 is tested; macOS and Linux builds are CI-built but never run | Owner's choice (2026-09-26): all planned phases are done. Recommended first was 0.3.0 → 0.3.1 for the test and 1.0.0 once it passed; the owner preferred 1.0.0 now. Technically the same: a broken updater in the first updater version needs one manual install either way. |
 
 ## Usage API notes (observed 2026-09-24)
@@ -510,6 +520,14 @@ Kept for the record in case Anthropic ever offers an official way.
     (koffi isn't loaded there, D82).
   - Mock runs keep a chosen desktop in `mock-data/settings.json`: a mock window can open on another
     desktop.
+- **Several desktops per window (Phase 11):**
+  - A window on several desktops shows up on the next one of them 20–35 ms after Windows reports the
+    switch, i.e. during the switch animation but not sliding in with it (only on the desktop it
+    already is on does it slide in). By design: Windows has no "some desktops".
+  - The registry watch keeps one libuv worker thread waiting while a window has several desktops.
+  - Not seen here: the picker opened from the tray (placement unit-tested), a restart with a set, a
+    real Task View drag or removed desktop with a set (the rule is unit-tested), Windows 10, macOS /
+    Linux (radio items only).
 
 ## Session log
 
@@ -1204,3 +1222,27 @@ Kept for the record in case Anthropic ever offers an official way.
 - The skill's example of the unpacked native file (`app.asar.unpacked/node_modules/koffi`) was
   wrong for koffi 3.x; corrected in `.claude/skills/release/SKILL.md`. Electron book 3.7:
   changelog, phase list, a section on this first run in the release chapter.
+
+### 2026-09-30 — Session 35: Phase 11 (several desktops per window, desktop picker)
+
+- The owner asked for checkboxes instead of radio items in *Show on desktop*, so one account's
+  window can be on desktops 1 and 2 and another's only on 3. Windows has no "some desktops" (a
+  window is on one or on all), so a window of several desktops follows the user (D85). Planned as
+  Phase 11 and built in the same session.
+- Measured before building (no desktop switched by the app): a move onto the current desktop shows
+  the window in ~2 ms (off-screen test window, 20 rounds); an invisible logger during the owner's
+  own switches saw the `CurrentVirtualDesktop` change notification 0–12 ms after the switch starts.
+  With the built follower (mock run, desktops 1, 3, 4) the overlay was on each of its desktops
+  20–35 ms after the notification and never on desktop 2.
+- The menu: checkboxes in the submenu closed on every click; a list that reopened itself after each
+  click was rejected by the owner ("nothing may close"). Offered the picker window or an HTML rebuild
+  of the whole menu; the owner chose the picker (D86). Built, rendered offscreen (dark, light, 150 %),
+  the ticked-but-locked checkbox redrawn in CSS (Chromium greys it out); the owner tested it with two
+  account windows and desktop switches: "everything was right".
+- Bug found by the new tests: a click on a desktop that no longer exists counted as *All desktops*
+  (`pickDesktop`), fixed. Checks: `npm run check` (195 tests), `npm run screenshot` (overlay
+  unchanged), `npm run site:build`.
+- Mistake: four questions to the owner were asked in English (the question boxes), although every
+  message must be Persian; the owner had to insist. Memory note sharpened.
+- README (Virtual desktops, FAQ), site (feature line, FAQ), CLAUDE.md (modules, gotcha), D85–D86,
+  phase file, BACKLOG. Electron book: a chapter on this phase. Not released yet.

@@ -1,4 +1,4 @@
-// Virtual desktops (Phase 10): puts an overlay window on one desktop or on all of them (D78, D79).
+// Virtual desktops (Phases 10, 11): puts an overlay window on some desktops or on all of them (D78, D79).
 //
 // Windows has no Electron API for this. A window belongs to a desktop through its taskbar button:
 // the overlay has none (`skipTaskbar`), so it is on every desktop. For one desktop it gets a button
@@ -9,21 +9,28 @@
 // Windows builds). koffi is loaded on first use; if anything fails, the feature says "not available"
 // and the overlay stays on all desktops.
 //
+// Windows has no "some desktops": a window is on one desktop or on all. A window on several desktops
+// (Phase 11) therefore follows the user among them — a watch of the registry key tells about desktop
+// switches (`RegNotifyChangeKeyValue`, no polling), and the window is moved to the new current desktop
+// when that is one of its own. It is never moved to a desktop outside its set.
+//
 // macOS (Spaces) and Linux X11 (workspaces) have no public list: `setVisibleOnAllWorkspaces` gives
 // "all" or "only the one it is on". Wayland: the compositor decides.
 import type { BrowserWindow } from 'electron';
 import { describeError, type LogFn } from './log';
 import {
-  adoptDesktop,
-  choiceToSave,
+  GUID_NULL,
+  adoptDesktops,
   desktopKeyName,
   guidFromBytes,
   guidToBytes,
   isWaylandSession,
   listDesktops,
-  resolveDesktop,
-  type DesktopChoice,
+  resolveDesktops,
+  setToSave,
+  targetDesktop,
   type DesktopRegistry,
+  type DesktopSet,
   type DesktopSupport,
   type VirtualDesktop,
 } from './virtual-desktops-core';
@@ -36,6 +43,11 @@ const SESSION_KEY = (session: number) => `Software\\Microsoft\\Windows\\CurrentV
 const HKEY_CURRENT_USER = -2147483647;
 const RRF_RT_REG_SZ = 0x2;
 const RRF_RT_REG_BINARY = 0x8;
+const KEY_QUERY_VALUE = 0x1;
+const KEY_NOTIFY = 0x10;
+const REG_NOTIFY_CHANGE_LAST_SET = 0x4;
+const INFINITE = 0xffffffff;
+const WAIT_OBJECT_0 = 0;
 const CLSCTX_ALL = 0x17;
 const CLSID_VIRTUAL_DESKTOP_MANAGER = 'aa509086-5ca9-4c25-8f95-589d3c07b48a';
 const IID_IVIRTUAL_DESKTOP_MANAGER = 'a5cd92ff-29be-454c-8d04-d82879fb3f1b';
@@ -73,6 +85,101 @@ class HResultError extends Error {
   }
 }
 
+/** A Win32 call that returned an error code (LSTATUS) or a null handle. */
+class Win32Error extends Error {
+  constructor(what: string, code = 0) {
+    super(`${what} failed${code ? ` (${code})` : ''}`);
+  }
+}
+
+/** A koffi function that can also run on a worker thread (`.async`, the callback comes on the main thread). */
+type AsyncFn = ((...args: unknown[]) => unknown) & { async(...args: unknown[]): void };
+
+/** The native calls of the registry watch (RegistryWatch). */
+interface WatchCalls {
+  regOpenKeyEx(hkey: number, subKey: string, options: number, sam: number, result: unknown[]): number;
+  regNotifyChangeKeyValue(hkey: unknown, watchSubtree: number, filter: number, event: unknown, asynchronous: number): number;
+  regCloseKey(hkey: unknown): unknown;
+  createEvent(attributes: null, manualReset: number, initialState: number, name: null): unknown;
+  setEvent(event: unknown): unknown;
+  closeHandle(handle: unknown): unknown;
+  waitForSingleObject: AsyncFn;
+}
+
+/**
+ * Tells about every change of the values in the VirtualDesktops key — the current desktop (a switch)
+ * and the desktop list — without polling (Phase 11). The notification is registered on the main
+ * thread, which lives as long as the app (Windows ties it to the calling thread), and waited for on a
+ * koffi worker thread; the callback comes back on the main thread, arms the next notification first
+ * (so a change in between isn't lost) and then reports. `stop()` wakes the wait; the key and the
+ * event are closed when it returns.
+ */
+class RegistryWatch {
+  private stopped = false;
+  private closed = false;
+
+  private constructor(
+    private readonly calls: WatchCalls,
+    private readonly key: unknown,
+    private readonly event: unknown,
+    private readonly onChange: () => void,
+    private readonly onFail: (err: unknown) => void,
+  ) {}
+
+  static start(calls: WatchCalls, onChange: () => void, onFail: (err: unknown) => void): RegistryWatch {
+    const key: unknown[] = [0];
+    const status = calls.regOpenKeyEx(HKEY_CURRENT_USER, VD_KEY, 0, KEY_NOTIFY | KEY_QUERY_VALUE, key);
+    if (status !== 0 || !key[0]) throw new Win32Error('RegOpenKeyExW(VirtualDesktops)', status);
+    const event = calls.createEvent(null, 0, 0, null);
+    if (!event) {
+      calls.regCloseKey(key[0]);
+      throw new Win32Error('CreateEventW');
+    }
+    const watch = new RegistryWatch(calls, key[0], event, onChange, onFail);
+    try {
+      watch.arm();
+    } catch (err) {
+      watch.close();
+      throw err;
+    }
+    return watch;
+  }
+
+  stop(): void {
+    if (this.stopped) return;
+    this.stopped = true;
+    this.calls.setEvent(this.event); // the wait returns and closes the handles
+  }
+
+  private arm(): void {
+    const status = this.calls.regNotifyChangeKeyValue(this.key, 0, REG_NOTIFY_CHANGE_LAST_SET, this.event, 1);
+    if (status !== 0) throw new Win32Error('RegNotifyChangeKeyValue', status);
+    this.calls.waitForSingleObject.async(this.event, INFINITE, (err: unknown, result: unknown) => {
+      if (this.stopped) return this.close();
+      if (err || result !== WAIT_OBJECT_0) return this.fail(err ?? new Win32Error('WaitForSingleObject', Number(result)));
+      try {
+        this.arm();
+      } catch (armErr) {
+        return this.fail(armErr);
+      }
+      this.onChange();
+    });
+  }
+
+  private fail(err: unknown): void {
+    this.stopped = true;
+    this.close();
+    this.onFail(err);
+  }
+
+  private close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    this.calls.closeHandle(this.event);
+    this.calls.regCloseKey(this.key);
+  }
+}
+
 /** A window's HWND as the number koffi passes as `intptr_t` (handles use the low 32 bits). */
 function hwndOf(win: BrowserWindow): number {
   return Number(win.getNativeWindowHandle().readBigUInt64LE(0));
@@ -96,6 +203,7 @@ class WindowsDesktopApi {
     private readonly sessionId: number | null,
     private readonly manager: unknown,
     private readonly protos: { isOnCurrent: unknown; desktopOf: unknown; move: unknown; release: unknown },
+    private readonly watchCalls: WatchCalls,
   ) {}
 
   /** Throws when koffi can't be loaded or Windows has no virtual desktop manager (e.g. Windows Server without Explorer). */
@@ -113,6 +221,15 @@ class WindowsDesktopApi {
       'long __stdcall RegGetValueW(intptr_t hkey, const char16_t *subKey, const char16_t *value, uint32_t flags, _Out_ uint32_t *type, void *data, _Inout_ uint32_t *cb)',
     );
     const processIdToSessionId = kernel32.func('int __stdcall ProcessIdToSessionId(uint32_t pid, _Out_ uint32_t *session)');
+    const watchCalls = {
+      regOpenKeyEx: advapi32.func('long __stdcall RegOpenKeyExW(intptr_t hkey, const char16_t *subKey, uint32_t options, uint32_t sam, _Out_ intptr_t *result)'),
+      regNotifyChangeKeyValue: advapi32.func('long __stdcall RegNotifyChangeKeyValue(intptr_t hkey, int watchSubtree, uint32_t filter, intptr_t event, int asynchronous)'),
+      regCloseKey: advapi32.func('long __stdcall RegCloseKey(intptr_t hkey)'),
+      createEvent: kernel32.func('intptr_t __stdcall CreateEventW(void *attributes, int manualReset, int initialState, const char16_t *name)'),
+      setEvent: kernel32.func('int __stdcall SetEvent(intptr_t event)'),
+      closeHandle: kernel32.func('int __stdcall CloseHandle(intptr_t handle)'),
+      waitForSingleObject: kernel32.func('uint32_t __stdcall WaitForSingleObject(intptr_t handle, uint32_t ms)'),
+    } as unknown as WatchCalls;
     const windows = {
       getForegroundWindow: user32.func('intptr_t __stdcall GetForegroundWindow()'),
       findWindow: user32.func('intptr_t __stdcall FindWindowW(const char16_t *className, const char16_t *title)'),
@@ -131,7 +248,12 @@ class WindowsDesktopApi {
     if (hr !== 0 || !ppv[0]) throw new HResultError('CoCreateInstance(VirtualDesktopManager)', hr);
     const session: number[] = [0];
     const sessionId = processIdToSessionId(process.pid, session) ? (session[0] ?? null) : null;
-    return new WindowsDesktopApi(koffi, regGetValue as (...args: unknown[]) => number, windows, sessionId, ppv[0], protos);
+    return new WindowsDesktopApi(koffi, regGetValue as (...args: unknown[]) => number, windows, sessionId, ppv[0], protos, watchCalls);
+  }
+
+  /** Reports every change of the desktop list and of the current desktop (RegistryWatch). */
+  watch(onChange: () => void, onFail: (err: unknown) => void): RegistryWatch {
+    return RegistryWatch.start(this.watchCalls, onChange, onFail);
   }
 
   isForeground(hwnd: number): boolean {
@@ -210,6 +332,8 @@ class WindowsDesktopApi {
 interface WindowPlacement {
   /** Windows: it has a taskbar button, i.e. it belongs to one desktop. */
   button: boolean;
+  /** Windows: the desktop the app put it on, or found it on — a window of several desktops stays there while the user is elsewhere. */
+  desktop: string | null;
   /** macOS / Linux: 'all' or 'this' as last set. */
   applied: 'all' | 'this' | null;
 }
@@ -228,6 +352,8 @@ export class VirtualDesktops {
   private loaded = false;
   private readonly placements = new WeakMap<BrowserWindow, WindowPlacement>();
   private readonly loggedOnce = new Set<string>();
+  private watcher: RegistryWatch | null = null;
+  private watchFailed = false;
 
   constructor(private readonly options: VirtualDesktopsOptions) {}
 
@@ -253,15 +379,18 @@ export class VirtualDesktops {
   }
 
   /**
-   * Puts the window where `choice` says (null = all desktops) — call it after every show, since a
-   * hidden window loses its desktop on Windows. Returns the choice to save when it changed (the GUID
-   * was found by its number, or the desktop is gone: null), undefined when nothing changes.
+   * Puts the window where `set` says (null = all desktops): on Windows on the current desktop when
+   * that is one of its own, else on the one of its set it was on (targetDesktop). Call it after every
+   * show, since a hidden window loses its desktop on Windows, and after every desktop switch for a
+   * window of several desktops. Returns the set to save when it changed (GUIDs found by their numbers,
+   * desktops gone: null), undefined when nothing changes.
    */
-  place(win: BrowserWindow, choice: DesktopChoice | null): DesktopChoice | null | undefined {
+  place(win: BrowserWindow, set: DesktopSet): DesktopSet | undefined {
     if (win.isDestroyed()) return undefined;
     const { platform } = this.options;
     const state = this.placement(win);
-    if (platform === 'win32') return this.placeOnWindows(win, choice, state);
+    if (platform === 'win32') return this.placeOnWindows(win, set, state);
+    const choice = set !== null;
     const wanted = choice ? 'this' : 'all';
     if (state.applied === wanted) return undefined;
     if (platform === 'darwin') {
@@ -280,30 +409,44 @@ export class VirtualDesktops {
     return undefined;
   }
 
-  private placeOnWindows(win: BrowserWindow, choice: DesktopChoice | null, state: WindowPlacement): DesktopChoice | null | undefined {
-    const api = choice ? this.windowsApi() : null;
+  private placeOnWindows(win: BrowserWindow, set: DesktopSet, state: WindowPlacement): DesktopSet | undefined {
+    const api = set ? this.windowsApi() : null;
     const desktops = api ? this.list() : [];
-    const target = resolveDesktop(choice, desktops);
+    const resolved = resolveDesktops(set, desktops);
+    const target = resolved ? targetDesktop(resolved, state.desktop) : null;
     if (!api || !target) {
       // All desktops: no taskbar button, as before Phase 10.
       if (state.button) win.setSkipTaskbar(true);
       state.button = false;
-      return api ? choiceToSave(choice, desktops) : undefined;
+      state.desktop = null;
+      return api ? setToSave(set, desktops) : undefined;
     }
-    // One desktop: a window belongs to a desktop through its taskbar button; with one it joins the
+    // Some desktops: a window belongs to a desktop through its taskbar button; with one it joins the
     // current desktop, then it is moved (cloaked here at once when that is another desktop).
     if (!state.button) win.setSkipTaskbar(false);
     state.button = true;
     if (win.isVisible()) {
       try {
-        api.move(hwndOf(win), target.id);
+        const hwnd = hwndOf(win);
+        if (this.desktopOf(api, hwnd) !== target.id) api.move(hwnd, target.id);
+        state.desktop = target.id;
       } catch (err) {
-        // Stays where it is (on the current desktop); tried again at the next show.
+        // Stays where it is (on the current desktop); tried again at the next show or switch.
         const code = err instanceof HResultError ? err.hr : 0;
         this.logOnce(`move:${code}`, 'warn', `Virtual desktops: could not move the overlay to desktop ${target.number}: ${describeError(err)}`);
       }
     }
-    return choiceToSave(choice, desktops);
+    return setToSave(set, desktops);
+  }
+
+  /** The desktop a shown window is on; null when Windows can't say (e.g. just hidden). */
+  private desktopOf(api: WindowsDesktopApi, hwnd: number): string | null {
+    try {
+      const id = api.desktopOf(hwnd);
+      return id === GUID_NULL ? null : id;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -349,11 +492,13 @@ export class VirtualDesktops {
   }
 
   /**
-   * Windows: the desktop a shown window is really on, when it differs from `choice` — the user moved
-   * it in Task View, or its desktop was removed and Windows moved it to a neighbour (adoptDesktop).
+   * Windows: the new set when a shown window is on a desktop outside its set — the user moved it in
+   * Task View, or its desktop was removed and Windows moved it to a neighbour (adoptDesktops). Also
+   * remembers the desktop it is on.
    */
-  actualDesktop(win: BrowserWindow, choice: DesktopChoice | null): DesktopChoice | undefined {
-    if (this.options.platform !== 'win32' || !choice || win.isDestroyed() || !win.isVisible() || !this.placement(win).button || !this.api) return undefined;
+  actualDesktop(win: BrowserWindow, set: DesktopSet): DesktopSet | undefined {
+    const state = this.placement(win);
+    if (this.options.platform !== 'win32' || !set || win.isDestroyed() || !win.isVisible() || !state.button || !this.api) return undefined;
     let actual: string;
     try {
       actual = this.api.desktopOf(hwndOf(win));
@@ -361,11 +506,49 @@ export class VirtualDesktops {
       if (!(err instanceof HResultError && err.hr >>> 0 === TYPE_E_ELEMENTNOTFOUND)) this.logOnce('actual', 'warn', `Virtual desktops: ${describeError(err)}`);
       return undefined;
     }
-    return adoptDesktop(choice, actual, this.list());
+    const adopted = adoptDesktops(set, actual, state.desktop, this.list());
+    if (actual !== GUID_NULL) state.desktop = actual;
+    return adopted;
   }
 
-  /** Releases the COM object (quit). */
+  /**
+   * Windows (Phase 11): while `on`, calls `onChange` after every desktop switch and every change of
+   * the desktop list — for windows of several desktops, which follow the user. Nothing to watch
+   * elsewhere. A watch that failed isn't tried again (one log line).
+   */
+  watch(on: boolean, onChange: () => void): void {
+    if (!on) {
+      if (!this.watcher) return;
+      this.watcher.stop();
+      this.watcher = null;
+      this.options.log('info', 'Virtual desktops: no longer following desktop switches');
+      return;
+    }
+    if (this.watcher || this.watchFailed) return;
+    const api = this.windowsApi();
+    if (!api) return;
+    const failed = (err: unknown) => {
+      this.watcher = null;
+      this.watchFailed = true;
+      this.options.log('warn', `Virtual desktops: can't follow desktop switches (a window of several desktops stays where it is): ${describeError(err)}`);
+    };
+    try {
+      this.watcher = api.watch(onChange, failed);
+      this.options.log('info', 'Virtual desktops: following desktop switches (a window is on several desktops)');
+    } catch (err) {
+      failed(err);
+    }
+  }
+
+  /** A rebuilt window (D60) stays on the desktop of its set the old one was on. */
+  carryOver(from: BrowserWindow, to: BrowserWindow): void {
+    this.placement(to).desktop = this.placement(from).desktop;
+  }
+
+  /** Stops the watch and releases the COM object (quit). */
   dispose(): void {
+    this.watcher?.stop();
+    this.watcher = null;
     try {
       this.api?.release();
     } catch {
@@ -377,7 +560,7 @@ export class VirtualDesktops {
   private placement(win: BrowserWindow): WindowPlacement {
     let state = this.placements.get(win);
     if (!state) {
-      state = { button: false, applied: null }; // created with skipTaskbar: true (window.ts)
+      state = { button: false, desktop: null, applied: null }; // created with skipTaskbar: true (window.ts)
       this.placements.set(win, state);
     }
     return state;

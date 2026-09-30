@@ -182,3 +182,28 @@ export interface OverlayApi {
   /** Whether the page is hidden (Page Visibility API): hidden while the window is shown means Chromium stopped drawing it (D60). */
   pageVisibility(hidden: boolean): void;
 }
+
+/**
+ * The desktop picker (Windows, Phase 11): a row per overlay window (its account), a column for
+ * *All desktops* and one per virtual desktop. Unlike a menu it stays open while the user ticks.
+ */
+export interface DesktopPickerState {
+  /** 'all' first, then every desktop in Task View order (key = its GUID). */
+  columns: Array<{ key: string; label: string; current: boolean }>;
+  /** One per overlay window; `cells` in the order of `columns`. */
+  rows: Array<{ key: string; label: string; cells: Array<{ checked: boolean; enabled: boolean }> }>;
+  /** A line under the grid (how to add a desktop while there is only one), or null. */
+  hint: string | null;
+  /** The window whose menu opened the picker (its row is marked), or null. */
+  focus: string | null;
+}
+
+/** API exposed to the desktop picker's page by its preload script as `window.picker`. */
+export interface DesktopPickerApi {
+  onState(listener: (state: DesktopPickerState) => void): () => void;
+  /** Ticks or unticks a checkbox: `row` a window's key, `column` 'all' or a desktop's GUID. */
+  pick(row: string, column: string): void;
+  /** The page's content size (CSS pixels), to fit the window. */
+  resize(width: number, height: number): void;
+  close(): void;
+}

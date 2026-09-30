@@ -6,7 +6,7 @@ import type { SourceMode } from '../shared/types';
 import { MAX_FOLDERS } from './claude-accounts';
 import { NOTIFY_THRESHOLDS } from './notifications-core';
 import { DEFAULT_SHORTCUTS, isValidShortcut } from './shortcuts-core';
-import { sanitizeDesktopChoice, type DesktopChoice } from './virtual-desktops-core';
+import { sanitizeDesktopSet, type DesktopSet } from './virtual-desktops-core';
 
 /** Overlay colours: 'system' follows the OS light/dark setting. */
 export type ThemeSetting = 'system' | 'dark' | 'light';
@@ -18,8 +18,8 @@ export interface WindowSettings {
   /** Top-left corner in screen DIPs; null = the first free spot at the top of the primary display. */
   position: { x: number; y: number } | null;
   compact: boolean;
-  /** The virtual desktop it is shown on (Phase 10); null = all desktops. */
-  desktop: DesktopChoice | null;
+  /** The virtual desktops it is shown on (Phases 10, 11); null = all desktops. */
+  desktops: DesktopSet;
 }
 
 export interface Settings {
@@ -70,7 +70,7 @@ export interface RenewStop {
   claudeVersion: string;
 }
 
-export const DEFAULT_WINDOW: Readonly<WindowSettings> = { account: null, position: null, compact: false, desktop: null };
+export const DEFAULT_WINDOW: Readonly<WindowSettings> = { account: null, position: null, compact: false, desktops: null };
 
 export const DEFAULT_SETTINGS: Readonly<Settings> = {
   windows: [{ ...DEFAULT_WINDOW }],
@@ -127,7 +127,8 @@ function sanitizePosition(v: unknown): { x: number; y: number } | null {
 /**
  * The window list: entries whose account is the default one or an added folder, one per account.
  * Settings from before Phase 7 had one window — `position`, `compact` and the selected folder
- * `claudeCodeDir` — and become its entry; windows from before Phase 10 are on all desktops.
+ * `claudeCodeDir` — and become its entry; windows from before Phase 10 are on all desktops, and
+ * 1.5.0's one desktop (`desktop`) becomes a set of one (Phase 11).
  */
 function sanitizeWindows(r: Record<string, unknown>, dirs: readonly string[]): WindowSettings[] {
   const list = Array.isArray(r.windows) ? r.windows : [{ account: r.claudeCodeDir, position: r.position, compact: r.compact }];
@@ -141,7 +142,7 @@ function sanitizeWindows(r: Record<string, unknown>, dirs: readonly string[]): W
       account,
       position: sanitizePosition(w.position),
       compact: typeof w.compact === 'boolean' ? w.compact : DEFAULT_WINDOW.compact,
-      desktop: sanitizeDesktopChoice(w.desktop),
+      desktops: sanitizeDesktopSet(w.desktops !== undefined ? w.desktops : [w.desktop]),
     });
   }
   return windows.length > 0 ? windows : [{ ...DEFAULT_WINDOW }];

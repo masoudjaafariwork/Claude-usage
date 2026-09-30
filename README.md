@@ -20,9 +20,10 @@ Windows · macOS · Linux — Electron + TypeScript. **Website:**
 
 - Frameless, transparent, always-on-top card. Drag it anywhere, right up to the screen edge; its
   position is remembered, and **Move to display** sends it to another monitor.
-- **A virtual desktop of its own** (one monitor?): menu → *Show on desktop* puts the overlay on just
-  one of your desktops, so it doesn't cover your work — switch to that desktop to see your usage. By
-  default it is on every desktop ([below](#virtual-desktops)).
+- **Virtual desktops of its own** (one monitor?): menu → *Show on desktops…* puts the overlay on just
+  the desktops you tick, so it doesn't cover your work — switch to one of them to see your usage. Each
+  account's window can have its own desktops. By default it is on every desktop
+  ([below](#virtual-desktops)).
 - Session ring with reset countdown, weekly bars, per-model limits, weekly split by app
   (Claude Code / Chats / Cowork …), and extra-usage credits when enabled.
 - Compact pill mode for a minimal footprint: the session plus the weekly limits you pick (menu →
@@ -175,7 +176,7 @@ folder*), so they share them. Only one copy runs at a time.
 - **Menu:** the ⋯ button, right-click on the overlay, or the tray icon. It has show/hide, lock
   (click-through) and refresh now; the data source and the Claude Code account (add folders, a
   window per account); compact mode and which limits the pill shows, show account, always on top,
-  size, opacity, theme, refresh interval, show on desktop, move to display (with more than one
+  size, opacity, theme, refresh interval, show on desktops, move to display (with more than one
   monitor) and reset position; notifications (with a test notification), keyboard shortcuts and launch at login; the
   settings and logs folders, check for updates, about, restart and quit. *Sign in to Claude Code…*,
   *Install Claude Code…* or *Open Claude Code* shows up when an account needs it, and *Restart to
@@ -190,22 +191,29 @@ folder*), so they share them. Only one copy runs at a time.
 
 ### Virtual desktops
 
-With a single monitor the overlay can live on a desktop of its own: menu → **Show on desktop**.
+With a single monitor the overlay can live on desktops of its own.
 
-- **Windows 10 / 11:** the submenu lists *All desktops* (the default) and every desktop in Task
-  View's order, with the name you gave it and *(current)* on the one you're on (only one desktop?
-  `Win+Ctrl+D` adds one). Pick one and the overlay moves there: `Win+Ctrl+←/→` or Task View to see
-  it. It stays there after hiding and showing it and after a restart. Each window (one per account)
-  has its own choice; the tray menu with several windows moves them all.
-- **A taskbar button** shows up on that desktop while the overlay is on it: Windows ties a window
-  to a desktop through its taskbar button. Clicking it brings the overlay up, and you can drag the
-  overlay to another desktop in Task View — the overlay remembers where you put it. *All desktops*
-  takes the button away again.
+- **Windows 10 / 11:** menu (⋯, right-click or the tray) → **Show on desktops…** opens a small panel
+  with a row for each overlay window (one per account) and a checkbox for *All desktops* (the
+  default) and for every desktop in Task View's order, with the name you gave it and *current* under
+  the one you're on (only one desktop? `Win+Ctrl+D` adds one). It stays open while you tick; `Esc`,
+  ✕ or a click elsewhere closes it. Untick the desktops where you don't want an overlay — say, one
+  account on desktops 1 and 2, the other only on 3. Ticking every desktop is *All desktops* again; a
+  window's last desktop stays ticked (it can't be on none).
+- On one desktop the overlay lives there (`Win+Ctrl+←/→` or Task View to see it); on several it comes
+  along when you switch from one of them to another (it shows up a moment after the switch) and stays
+  behind when you switch to a desktop that isn't ticked. It keeps its desktops after hiding and
+  showing it and after a restart.
+- **A taskbar button** shows up on the desktop the overlay is on (unless it is on all desktops):
+  Windows ties a window to one desktop through its taskbar button — which is also why an overlay on
+  several desktops is moved along with you rather than shown on them all at once. Clicking it brings
+  the overlay up, and you can drag the overlay to another desktop in Task View — the overlay
+  remembers where you put it. *All desktops* takes the button away again.
 - A **tray click or `Ctrl+Alt+U` on another desktop** never hides an overlay you can't see: it takes
   you to the overlay's desktop — when Windows allows it (right after you've typed or clicked in
   another app it may refuse; then nothing changes, and `Win+Ctrl+←/→` gets you there).
-- If the desktop is removed, Windows moves the overlay to a neighbouring one, and the overlay stays
-  there.
+- If one of its desktops is removed, Windows moves the overlay to a neighbouring one, and the
+  overlay keeps that one instead.
 - **macOS:** *All desktops* or *Only this desktop* (the Space you're on when you pick it; after a
   restart, the Space that is active then). **Linux:** the same with workspaces on X11; on Wayland
   the desktop environment decides (e.g. a window rule in KDE Plasma).
@@ -435,11 +443,12 @@ Project guide for AI-assisted development: [CLAUDE.md](CLAUDE.md). Status and de
   (update checks use the system proxy settings too); *No update information on GitHub* — the latest
   release has no `latest*.yml`, or only pre-releases exist. The app tries again after an hour, or
   use *Check for updates*. Details are in the log.
-- **The overlay covers part of my work (one monitor)**: give it a virtual desktop of its own — menu
-  → *Show on desktop* → a desktop (`Win+Ctrl+D` adds one), then switch there when you want to look
-  ([Virtual desktops](#virtual-desktops)). Or lock it (click-through) and lower its opacity.
-- **The overlay has a taskbar button now** (Windows): it is on one virtual desktop, and Windows needs
-  the button for that. Menu → *Show on desktop* → *All desktops* removes it.
+- **The overlay covers part of my work (one monitor)**: give it virtual desktops of its own — menu
+  → *Show on desktops…*, untick the desktops you work on (`Win+Ctrl+D` adds one), then switch to one
+  of the others when you want to look ([Virtual desktops](#virtual-desktops)). Or lock it
+  (click-through) and lower its opacity.
+- **The overlay has a taskbar button now** (Windows): it isn't on all virtual desktops, and Windows
+  needs the button to tie it to one. Menu → *Show on desktops…* → *All desktops* removes it.
 - **"Show on desktop: Not available on this computer"** (Windows): the virtual-desktop calls failed
   (the log says why, e.g. on Windows Server without Task View); the overlay stays on every desktop.
 - **The overlay ignores clicks**: it is locked (a lock icon replaces its buttons). Unlock it from

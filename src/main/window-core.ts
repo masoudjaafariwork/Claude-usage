@@ -54,3 +54,17 @@ export function freeSpot(area: Rect, size: { width: number; height: number }, ot
   }
   return { x: corner, y };
 }
+
+/**
+ * Where a popup of `size` goes next to the cursor (`anchor`): below and right of it, else above /
+ * left of it, always inside the work area — e.g. the desktop picker opened from the tray at the
+ * bottom of the screen goes above the cursor (Phase 11).
+ */
+export function popupBounds(anchor: { x: number; y: number }, size: { width: number; height: number }, area: Rect): Rect {
+  const { width, height } = size;
+  const right = area.x + area.width;
+  const bottom = area.y + area.height;
+  const x = anchor.x + width <= right ? anchor.x : Math.max(area.x, Math.min(anchor.x - width, right - width));
+  const y = anchor.y + height <= bottom ? anchor.y : Math.max(area.y, Math.min(anchor.y - height, bottom - height));
+  return { x: Math.round(x), y: Math.round(y), width, height };
+}

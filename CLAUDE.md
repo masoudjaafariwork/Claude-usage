@@ -107,15 +107,17 @@ src/
     login-item-core.ts   Reconcile setting ↔ OS, Task Manager flag parsing, Linux .desktop entry  [pure]
     snapshot-cache.ts    last-usage.json — last good snapshot, shown as stale on startup
     window.ts            Frameless transparent always-on-top window, fit-to-content, multi-monitor, lock
-    window-core.ts       Where a resized window goes (edge anchoring, stays on its display); free spot for a new one [pure]
-    virtual-desktops-core.ts  Desktop list from the registry values, GUID bytes, saved choice ↔ list, adoption, menu entries (Phase 10) [pure]
-    virtual-desktops.ts  Windows: koffi → registry (read-only) + IVirtualDesktopManager + user32 foreground; macOS / Linux: setVisibleOnAllWorkspaces
+    window-core.ts       Where a resized window goes (edge anchoring, stays on its display); free spot for a new one; a popup at the cursor [pure]
+    virtual-desktops-core.ts  Desktop list from the registry values, GUID bytes, saved set ↔ list, target desktop, adoption, checkbox menu entries (Phases 10, 11) [pure]
+    virtual-desktops.ts  Windows: koffi → registry (read-only, plus a change watch) + IVirtualDesktopManager + user32 foreground; macOS / Linux: setVisibleOnAllWorkspaces
+    desktop-picker.ts    Windows: the "Show on desktops…" window — a checkbox grid (windows × desktops) that stays open (Phase 11)
     tray.ts / tray-icon.ts  Tray with a live progress ring drawn into a PNG at runtime  [tray-icon pure]
     menu.ts              Context menu: one window's (⋯, right-click) or all windows' (tray with several)
     mock.ts              Fake data sources for dev and screenshots                                [pure]
     fixtures/            Real API responses used by tests
-  preload/preload.ts     contextBridge → window.overlay (OverlayApi)
-  renderer/              Sandboxed UI: index.html, styles.css (dark + light theme vars), renderer.ts (DOM)
+  preload/preload.ts     contextBridge → window.overlay (OverlayApi); picker-preload.ts → window.picker (DesktopPickerApi)
+  renderer/              Sandboxed UI: index.html, styles.css (dark + light theme vars), renderer.ts (DOM);
+                         picker.html / picker.css / picker.ts — the desktop picker's page
 scripts/                 build.mjs, test.mjs, start.mjs, screenshots.mjs, social-preview.mjs, make-icon.mjs,
                          site.mjs (website: build with release data, serve, images, captures),
                          release-check.mjs (release checks before tagging / CI / after publishing)
@@ -143,7 +145,7 @@ Sign-in is always the user's own Claude Code (Phase 8, D66–D70): *Sign in* / *
 an expired sign-in makes the window's `Overlay` ask main to run Claude Code hidden with its local
 `/usage` command, which renews Claude Code's own token; the credentials watch then loads fresh numbers.
 Every window shows one Claude Code account (config folder), never one another window shows
-(`settings.windows`: account, position, compact, virtual desktop; the first is the main window, D62). Switching a
+(`settings.windows`: account, position, compact, virtual desktops; the first is the main window, D62). Switching a
 window moves its credentials watch, cached snapshot, pace history and notification records to that
 account (`userData/accounts/<key>/` for added folders) and discards a request still running for the
 old one. Look, lock, source, interval and notifications settings are global. Claude Desktop's
@@ -249,5 +251,10 @@ samples count only for the shown account's org (D51).
   (`E_ACCESSDENIED` from a helper; reading the desktop from outside works). Activating a window
   (`focus()`) switches the user's desktop: only on the user's request, and never in a test without the
   owner's OK. Mock runs keep a chosen desktop in `mock-data/settings.json`, so a mock window may open
-  on another desktop. The portable exe doesn't pass its stderr on: read a test run's inspector URL
+  on another desktop. Windows knows only "one desktop" or "all": a window on several desktops (Phase
+  11, D85) follows the user — a registry watch (`RegNotifyChangeKeyValue`, waited for with a koffi
+  `.async` call) runs while such a window exists and moves it on every switch into its set.
+- Native menus close on every click (Win32; Electron can't keep them open). Anything the user ticks
+  several times in a row belongs in a window of its own, like the desktop picker (D86) — not in a
+  menu, and not in a menu that reopens itself (the owner rejected that). The portable exe doesn't pass its stderr on: read a test run's inspector URL
   from `http://127.0.0.1:<port>/json`.

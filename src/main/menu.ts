@@ -8,7 +8,7 @@ import { OPACITY_OPTIONS, REFRESH_INTERVAL_OPTIONS_SEC, SCALE_OPTIONS, type Sett
 import { shortcutLabel, type ShortcutState, type ShortcutsStatus } from './shortcuts-core';
 import { dotPng } from './tray-icon';
 import type { UpdateMenuItem } from './update-core';
-import type { DesktopChoice, DesktopMenuEntry } from './virtual-desktops-core';
+import type { DesktopMenuEntry, DesktopSet } from './virtual-desktops-core';
 
 let updateDot: NativeImage | null = null;
 
@@ -56,8 +56,13 @@ export interface MenuActions {
   setRefreshInterval(seconds: number): void;
   moveToDisplay(displayId: number): void;
   resetPosition(): void;
-  /** Show the window on one virtual desktop, or on all of them (null) (Phase 10). */
-  setDesktop(choice: DesktopChoice | null): void;
+  /**
+   * Show a window on some virtual desktops, or on all of them (null) (Phases 10, 11). `group`: which
+   * window of *Show on desktop* (MenuContext.desktops.groups).
+   */
+  setDesktops(group: number, set: DesktopSet): void;
+  /** Windows: open the desktop picker (a grid of checkboxes that stays open while the user ticks, Phase 11). */
+  openDesktopPicker(): void;
   setLaunchAtLogin(on: boolean): void;
   setSource(mode: SourceMode): void;
   /** Show another Claude Code account in this window: an added config folder, or null for the default one. */
@@ -117,9 +122,31 @@ export interface MenuContext {
   notificationsSupported: boolean;
   /** The updates item: at the top when there is something to do, else next to About. */
   update: UpdateMenuItem;
-  /** *Show on desktop* ▸ (virtual-desktops-core.ts builds the entries). */
-  desktops: { title: string; entries: readonly DesktopMenuEntry[] };
+  /**
+   * *Show on desktop*. Windows (`picker`): one item, *Show on desktops…*, that opens the desktop
+   * picker (Phase 11). Elsewhere a submenu (virtual-desktops-core.ts builds the entries): one group
+   * without a label in a window's menu; in the tray menu with several windows one group per window,
+   * labelled with its account, so every window can be set from any desktop.
+   */
+  desktops: { title: string; picker: boolean; groups: ReadonlyArray<{ label: string | null; entries: readonly DesktopMenuEntry[] }> };
 }
+
+/** Menu items of *Show on desktop* entries; `pick` gets the window's desktops after a click. */
+function desktopEntryItems(entries: readonly DesktopMenuEntry[], pick: (set: DesktopSet) => void): MenuItemConstructorOptions[] {
+  return entries.map((entry): MenuItemConstructorOptions => {
+    if (entry.kind === 'separator') return { type: 'separator' };
+    if (entry.kind === 'note') return { label: entry.label, enabled: false };
+    return { label: entry.label, type: entry.type, checked: entry.checked, enabled: entry.enabled, click: () => pick(entry.value) };
+  });
+}
+
+/** The items of *Show on desktop*: the window's own, or a submenu per window. */
+function desktopItems(groups: MenuContext['desktops']['groups'], actions: MenuActions): MenuItemConstructorOptions[] {
+  const [only] = groups;
+  if (groups.length === 1 && only && only.label === null) return desktopEntryItems(only.entries, (set) => actions.setDesktops(0, set));
+  return groups.map((g, i) => ({ label: g.label ?? '', submenu: desktopEntryItems(g.entries, (set) => actions.setDesktops(i, set)) }));
+}
+
 
 /** Shows a working global shortcut next to its menu item (the menu doesn't register it again). */
 function accelerator(shortcut: ShortcutState): Pick<MenuItemConstructorOptions, 'accelerator' | 'registerAccelerator'> {
@@ -292,14 +319,9 @@ export function buildMenu(settings: Readonly<Settings>, context: MenuContext, ac
         click: () => actions.setRefreshInterval(seconds),
       })),
     },
-    {
-      label: context.desktops.title,
-      submenu: context.desktops.entries.map((entry): MenuItemConstructorOptions => {
-        if (entry.kind === 'separator') return { type: 'separator' };
-        if (entry.kind === 'note') return { label: entry.label, enabled: false };
-        return { label: entry.label, type: 'radio', checked: entry.checked, click: () => actions.setDesktop(entry.choice) };
-      }),
-    },
+    context.desktops.picker
+      ? { label: 'Show on desktops…', click: () => actions.openDesktopPicker() }
+      : { label: context.desktops.title, submenu: desktopItems(context.desktops.groups, actions) },
   ];
 
   if (displays.length > 1) {

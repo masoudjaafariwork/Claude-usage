@@ -87,7 +87,8 @@ import { Updater } from './updater';
 import { fetchUsageJson } from './usage-api';
 import { ClaudeCodeSource } from './usage-source';
 import { VirtualDesktops } from './virtual-desktops';
-import { commonSelection, desktopMenuEntries, desktopMenuTitle } from './virtual-desktops-core';
+import { DesktopPicker } from './desktop-picker';
+import { desktopMenuEntries, desktopMenuTitle, desktopPickerState, menuText, pickDesktop, type DesktopSet } from './virtual-desktops-core';
 import { APP_ICON_PATH, arrangeOnDisplay } from './window';
 
 interface CliOptions {
@@ -148,7 +149,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 /** Menu items that act on the window whose menu it is, or on all windows (menuFor below). */
-type WindowAction = 'closeWindow' | 'refresh' | 'setCompact' | 'setClaudeCodeDir' | 'addClaudeCodeDir' | 'moveToDisplay' | 'resetPosition' | 'setDesktop';
+type WindowAction = 'closeWindow' | 'refresh' | 'setCompact' | 'setClaudeCodeDir' | 'addClaudeCodeDir' | 'moveToDisplay' | 'resetPosition' | 'setDesktops' | 'openDesktopPicker';
 
 /** How long a sign-in for a new account may take before its empty folder is removed again. */
 const NEW_ACCOUNT_WAIT_MS = 15 * 60_000;
@@ -512,7 +513,14 @@ function start(): void {
       const label = { open: 'Open Claude Code', 'sign-in': 'Sign in to Claude Code…', install: 'Install Claude Code…' }[action];
       return [{ dir: o.account, action, label: target ? label : `${label} — ${shortLabel(o.account)}` }];
     });
+    // Windows has the desktop picker (Phase 11); macOS / Linux X11 two radio items: in a window's menu
+    // its own, in the tray menu with several windows a submenu per window.
     const desktopSupport = desktops.support;
+    const desktopEntries = (o: Overlay) => desktopMenuEntries({ support: desktopSupport, platform: process.platform, desktops: [], selected: o.view.desktops });
+    const perWindow = scoped.length > 1 && desktopSupport === 'this-only';
+    const desktopGroups = perWindow
+      ? scoped.map((o) => ({ label: menuText(shortLabel(o.account), process.platform), entries: desktopEntries(o) }))
+      : scoped.slice(0, 1).map((o) => ({ label: null, entries: desktopEntries(o) }));
     return buildMenu(
       current,
       {
@@ -537,15 +545,7 @@ function start(): void {
         shortcuts,
         notificationsSupported: notices.supported,
         update: mockUpdate ?? updater.menuItem,
-        desktops: {
-          title: desktopMenuTitle(process.platform),
-          entries: desktopMenuEntries({
-            support: desktopSupport,
-            platform: process.platform,
-            desktops: desktopSupport === 'list' ? desktops.list() : [], // read fresh: added and renamed desktops show up
-            selected: commonSelection(scoped.map((o) => o.view.desktop)),
-          }),
-        },
+        desktops: { title: desktopMenuTitle(process.platform), picker: desktopSupport === 'list', groups: desktopGroups },
       },
       {
         ...actions,
@@ -572,11 +572,11 @@ function start(): void {
           else arrangeOnDisplay(overlays.map((o) => o.win), screen.getPrimaryDisplay());
           showAll();
         },
-        setDesktop: (choice) => {
-          for (const overlay of scoped) overlay.setDesktop(choice);
-          showAll(); // a hidden window goes straight to its desktop
-          updateTray();
+        setDesktops: (group, set) => {
+          const overlay = scoped[group];
+          if (overlay) setDesktops(overlay, set);
         },
+        openDesktopPicker: () => picker.open(target ? windowKey(target) : null),
       },
     );
   }
@@ -588,6 +588,7 @@ function start(): void {
   );
 
   function updateTray(): void {
+    watchDesktops();
     tray.update(
       overlays.map((o) => ({ state: o.state(), who: shortLabel(o.account) })),
       (mockUpdate ?? updater.menuItem).prominent,
@@ -595,9 +596,51 @@ function start(): void {
     );
   }
 
+  /** Menu → *Show on desktop* (macOS / Linux) or a checkbox of the desktop picker (Windows): the window goes to its new desktops. */
+  function setDesktops(overlay: Overlay, set: DesktopSet): void {
+    overlay.setDesktops(set);
+    showAll(); // a hidden window goes straight to its desktops
+    updateTray();
+  }
+
+  /** A window in the desktop picker: its account's folder, '' for the default account (Phase 11). */
+  function windowKey(overlay: Overlay): string {
+    return overlay.account ?? '';
+  }
+
+  // The desktop picker (Windows, Phase 11): a row per window, the desktop list read fresh each time.
+  const picker = new DesktopPicker({
+    state: (focus) =>
+      desktopPickerState(
+        overlays.map((o) => ({ key: windowKey(o), label: shortLabel(o.account), set: o.view.desktops })),
+        desktops.list(),
+        focus,
+      ),
+    pick: (row, column) => {
+      const overlay = overlays.find((o) => windowKey(o) === row);
+      const next = overlay ? pickDesktop(overlay.view.desktops, column, desktops.list()) : undefined;
+      if (overlay && next !== undefined) setDesktops(overlay, next);
+    },
+    scale: () => settings.get().scale,
+  });
+
+  /**
+   * A window on several desktops follows the user among them (Phase 11): desktop switches are watched
+   * (Windows) while there is such a window. Called with every tray update, which follows every change
+   * of the windows and their settings; switching the watch on or off only happens when that changes.
+   */
+  function watchDesktops(): void {
+    desktops.watch(overlays.some((o) => o.onSeveralDesktops), () => {
+      for (const overlay of overlays) overlay.followDesktop();
+      updateTray(); // the desktop list may have changed too
+      picker.refresh();
+    });
+  }
+
   function broadcast(): void {
     for (const overlay of overlays) overlay.send();
     updateTray();
+    picker.refresh(); // a window opened or closed, or its account changed
   }
 
   function applyShortcuts(): void {
@@ -1162,6 +1205,7 @@ function start(): void {
       else removeUnusedFolder(dir);
     }
     stopWatchingDesktop();
+    picker.close();
     for (const overlay of overlays) {
       overlay.syncDesktop(); // moved in Task View meanwhile: it comes back there
       overlay.stop();

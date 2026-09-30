@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const dist = join(root, 'dist');
 const watchMode = process.argv.includes('--watch');
-const STATIC_FILES = ['index.html', 'styles.css'];
+const STATIC_FILES = ['index.html', 'styles.css', 'picker.html', 'picker.css'];
 
 const shared = {
   bundle: true,
@@ -29,23 +29,25 @@ const configs = [
     // native .node file goes to app.asar.unpacked).
     external: ['electron', 'electron-updater', 'koffi'],
   },
-  {
+  // The overlay's preload and the desktop picker's (Phase 11).
+  ...['preload', 'picker-preload'].map((name) => ({
     ...shared,
-    entryPoints: [join(root, 'src/preload/preload.ts')],
-    outfile: join(dist, 'preload/preload.js'),
+    entryPoints: [join(root, `src/preload/${name}.ts`)],
+    outfile: join(dist, `preload/${name}.js`),
     platform: 'node',
     format: 'cjs',
     target: 'node22',
     external: ['electron'],
-  },
-  {
+  })),
+  // The overlay's page and the desktop picker's.
+  ...['renderer', 'picker'].map((name) => ({
     ...shared,
-    entryPoints: [join(root, 'src/renderer/renderer.ts')],
-    outfile: join(dist, 'renderer/renderer.js'),
+    entryPoints: [join(root, `src/renderer/${name}.ts`)],
+    outfile: join(dist, `renderer/${name}.js`),
     platform: 'browser',
     format: 'iife',
     target: 'chrome130',
-  },
+  })),
 ];
 
 function copyStatic() {

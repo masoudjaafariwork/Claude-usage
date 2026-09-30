@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { freeSpot, resizedBounds, type Rect } from './window-core';
+import { freeSpot, popupBounds, resizedBounds, type Rect } from './window-core';
 
 // A 1920 × 1032 work area (taskbar at the bottom) with the primary display's origin.
 const area: Rect = { x: 0, y: 0, width: 1920, height: 1032 };
@@ -85,4 +85,15 @@ test('freeSpot: the top-right corner, else side by side to the left of the other
   // The top row is full: back to the corner.
   const row = [0, 1, 2, 3, 4, 5].map((i) => ({ x: 1592 - i * 320, y: 16, width: 312, height: 400 }));
   assert.deepEqual(freeSpot(area, size, row), { x: 1592, y: 16 });
+});
+
+test('popupBounds: below and right of the cursor, else above / left, inside the work area (the desktop picker)', () => {
+  const area: Rect = { x: 0, y: 0, width: 1920, height: 1040 }; // taskbar at the bottom
+  const size = { width: 400, height: 160 };
+  assert.deepEqual(popupBounds({ x: 100, y: 100 }, size, area), { x: 100, y: 100, width: 400, height: 160 });
+  assert.deepEqual(popupBounds({ x: 1800, y: 1060 }, size, area), { x: 1400, y: 880, width: 400, height: 160 }, 'from the tray: above and left');
+  assert.deepEqual(popupBounds({ x: 1700, y: 950 }, size, area), { x: 1300, y: 790, width: 400, height: 160 });
+  assert.deepEqual(popupBounds({ x: 50, y: 100 }, { width: 2000, height: 160 }, area), { x: 0, y: 100, width: 2000, height: 160 }, 'wider than the area: its left edge');
+  const second: Rect = { x: -1280, y: 0, width: 1280, height: 1000 };
+  assert.deepEqual(popupBounds({ x: -100, y: 990 }, size, second), { x: -500, y: 830, width: 400, height: 160 });
 });

@@ -1,7 +1,9 @@
-// Virtual desktops (Phase 10): which desktop an overlay window is shown on. Pure logic — the desktop
-// list from Windows' registry values, resolving a saved choice against it, adopting where Windows
-// really put the window, the menu entries, and which OSes can place a window at all. The native
-// calls live in virtual-desktops.ts.
+// Virtual desktops (Phases 10 and 11): which desktops an overlay window is shown on. Pure logic — the
+// desktop list from Windows' registry values, resolving a saved set of desktops against it, where a
+// window of a set goes, adopting where Windows really put the window, the desktop picker's
+// checkboxes, the menu entries, and which OSes can place a window at all. The native calls live in
+// virtual-desktops.ts.
+import type { DesktopPickerState } from '../shared/types';
 //
 // Windows keeps the list in HKCU\Software\Microsoft\Windows\CurrentVersion\Explorer\VirtualDesktops:
 // `VirtualDesktopIDs` (REG_BINARY, 16 bytes per desktop in Task View order), `CurrentVirtualDesktop`
@@ -9,10 +11,10 @@
 // `VirtualDesktopIDs` counts: the `Desktops\` subkeys can hold leftovers of removed desktops.
 
 /**
- * A window's desktop setting (`WindowSettings.desktop`; null there = all desktops, the default).
- * Windows: the chosen desktop's GUID and its 1-based number in Task View when last seen — the number
- * is the fallback when the GUID is gone (Windows 10 may give desktops new GUIDs after a sign-out).
- * macOS / Linux X11: both null = "only the desktop it is on" (they have no list of desktops).
+ * One desktop of a window's set (`WindowSettings.desktops`, see DesktopSet). Windows: the desktop's
+ * GUID and its 1-based number in Task View when last seen — the number is the fallback when the GUIDs
+ * are gone (Windows 10 may give desktops new GUIDs after a sign-out). macOS / Linux X11: both null =
+ * "only the desktop it is on" (they have no list of desktops).
  */
 export interface DesktopChoice {
   id: string | null;
@@ -107,40 +109,92 @@ export function listDesktops(registry: DesktopRegistry): VirtualDesktop[] {
 }
 
 /**
- * The desktop a saved choice stands for: the same GUID, else the desktop with the same number, else
- * none (null = all desktops). A choice without an id or number (macOS / Linux) has no desktop here.
+ * A window's desktops (`WindowSettings.desktops`, Phase 11): null = all desktops (the default).
+ * Windows: the chosen desktops (one or more). macOS / Linux X11: one entry with neither id nor number
+ * = "only the desktop it is on".
  */
-export function resolveDesktop(choice: DesktopChoice | null, desktops: readonly VirtualDesktop[]): VirtualDesktop | null {
-  if (!choice) return null;
-  return desktops.find((d) => d.id === choice.id) ?? desktops.find((d) => d.number === choice.number) ?? null;
+export type DesktopSet = DesktopChoice[] | null;
+
+/** At most this many desktops per window in settings.json. */
+const MAX_SET_SIZE = 50;
+
+const choiceKey = (c: DesktopChoice) => (c.id !== null ? c.id : `#${c.number ?? ''}`);
+
+/** macOS / Linux's "only the desktop it is on" (no list of desktops to name one). */
+export function isThisOnly(set: DesktopSet): boolean {
+  return set !== null && set.length > 0 && set.every((c) => c.id === null && c.number === null);
+}
+
+/** The choices of desktops, in Task View order. */
+const choicesOf = (desktops: readonly VirtualDesktop[]): DesktopChoice[] => desktops.map((d) => ({ id: d.id, number: d.number }));
+
+/**
+ * The desktops a saved set stands for, in Task View order: those whose GUID is still there; when none
+ * is (Windows 10 may give every desktop a new GUID after a sign-out), those with the same numbers;
+ * null when nothing is left — or for all desktops, and for macOS / Linux's "only this one".
+ */
+export function resolveDesktops(set: DesktopSet, desktops: readonly VirtualDesktop[]): VirtualDesktop[] | null {
+  if (!set || set.length === 0) return null;
+  const byId = desktops.filter((d) => set.some((c) => c.id === d.id));
+  if (byId.length > 0) return byId;
+  const byNumber = desktops.filter((d) => set.some((c) => c.number !== null && c.number === d.number));
+  return byNumber.length > 0 ? byNumber : null;
 }
 
 /**
- * What to save after placing a window: the resolved desktop when its GUID or number differs from the
- * saved choice, null (all desktops) when the desktop is really gone — the list could be read and has
- * neither its GUID nor its number — and undefined when nothing changes. An empty list (the registry
- * couldn't be read) never drops a choice.
+ * What to save after placing a window: the resolved desktops when their GUIDs or numbers differ from
+ * the saved set, null (all desktops) when none is left — the list could be read and has neither their
+ * GUIDs nor their numbers — and undefined when nothing changes. An empty list (the registry couldn't
+ * be read) never drops a set.
  */
-export function choiceToSave(choice: DesktopChoice | null, desktops: readonly VirtualDesktop[]): DesktopChoice | null | undefined {
-  if (!choice || (choice.id === null && choice.number === null)) return undefined;
-  const target = resolveDesktop(choice, desktops);
-  if (!target) return desktops.length > 0 ? null : undefined;
-  return target.id === choice.id && target.number === choice.number ? undefined : { id: target.id, number: target.number };
+export function setToSave(set: DesktopSet, desktops: readonly VirtualDesktop[]): DesktopSet | undefined {
+  if (!set || isThisOnly(set) || desktops.length === 0) return undefined;
+  const resolved = resolveDesktops(set, desktops);
+  if (!resolved) return null;
+  const next = choicesOf(resolved);
+  const same = next.length === set.length && next.every((c) => set.some((s) => s.id === c.id && s.number === c.number));
+  return same ? undefined : next;
+}
+
+/**
+ * Where a window of a set goes: the current desktop when it is in the set (it follows the user), else
+ * the one of the set it is on (or was last on), else the first of the set.
+ */
+export function targetDesktop(resolved: readonly VirtualDesktop[], on: string | null): VirtualDesktop | null {
+  return resolved.find((d) => d.current) ?? resolved.find((d) => d.id === on) ?? resolved[0] ?? null;
 }
 
 /**
  * "Where the window really is wins": the user dragged the overlay to another desktop in Task View, or
  * removed its desktop (Windows moves its windows to a neighbour). `actual` is `GetWindowDesktopId` of
- * the shown window; the new choice to save, or undefined when there is nothing to adopt (same desktop
- * and number, no answer, or GUID_NULL — not on one desktop).
+ * the shown window, `placedOn` the desktop the app put it on. On a desktop of its set nothing changes;
+ * elsewhere that desktop takes the place of the one it was on. Undefined when there is nothing to
+ * adopt (no answer, GUID_NULL — not on one desktop —, all desktops, macOS / Linux).
  */
-export function adoptDesktop(choice: DesktopChoice | null, actual: string | null, desktops: readonly VirtualDesktop[]): DesktopChoice | undefined {
-  if (!choice || choice.id === null || !actual || actual === GUID_NULL) return undefined;
-  const number = desktops.find((d) => d.id === actual)?.number ?? (actual === choice.id ? choice.number : null);
-  return actual === choice.id && number === choice.number ? undefined : { id: actual, number };
+export function adoptDesktops(set: DesktopSet, actual: string | null, placedOn: string | null, desktops: readonly VirtualDesktop[]): DesktopSet | undefined {
+  if (!set || isThisOnly(set) || !actual || actual === GUID_NULL) return undefined;
+  if (set.some((c) => c.id === actual)) return undefined;
+  let rest = set.filter((c) => placedOn === null || c.id !== placedOn);
+  if (rest.length === set.length && set.length === 1) rest = []; // its only desktop: it moved away from it
+  const next = [...rest, { id: actual, number: desktops.find((d) => d.id === actual)?.number ?? null }];
+  return next.sort((a, b) => (a.number ?? Number.MAX_SAFE_INTEGER) - (b.number ?? Number.MAX_SAFE_INTEGER));
 }
 
-/** A desktop setting read from settings.json: a GUID and / or a number, both null (macOS / Linux), or null (all desktops). */
+/**
+ * A click on a desktop in the menu: ticks or unticks it. While the window is on all desktops (or its
+ * desktops are gone), every desktop counts as ticked. Ticking the last missing one gives all desktops
+ * (null); unticking the last ticked one changes nothing (the menu greys it out).
+ */
+export function toggleDesktop(set: DesktopSet, desktop: VirtualDesktop, desktops: readonly VirtualDesktop[]): DesktopSet {
+  const resolved = resolveDesktops(set, desktops) ?? [...desktops];
+  const ticked = resolved.some((d) => d.id === desktop.id);
+  const next = ticked ? resolved.filter((d) => d.id !== desktop.id) : desktops.filter((d) => d.id === desktop.id || resolved.some((r) => r.id === d.id));
+  if (next.length === 0) return set;
+  if (desktops.every((d) => next.some((n) => n.id === d.id))) return null;
+  return choicesOf(next);
+}
+
+/** One desktop of a set read from settings.json: a GUID and / or a number, or both null (macOS / Linux); null when invalid. */
 export function sanitizeDesktopChoice(value: unknown): DesktopChoice | null {
   if (typeof value !== 'object' || value === null) return null;
   const v = value as Record<string, unknown>;
@@ -153,6 +207,21 @@ export function sanitizeDesktopChoice(value: unknown): DesktopChoice | null {
         : undefined;
   if (id === undefined || number === undefined) return null;
   return { id, number };
+}
+
+/** A desktop set read from settings.json (1.5.0 saved one desktop as `desktop`: a set of one). Empty or invalid = all desktops. */
+export function sanitizeDesktopSet(value: unknown): DesktopSet {
+  if (!Array.isArray(value)) return null;
+  const choices: DesktopChoice[] = [];
+  for (const item of value) {
+    if (item === null || item === undefined) continue;
+    const choice = sanitizeDesktopChoice(item);
+    if (choice && !choices.some((c) => choiceKey(c) === choiceKey(choice))) choices.push(choice);
+  }
+  // "Only this one" (macOS / Linux) means nothing next to named desktops.
+  const named = choices.filter((c) => c.id !== null || c.number !== null);
+  const set = (named.length > 0 ? named : choices).slice(0, MAX_SET_SIZE);
+  return set.length > 0 ? set : null;
 }
 
 /**
@@ -174,19 +243,9 @@ export function isWaylandSession(env: NodeJS.ProcessEnv, ozonePlatform: string, 
   return wayland && !forcedX11;
 }
 
-/** The desktop setting of one window, or of every window in the tray menu (undefined when they differ). */
-export type DesktopSelection = DesktopChoice | null | undefined;
-
-/** The same setting of several windows, or undefined when they differ. */
-export function commonSelection(choices: ReadonlyArray<DesktopChoice | null>): DesktopSelection {
-  const [first, ...rest] = choices;
-  if (first === undefined) return undefined;
-  const key = (c: DesktopChoice | null) => (c ? (c.id ?? `#${c.number ?? ''}`) : 'all');
-  return rest.every((c) => key(c) === key(first)) ? first : undefined;
-}
-
+/** A menu item: its label, and the window's desktops after a click on it. */
 export type DesktopMenuEntry =
-  | { kind: 'item'; label: string; checked: boolean; choice: DesktopChoice | null }
+  | { kind: 'item'; label: string; type: 'checkbox' | 'radio'; checked: boolean; enabled: boolean; value: DesktopSet }
   | { kind: 'note'; label: string }
   | { kind: 'separator' };
 
@@ -195,8 +254,8 @@ export interface DesktopMenuInput {
   platform: NodeJS.Platform;
   /** Windows: the desktops (listDesktops). */
   desktops: readonly VirtualDesktop[];
-  /** The window's resolved setting (all windows' in the tray menu: undefined when they differ). */
-  selected: DesktopSelection;
+  /** The window's saved desktops. */
+  selected: DesktopSet;
 }
 
 /** A menu label as text: on Windows `&` marks a mnemonic, so a desktop named "R&D" needs "R&&D". */
@@ -210,42 +269,88 @@ export function desktopMenuTitle(platform: NodeJS.Platform): string {
 }
 
 /**
- * *Show on desktop* ▸ — Windows: *All desktops*, a separator, one radio per desktop in Task View
- * order with its name and "(current)" on the one the user is on; with a single desktop a hint how to
- * add one. macOS / Linux X11: *All desktops* / *Only this desktop* (workspaces on Linux). Wayland and
- * a failed Windows setup: one disabled line.
+ * *Show on desktop* ▸ for macOS / Linux X11: radio items *All desktops* / *Only this desktop*
+ * (workspaces on Linux); Wayland and a failed Windows setup: one disabled line. Windows with its list
+ * of desktops has the desktop picker instead (Phase 11: a menu closes on every click, the picker
+ * doesn't), so nothing here.
  */
 export function desktopMenuEntries(input: DesktopMenuInput): DesktopMenuEntry[] {
-  const { support, platform, desktops, selected } = input;
+  const { support, platform, selected } = input;
   const word = platform === 'linux' ? 'workspace' : 'desktop';
   if (support === 'wayland') return [{ kind: 'note', label: 'Not available on Wayland' }];
   if (support === 'unavailable') return [{ kind: 'note', label: 'Not available on this computer' }];
-  const all: DesktopMenuEntry = { kind: 'item', label: `All ${word}s`, checked: selected === null, choice: null };
-  if (support === 'this-only') {
-    const only = selected !== null && selected !== undefined;
-    return [all, { kind: 'item', label: `Only this ${word}`, checked: only, choice: { id: null, number: null } }];
-  }
-  const chosen = selected ? resolveDesktop(selected, desktops) : null;
-  const entries: DesktopMenuEntry[] = [
-    // A choice that no desktop matches any more (the list couldn't be read) leaves the overlay where it is.
-    { ...all, checked: selected === null || (selected !== undefined && !chosen && desktops.length > 0) },
-    { kind: 'separator' },
-    ...desktops.map(
-      (d): DesktopMenuEntry => ({
-        kind: 'item',
-        label: menuText(d.current ? `${d.name} (current)` : d.name, platform),
-        checked: chosen?.id === d.id,
-        choice: { id: d.id, number: d.number },
-      }),
-    ),
+  if (support === 'list') return [];
+  const only = selected !== null;
+  return [
+    { kind: 'item', label: `All ${word}s`, type: 'radio', checked: !only, enabled: true, value: null },
+    { kind: 'item', label: `Only this ${word}`, type: 'radio', checked: only, enabled: true, value: [{ id: null, number: null }] },
   ];
-  if (desktops.length <= 1) entries.push({ kind: 'note', label: 'Add a desktop: Win+Ctrl+D' });
-  return entries;
 }
 
-/** A desktop for the log: its number, never its name (users name desktops after clients or projects). */
-export function desktopLogName(choice: DesktopChoice | null): string {
-  if (!choice) return 'all desktops';
-  if (choice.id === null && choice.number === null) return 'only the desktop it is on';
-  return choice.number !== null ? `desktop ${choice.number}` : 'a desktop';
+/** A checkbox of the desktop picker, and the window's desktops after a click on it. */
+export interface DesktopCell {
+  checked: boolean;
+  enabled: boolean;
+  value: DesktopSet;
+}
+
+/**
+ * One window's checkboxes in the desktop picker (Windows, Phase 11): *All desktops*, then one per
+ * desktop in Task View order. While *All desktops* is ticked every desktop is too (unticking one keeps
+ * the others); ticking the last missing one gives *All desktops*; the last ticked desktop is greyed (a
+ * window is on at least one); unticking *All desktops* keeps only the current desktop.
+ */
+export function desktopCells(selected: DesktopSet, desktops: readonly VirtualDesktop[]): DesktopCell[] {
+  const resolved = resolveDesktops(selected, desktops);
+  // Desktops that are all gone put the overlay on all desktops (setToSave); an unreadable list leaves it where it is.
+  const all = selected === null || (!resolved && desktops.length > 0);
+  const ticked = all ? desktops : (resolved ?? []);
+  const current = desktops.find((d) => d.current);
+  return [
+    { checked: all, enabled: !all || current !== undefined, value: all && current ? [{ id: current.id, number: current.number }] : null },
+    ...desktops.map((d): DesktopCell => {
+      const checked = ticked.some((t) => t.id === d.id);
+      return { checked, enabled: !(checked && ticked.length === 1), value: toggleDesktop(all ? null : selected, d, desktops) };
+    }),
+  ];
+}
+
+/** A column of the desktop picker: 'all' or a desktop's GUID. */
+export const ALL_DESKTOPS = 'all';
+
+/**
+ * What the desktop picker shows (Phase 11): a row per overlay window (its account), a column for
+ * *All desktops* and one per desktop, and a hint how to add a desktop while there is only one.
+ */
+export function desktopPickerState(
+  windows: ReadonlyArray<{ key: string; label: string; set: DesktopSet }>,
+  desktops: readonly VirtualDesktop[],
+  focus: string | null,
+): DesktopPickerState {
+  return {
+    columns: [
+      { key: ALL_DESKTOPS, label: 'All desktops', current: false },
+      ...desktops.map((d) => ({ key: d.id, label: d.name, current: d.current })),
+    ],
+    rows: windows.map((w) => ({ key: w.key, label: w.label, cells: desktopCells(w.set, desktops).map(({ checked, enabled }) => ({ checked, enabled })) })),
+    hint: desktops.length <= 1 ? 'Add a desktop with Win+Ctrl+D' : null,
+    focus: windows.some((w) => w.key === focus) ? focus : null,
+  };
+}
+
+/** The desktops after a click in the picker: the window's set and the column clicked; undefined when that cell can't be clicked. */
+export function pickDesktop(selected: DesktopSet, column: string, desktops: readonly VirtualDesktop[]): DesktopSet | undefined {
+  const found = desktops.findIndex((d) => d.id === column);
+  const index = column === ALL_DESKTOPS ? 0 : found >= 0 ? found + 1 : -1; // a desktop removed meanwhile: nothing
+  const cell = index >= 0 ? desktopCells(selected, desktops)[index] : undefined;
+  return cell?.enabled ? cell.value : undefined;
+}
+
+/** Desktops for the log: numbers, never names (users name desktops after clients or projects). */
+export function desktopLogName(set: DesktopSet): string {
+  if (!set) return 'all desktops';
+  if (isThisOnly(set)) return 'only the desktop it is on';
+  const numbers = set.map((c) => c.number).filter((n): n is number => n !== null);
+  if (numbers.length === 0) return set.length === 1 ? 'a desktop' : `${set.length} desktops`;
+  return `${numbers.length === 1 && set.length === 1 ? 'desktop' : 'desktops'} ${numbers.join(', ')}${numbers.length < set.length ? ' and more' : ''}`;
 }

@@ -1,0 +1,245 @@
+/* The desktop picker (Phase 11): the overlay card's look (same values as styles.css — dark by
+   default, the light theme only swaps the neutrals), with a grid of checkboxes. */
+
+:root {
+  color-scheme: dark;
+  --text: #f4f0eb;
+  --muted: #a39d97;
+  --faint: #6f6a65;
+  --line: rgba(255, 255, 255, 0.07);
+  --card-top: rgba(41, 38, 36, 0.97);
+  --card-bottom: rgba(20, 19, 19, 0.97);
+  --card-border: rgba(0, 0, 0, 0.35);
+  --card-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  --hover: rgba(255, 255, 255, 0.08);
+  --press: rgba(255, 255, 255, 0.13);
+  --brand: #d97757;
+  --brand-soft: rgba(217, 119, 87, 0.16);
+  --brand-text: #f0a488;
+  --font: 'Segoe UI Variable Text', 'Segoe UI', -apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, Ubuntu,
+    Cantarell, 'Noto Sans', system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    color-scheme: light;
+    --text: #26221f;
+    --muted: #6b655f;
+    --faint: #8e8882;
+    --line: rgba(0, 0, 0, 0.08);
+    --card-top: rgba(253, 251, 248, 0.98);
+    --card-bottom: rgba(241, 237, 232, 0.98);
+    --card-border: rgba(0, 0, 0, 0.14);
+    --card-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    --hover: rgba(0, 0, 0, 0.06);
+    --press: rgba(0, 0, 0, 0.1);
+    --brand-text: #b5532f;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+}
+
+body {
+  font: 13px/1.35 var(--font);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+  cursor: default;
+}
+
+/* The window is exactly the panel (main fits it to this size). */
+#app {
+  width: max-content;
+}
+
+.panel {
+  min-width: 260px;
+  max-width: 760px;
+  padding: 10px 12px 12px;
+  border-radius: 14px;
+  background: linear-gradient(165deg, var(--card-top), var(--card-bottom));
+  border: 1px solid var(--card-border);
+  box-shadow: var(--card-shadow);
+}
+
+header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+h1 {
+  flex: 1;
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.close {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.close:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.close:active {
+  background: var(--press);
+}
+
+.close:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+.close svg {
+  width: 14px;
+  height: 14px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.grid {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.grid th,
+.grid td {
+  padding: 5px 8px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.grid thead th {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--muted);
+  vertical-align: bottom;
+}
+
+.grid thead th.current {
+  color: var(--text);
+}
+
+.grid .name {
+  display: block;
+  max-width: 112px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grid .here {
+  display: block;
+  margin-top: 1px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--brand-text);
+}
+
+/* "All desktops" is set apart from the desktops by a line. */
+.grid th.all,
+.grid td.all {
+  border-right: 1px solid var(--line);
+}
+
+.grid tbody th {
+  padding-left: 6px;
+  text-align: left;
+  font-weight: 500;
+}
+
+.grid .who {
+  display: block;
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.grid tbody tr + tr > * {
+  border-top: 1px solid var(--line);
+}
+
+/* The window whose menu opened the picker. */
+.grid tbody tr.focus > * {
+  background: var(--brand-soft);
+}
+
+.grid tbody tr.focus > :first-child {
+  border-radius: 8px 0 0 8px;
+}
+
+.grid tbody tr.focus > :last-child {
+  border-radius: 0 8px 8px 0;
+}
+
+/* Drawn here rather than by Chromium: a native disabled checkbox is grey even when ticked, which reads
+   as "not on this desktop" — the last desktop of a window is ticked and only locked. */
+input[type='checkbox'] {
+  appearance: none;
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: 0 auto;
+  border: 1.5px solid var(--faint);
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background-color 0.12s ease,
+    border-color 0.12s ease;
+}
+
+input[type='checkbox']:hover {
+  border-color: var(--muted);
+  background-color: var(--hover);
+}
+
+input[type='checkbox']:checked {
+  border-color: var(--brand);
+  background: var(--brand)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.4l3 3 6-6.8' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    center / 12px no-repeat;
+}
+
+input[type='checkbox']:disabled {
+  cursor: default;
+}
+
+input[type='checkbox']:checked:disabled {
+  opacity: 0.55;
+}
+
+.hint {
+  margin: 8px 6px 0;
+  font-size: 11.5px;
+  color: var(--muted);
+}

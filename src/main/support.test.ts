@@ -92,14 +92,14 @@ test('accountInfo leaves out the personal org name but keeps a team org', () => 
 test('sanitizeSettings fills defaults and clamps values', () => {
   assert.deepEqual(sanitizeSettings(undefined), DEFAULT_SETTINGS);
   const s = sanitizeSettings({ windows: [{ position: { x: 10.4, y: 'bad' }, compact: true }], opacity: 5, refreshIntervalSec: 5 });
-  assert.deepEqual(s.windows, [{ account: null, position: null, compact: true, desktop: null }]);
+  assert.deepEqual(s.windows, [{ account: null, position: null, compact: true, desktops: null }]);
   assert.equal(s.opacity, 1);
   assert.equal(s.refreshIntervalSec, 60);
   assert.deepEqual(sanitizeSettings({ windows: [{ position: { x: 10.4, y: -20.6 } }] }).windows[0]?.position, { x: 10, y: -21 });
 });
 
 test('sanitizeSettings: one window per account, the default or an added folder, at least one (Phase 7)', () => {
-  assert.deepEqual(DEFAULT_SETTINGS.windows, [{ account: null, position: null, compact: false, desktop: null }]);
+  assert.deepEqual(DEFAULT_SETTINGS.windows, [{ account: null, position: null, compact: false, desktops: null }]);
   const claudeCodeDirs = ['D:\\Revaal\\claude-config', 'E:\\work'];
   const s = sanitizeSettings({
     claudeCodeDirs,
@@ -112,25 +112,27 @@ test('sanitizeSettings: one window per account, the default or an added folder, 
     ],
   });
   assert.deepEqual(s.windows, [
-    { account: 'E:\\work', position: { x: 1, y: 2 }, compact: true, desktop: null },
-    { account: null, position: null, compact: false, desktop: null },
+    { account: 'E:\\work', position: { x: 1, y: 2 }, compact: true, desktops: null },
+    { account: null, position: null, compact: false, desktops: null },
   ]);
   assert.deepEqual(sanitizeSettings({ windows: [] }).windows, DEFAULT_SETTINGS.windows);
   assert.deepEqual(sanitizeSettings({ windows: [{ account: 'F:\\removed', compact: true }] }).windows, [
-    { account: null, position: null, compact: true, desktop: null },
+    { account: null, position: null, compact: true, desktops: null },
   ]);
 });
 
 test('sanitizeSettings: settings from before Phase 7 (one window) become the first window', () => {
   const old = { position: { x: 1500, y: 20 }, compact: true, claudeCodeDirs: ['E:\\work'], claudeCodeDir: 'E:\\work' };
   const s = sanitizeSettings(old);
-  assert.deepEqual(s.windows, [{ account: 'E:\\work', position: { x: 1500, y: 20 }, compact: true, desktop: null }]);
+  assert.deepEqual(s.windows, [{ account: 'E:\\work', position: { x: 1500, y: 20 }, compact: true, desktops: null }]);
   assert.ok(!('position' in s) && !('compact' in s) && !('claudeCodeDir' in s), 'the old keys are gone');
   assert.equal(sanitizeSettings({ ...old, claudeCodeDirs: [] }).windows[0]?.account, null, 'a folder not in the list');
 });
 
-test("sanitizeSettings: a window's virtual desktop, all desktops by default and for older settings (Phase 10)", () => {
-  const s = sanitizeSettings({
+test("sanitizeSettings: a window's virtual desktops, all desktops by default; 1.5.0's one desktop becomes a set (Phases 10, 11)", () => {
+  const D2 = '80a258a8-9855-44a1-8839-d137d9ec5eb1';
+  const D3 = 'acb154a0-6a1d-4080-8a84-65ecf4365749';
+  const old = sanitizeSettings({
     claudeCodeDirs: ['E:\\work'],
     windows: [
       { account: null, desktop: { id: '{80A258A8-9855-44A1-8839-D137D9EC5EB1}', number: 2 } },
@@ -138,11 +140,23 @@ test("sanitizeSettings: a window's virtual desktop, all desktops by default and 
     ],
   });
   assert.deepEqual(
-    s.windows.map((w) => w.desktop),
-    [{ id: '80a258a8-9855-44a1-8839-d137d9ec5eb1', number: 2 }, null],
+    old.windows.map((w) => w.desktops),
+    [[{ id: D2, number: 2 }], null],
+  );
+  const sets = sanitizeSettings({
+    claudeCodeDirs: ['E:\\work'],
+    windows: [
+      { account: null, desktops: [{ id: D2, number: 2 }, { id: D3, number: 3 }], desktop: null },
+      { account: 'E:\\work', desktops: [] },
+    ],
+  });
+  assert.deepEqual(
+    sets.windows.map((w) => w.desktops),
+    [[{ id: D2, number: 2 }, { id: D3, number: 3 }], null],
+    'desktops wins over an old desktop; an empty list is all desktops',
   );
   const mac = sanitizeSettings({ windows: [{ desktop: { id: null, number: null } }] });
-  assert.deepEqual(mac.windows[0]?.desktop, { id: null, number: null }, 'macOS / Linux: the desktop it is on');
+  assert.deepEqual(mac.windows[0]?.desktops, [{ id: null, number: null }], 'macOS / Linux: the desktop it is on');
 });
 
 test('sanitizeSettings: background renewal on by default; stops only for accounts that exist (Phase 8)', () => {

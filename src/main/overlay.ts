@@ -24,7 +24,7 @@ import { loadSnapshot, saveSnapshot } from './snapshot-cache';
 import { UsageService } from './usage-service';
 import type { UsageSource } from './usage-source';
 import type { VirtualDesktops } from './virtual-desktops';
-import { desktopLogName, type DesktopChoice } from './virtual-desktops-core';
+import { desktopLogName, type DesktopSet } from './virtual-desktops-core';
 import { applyAlwaysOnTop, applyLocked, createOverlayWindow, ensureOnScreen, fitToContent, moveToDisplay, resetPosition } from './window';
 
 /** What a window needs from the rest of the app (main.ts). */
@@ -486,24 +486,40 @@ export class Overlay {
 
   // --- Virtual desktops (Phase 10) -------------------------------------------------------------------
 
-  /** Menu → *Show on desktop*: all desktops (null) or one; the window goes there now. */
-  setDesktop(choice: DesktopChoice | null): void {
-    this.updateView({ desktop: choice });
-    this.host.log.info(`[${this.logName}] Show on desktop → ${desktopLogName(choice)}`);
+  /** Menu → *Show on desktop*: all desktops (null) or some (Phase 11); the window goes there now. */
+  setDesktops(set: DesktopSet): void {
+    this.updateView({ desktops: set });
+    this.host.log.info(`[${this.logName}] Show on desktop → ${desktopLogName(set)}`);
+    this.placeOnDesktop();
+  }
+
+  /** On several desktops: it follows the user among them (Phase 11), so the desktop switches are watched. */
+  get onSeveralDesktops(): boolean {
+    return (this.view.desktops?.length ?? 0) > 1;
+  }
+
+  /**
+   * A desktop switch (or a change of the desktop list): a shown window of several desktops goes to the
+   * new current desktop when that is one of its own, and stays where it is otherwise (Phase 11).
+   */
+  followDesktop(): void {
+    if (this.host.screenshot || this.disposed || !this.isVisible() || !this.onSeveralDesktops) return;
+    this.syncDesktop(); // first adopt a Task View drag or a removed desktop
     this.placeOnDesktop();
   }
 
   /**
-   * Puts the window on its desktop — all desktops, or one (a taskbar button, then moved there). The
-   * one place that does it: at creation (also a rebuilt window), after every show and when the setting
-   * changes. Screenshot runs never move windows.
+   * Puts the window on its desktops — all desktops, or some (a taskbar button, then moved to the one it
+   * belongs on now). The one place that does it: at creation (also a rebuilt window), after every show,
+   * after a desktop switch (several desktops) and when the setting changes. Screenshot runs never move
+   * windows.
    */
   private placeOnDesktop(): void {
     if (this.host.screenshot || this.disposed || this.win.isDestroyed()) return;
-    const save = this.host.desktops.place(this.win, this.view.desktop);
+    const save = this.host.desktops.place(this.win, this.view.desktops);
     if (save === undefined) return;
-    if (save === null) this.host.log.info(`[${this.logName}] Its desktop is gone: the overlay is on all desktops again`);
-    this.updateView({ desktop: save });
+    if (save === null) this.host.log.info(`[${this.logName}] Its desktops are gone: the overlay is on all desktops again`);
+    this.updateView({ desktops: save });
   }
 
   /**
@@ -513,10 +529,10 @@ export class Overlay {
    */
   syncDesktop(): void {
     if (this.host.screenshot || this.disposed || !this.isVisible()) return;
-    const actual = this.host.desktops.actualDesktop(this.win, this.view.desktop);
+    const actual = this.host.desktops.actualDesktop(this.win, this.view.desktops);
     if (!actual) return;
     this.host.log.info(`[${this.logName}] The overlay is on ${desktopLogName(actual)} now (moved in Task View, or its desktop was removed)`);
-    this.updateView({ desktop: actual });
+    this.updateView({ desktops: actual });
   }
 
   setCompact(compact: boolean): void {
@@ -688,6 +704,7 @@ export class Overlay {
     const created = createOverlayWindow(this.host.settings.get(), this.view.position, [], bounds);
     this.win = created.win;
     this.restoredPosition = created.restoredPosition;
+    this.host.desktops.carryOver(old, this.win);
     this.placeOnDesktop();
     this.shown = false;
     this.contentSize = null; // the new page reports its size, then the window is fitted and shown
