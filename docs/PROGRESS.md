@@ -1197,6 +1197,10 @@ Kept for the record in case Anthropic ever offers an official way.
 - Docs: phase 10 marked "released as 1.5.0" (PROGRESS, BACKLOG, phase file).
 - CI (`release:check ci 1.5.0 --wait`): the release run passed — Windows, macOS and Linux builds
   (the first with koffi on macOS / Linux) and *Draft GitHub Release*.
+- The owner published it (08:21 UTC). `release:check post 1.5.0` passed: `releases/latest` = v1.5.0,
+  9 files, the three `latest*.yml` point at attached files, the website links to v1.5.0 (the
+  *Website* run on `main` deployed ~30 s after publishing; Pages sends `Cache-Control: max-age=600`,
+  so a browser may show the old page for up to 10 minutes).
 - The skill's example of the unpacked native file (`app.asar.unpacked/node_modules/koffi`) was
   wrong for koffi 3.x; corrected in `.claude/skills/release/SKILL.md`. Electron book 3.7:
   changelog, phase list, a section on this first run in the release chapter.
