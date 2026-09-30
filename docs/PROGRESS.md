@@ -16,7 +16,7 @@ Living record of where the project stands. Update it at the end of every session
 | [8 — Sign in through Claude Code, keep the sign-in fresh](phases/phase-8-sign-in.md) | ✅ Done (2026-09-28) — released as 1.4.0, fix D72 in 1.4.1; browser sign-in, install and renewal of a really expired token: owner's manual tests |
 | [9 — Project website (GitHub Pages)](phases/phase-9-website.md) | ✅ Built (2026-09-29) — goes live when the owner switches Pages to *GitHub Actions* and pushes |
 | [10 — Show the overlay on one virtual desktop](phases/phase-10-virtual-desktops.md) | ✅ Done (2026-09-30) — released as 1.5.0; owner's manual tests pending (real tray click on another desktop, Task View drag, removed desktop) |
-| [11 — Several desktops per window, and a desktop picker](phases/phase-11-desktop-sets.md) | ✅ Done (2026-09-30) — not released yet; tray-opened picker, restart and Task View drag with a set: owner's manual tests |
+| [11 — Several desktops per window, and a desktop picker](phases/phase-11-desktop-sets.md) | ✅ Done (2026-09-30) — released as 1.6.0; tray-opened picker, restart and Task View drag with a set: owner's manual tests |
 
 Each phase has its own plan file in [`phases/`](phases/) (scope, notes, acceptance criteria,
 ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLOG.md).
@@ -232,6 +232,7 @@ ready-to-paste prompt, result). Index and general prompts: [`BACKLOG.md`](BACKLO
 | D84 | **Version 1.5.0** for Phase 10 (show the overlay on one virtual desktop) | Semantic Versioning: a new feature that breaks nothing is a minor version (as D49 / D55 / D65 / D71 / D73). Settings of 1.4.1 are read unchanged (every window starts on all desktops); going back to 1.4.1 only forgets the desktop choice. On Linux X11 the overlay is now on all workspaces by default (D81). First release with a native runtime dependency (koffi, D78 / D82): the local `dist:win` checked the Windows packages, the dmg / AppImage / deb are first built by this release's CI. The website (Phase 9) and the `/release` skill (D83) are in the same range but don't change the app. The first release made with `/release` |
 | D85 | **Several desktops per window (Phase 11) = the window follows the user.** `WindowSettings.desktops` (a list of `{ id, number }`, null = all) replaces `desktop` (1.5.0's value becomes a one-entry list; ≤ 50, deduplicated, empty = all). Resolved by GUIDs; only when none is left by numbers (Windows 10's new GUIDs); nothing left = all. A window of two or more desktops goes to the current desktop when it is in its set, else stays on the one of its set it is on (or was last on), else the first. A registry watch of `…\Explorer\VirtualDesktops` (`RegNotifyChangeKeyValue`, waited for on a koffi `.async` worker, re-armed before reading) runs only while such a window exists and calls `followDesktop()` (adopt, then place) on every change. Adoption for sets: a window found outside its set replaces the desktop it was on with that one. A rebuilt window keeps the old one's desktop. Following isn't logged per switch | Windows has only "one desktop" (with a taskbar button) or "all" (none); pinning to all is undocumented (D78). Hiding on unticked desktops instead would leave the overlay on screen there until the switch is noticed; following never shows it outside its set. Measured: registry notification 0–12 ms after the switch starts (6 owner switches), a move shows the window in ~2 ms, the follower shows it 20–35 ms after the notification (owner's free switching, mock run) |
 | D86 | **The desktop picker (Phase 11):** on Windows *Show on desktop ▸* became one item, *Show on desktops…*, that opens a small window (`desktop-picker.ts`, `picker.html` / `picker.ts` / `picker.css`, `picker-preload.ts` with four calls, sender checked): a row per overlay window (the account), a column for *All desktops* and one per desktop (name, *current*); the row of the window whose menu opened it is marked. Ticking the last missing desktop = *All desktops*; a window's last desktop stays ticked and locked; unticking *All desktops* = only the current desktop. Frameless, transparent, always on top, no taskbar button (on every desktop), at the Size setting, opened at the cursor (`popupBounds`, above it from the tray); Esc, ✕ or losing the focus close it. Checkboxes drawn in CSS. macOS / Linux keep their two radio items (a submenu per window in the tray with several windows) | Native menus close on every click. The owner tried checkboxes in the submenu, then a list that reopened itself after each click ("nothing may close — neither the menu nor the submenu"), and chose the picker over rebuilding the whole menu in HTML (big and risky). Like Task Manager's *Select columns*. Chromium greys out a ticked disabled checkbox, which would read as "not on this desktop" |
+| D87 | **Version 1.6.0** for Phase 11 (each overlay on several virtual desktops, chosen in a desktop picker) | Semantic Versioning: a new feature that breaks nothing is a minor version (as D49 / D55 / D65 / D71 / D73 / D84). Settings of 1.5.0 are read as the same choice (`desktop` becomes a one-entry `desktops`); going back to 1.5.0 only forgets the desktop choice (every window on all desktops again). The picker is a second page in the package (two more esbuild entries), so the local `dist:win` checked that it and its preload are in `app.asar` |
 | D49 | **Version 1.0.0** for the first release with the updater (0.2.0 → 1.0.0; no 0.3.x). The real-release updater test becomes 1.0.0 → 1.0.1. README says openly that only Windows 11 is tested; macOS and Linux builds are CI-built but never run | Owner's choice (2026-09-26): all planned phases are done. Recommended first was 0.3.0 → 0.3.1 for the test and 1.0.0 once it passed; the owner preferred 1.0.0 now. Technically the same: a broken updater in the first updater version needs one manual install either way. |
 
 ## Usage API notes (observed 2026-09-24)
@@ -1245,4 +1246,19 @@ Kept for the record in case Anthropic ever offers an official way.
 - Mistake: four questions to the owner were asked in English (the question boxes), although every
   message must be Persian; the owner had to insist. Memory note sharpened.
 - README (Virtual desktops, FAQ), site (feature line, FAQ), CLAUDE.md (modules, gotcha), D85–D86,
-  phase file, BACKLOG. Electron book: a chapter on this phase. Not released yet.
+  phase file, BACKLOG. Electron book: a chapter on this phase. Released as 1.6.0 (session 36).
+
+### 2026-09-30 — Session 36: release 1.6.0
+
+- The owner asked for a new release (`/release`). Since v1.5.0: Phase 11 (D85–D86) → 1.6.0 (D87);
+  the other two commits only record the 1.5.0 release.
+- `release:check pre`: everything ok, one warning — packaging inputs changed (`scripts/build.mjs`:
+  the picker's page and preload). `npm run check` passed (195 tests), `npm run build`; `npm version
+  1.6.0 --no-git-tag-version`; `npm run dist:win`: `Claude-Usage-Setup-1.6.0.exe`,
+  `Claude-Usage-1.6.0-Portable.exe`, `latest.yml` with `version: 1.6.0`; `app.asar` holds
+  `dist/renderer/picker.{html,css,js}` and `dist/preload/picker-preload.js`, koffi's `.node` file is
+  in `app.asar.unpacked`. The packaged app wasn't started (it shares userData with the installed
+  copy).
+- Commit, `main` pushed, annotated tag `v1.6.0` pushed → the release workflow builds the draft; the
+  owner publishes it by hand. Release notes drafted for the owner.
+- Docs: phase 11 marked "released as 1.6.0" (PROGRESS, BACKLOG, phase file).

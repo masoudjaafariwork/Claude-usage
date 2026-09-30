@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| **Status** | ✅ Done (2026-09-30) — planned and built in session 35; not released yet |
+| **Status** | ✅ Done (2026-09-30) — planned and built in session 35; released as 1.6.0 |
 | **Depends on** | Phase 10 (show the overlay on one virtual desktop, D78–D82) |
 | **Size** | One Claude Code session |
 
