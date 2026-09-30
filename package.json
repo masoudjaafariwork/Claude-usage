@@ -27,6 +27,7 @@
     "site:shot": "node scripts/site.mjs --shot",
     "check": "npm run typecheck && npm test",
     "make-icon": "node scripts/make-icon.mjs",
+    "release:check": "node scripts/release-check.mjs",
     "dist": "npm run build && electron-builder --publish never",
     "dist:win": "npm run build && electron-builder --win --publish never",
     "dist:mac": "npm run build && electron-builder --mac --publish never",

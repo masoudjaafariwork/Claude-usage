@@ -1,7 +1,7 @@
 node_modules/
 dist/
 .test-dist/
-release/
+/release/
 _site/
 *.log
 .DS_Store

@@ -347,6 +347,7 @@ installed app.
 | `npm run check` | Type-check and run unit tests |
 | `npm run dist` | Build installers for the current OS into `release/` (`dist:win`, `dist:mac`, `dist:linux` for one OS) |
 | `npm run make-icon` | Regenerate the app icon `build/icon.png` |
+| `npm run release:check -- pre` | Release checks: `pre [version]` before tagging, `ci <version> [--wait]` for the tag's build, `post <version>` after publishing ([Releasing a new version](#releasing-a-new-version)) |
 
 Installers are built with [electron-builder](https://www.electron.build/). A dmg must be built on a
 Mac and the Linux packages on Linux; the release workflow does all three.
@@ -356,21 +357,31 @@ Mac and the Linux packages on Linux; the release workflow does all three.
 Installed copies update from the **latest published, non-pre-release** GitHub Release and find the
 installer through the `latest.yml`, `latest-mac.yml` and `latest-linux.yml` files attached to it.
 
-1. Bump the version (also updates `package-lock.json`) and commit:
+1. Check: `npm run release:check -- pre 1.0.1` (on `main`, clean and up to date, tag still free,
+   release settings intact; without a version it suggests one by Semantic Versioning from the
+   commits since the last tag), then `npm run check`.
+2. Bump the version (also updates `package-lock.json`) and commit:
    `npm version 1.0.1 --no-git-tag-version`, then
    `git commit -am "chore: release v1.0.1"`.
-2. Tag and push: `git push`, then `git tag v1.0.1` and `git push origin v1.0.1`.
-3. GitHub Actions ([release.yml](.github/workflows/release.yml)) checks that the tag matches
+3. Push, tag and push the tag: `git push origin main`, then
+   `git tag -a v1.0.1 -m "Claude Usage 1.0.1"` and `git push origin v1.0.1`.
+4. GitHub Actions ([release.yml](.github/workflows/release.yml)) checks that the tag matches
    `package.json`, runs the tests, builds on Windows, macOS and Linux and attaches everything to a
-   **draft** release (10–15 minutes; *Actions* tab).
-4. On GitHub → *Releases*, open the draft and check the files: `Claude-Usage-Setup-<v>.exe`,
+   **draft** release (10–15 minutes; *Actions* tab, or `npm run release:check -- ci 1.0.1 --wait`).
+5. On GitHub → *Releases*, open the draft and check the files: `Claude-Usage-Setup-<v>.exe`,
    `Claude-Usage-<v>-Portable.exe`, two `.dmg`, the `.AppImage`, the `.deb` and **`latest.yml`,
    `latest-mac.yml`, `latest-linux.yml`**. Edit the notes if you like, keep **Release label**
    on **None** (not *Pre-release*), then **Publish release**. GitHub marks the newest normal release
    as *Latest* by itself.
-5. Installed copies find it within 6 hours, or at once via *Check for updates*. Publishing the
+6. Installed copies find it within 6 hours, or at once via *Check for updates*. Publishing the
    release also rebuilds the [website](https://masoudjaafariwork.github.io/Claude-usage/), so its
    download buttons point at the new files ([pages.yml](.github/workflows/pages.yml)).
+   `npm run release:check -- post 1.0.1` confirms it: the release is *Latest*, every file is there,
+   each `latest*.yml` names the version and points at attached files, the website links to it.
+
+In Claude Code, `/release` (the project skill in
+[.claude/skills/release/](.claude/skills/release/SKILL.md)) runs these steps, updates the project
+docs and drafts the release notes; publishing the draft stays a manual step.
 
 Never delete or replace files of a published release: running copies may be downloading them, and
 a changed installer no longer matches the hash in `latest.yml`. Fix a bad release with a new

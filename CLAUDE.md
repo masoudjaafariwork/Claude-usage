@@ -58,6 +58,10 @@ The book is local only: do **not** publish or republish it to claude.ai (owner's
 | `npm run build` / `npm run watch` | esbuild bundle to `dist/` |
 | `npm run dist` / `dist:win` / `dist:mac` / `dist:linux` | Build + electron-builder installers into `release/` (never publishes) |
 | `npm run make-icon` | Regenerate `build/icon.png` (committed) |
+| `npm run release:check -- pre [x.y.z]` / `ci x.y.z [--wait]` / `post x.y.z` | Release checks: before tagging (git state, tag free, SemVer suggestion, release config), the tag's CI run, the published release (files, `latest*.yml`, website) |
+
+**Releasing:** always through the `/release` skill ([.claude/skills/release/SKILL.md](.claude/skills/release/SKILL.md), D83) —
+SemVer, checks, docs, commit, annotated tag, CI, release notes; the owner publishes the draft by hand.
 
 Mock scenarios: `normal`, `warning`, `critical`, `expired`, `no-credentials`, `rate-limited`,
 `offline`, `loading`, `via-desktop`, `desktop-unavailable`, `forecast`, `locked`, `other-account`, `update-ready`,
@@ -113,7 +117,9 @@ src/
   preload/preload.ts     contextBridge → window.overlay (OverlayApi)
   renderer/              Sandboxed UI: index.html, styles.css (dark + light theme vars), renderer.ts (DOM)
 scripts/                 build.mjs, test.mjs, start.mjs, screenshots.mjs, social-preview.mjs, make-icon.mjs,
-                         site.mjs (website: build with release data, serve, images, captures)
+                         site.mjs (website: build with release data, serve, images, captures),
+                         release-check.mjs (release checks before tagging / CI / after publishing)
+.claude/skills/release/  The /release skill: the whole release procedure (D83)
 site/                    Website (GitHub Pages, Phase 9): index.html, 404.html, styles.css, app.js, sitemap.xml,
                          images/ (overlay renders + icons from `npm run site:images`, committed); {{…}} filled by site.mjs
 build/                   icon.png (generated, committed), installer.nsh (NSIS uninstall hook)
