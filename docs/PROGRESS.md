@@ -505,8 +505,9 @@ Kept for the record in case Anthropic ever offers an official way.
   - macOS / Linux untested. macOS can't tell a window on another Space, so the shortcut there may
     hide an overlay the user can't see; after a restart it opens on the active Space. Linux X11 now
     puts the overlay on all workspaces by default.
-  - koffi is loaded at startup on Windows (the tray menu needs the list), ~10 ms. CI builds of the
-    dmg / AppImage / deb with koffi haven't run yet (the 1.5.0 release run shows it).
+  - koffi is loaded at startup on Windows (the tray menu needs the list), ~10 ms. The dmg /
+    AppImage / deb with koffi build in CI (1.5.0) but haven't run on a real Mac or Linux machine
+    (koffi isn't loaded there, D82).
   - Mock runs keep a chosen desktop in `mock-data/settings.json`: a mock window can open on another
     desktop.
 
@@ -1194,3 +1195,8 @@ Kept for the record in case Anthropic ever offers an official way.
 - Commit, `main` pushed, annotated tag `v1.5.0` pushed → the release workflow builds the draft; the
   owner publishes it by hand. Release notes drafted for the owner.
 - Docs: phase 10 marked "released as 1.5.0" (PROGRESS, BACKLOG, phase file).
+- CI (`release:check ci 1.5.0 --wait`): the release run passed — Windows, macOS and Linux builds
+  (the first with koffi on macOS / Linux) and *Draft GitHub Release*.
+- The skill's example of the unpacked native file (`app.asar.unpacked/node_modules/koffi`) was
+  wrong for koffi 3.x; corrected in `.claude/skills/release/SKILL.md`. Electron book 3.7:
+  changelog, phase list, a section on this first run in the release chapter.

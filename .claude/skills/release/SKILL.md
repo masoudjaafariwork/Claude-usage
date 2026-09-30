@@ -84,8 +84,9 @@ everything written to the repo and the release notes is English.
 2. `npm run build` — `check` doesn't run esbuild on the app.
 3. Packaging inputs changed (step 1 WARN) → after the bump in step 4, `npm run dist:win`, then check
    `release/`: `Claude-Usage-Setup-<v>.exe`, `Claude-Usage-<v>-Portable.exe`, `latest.yml` with
-   `version: <v>`; for a native runtime dependency its files are unpacked (e.g.
-   `release/win-unpacked/resources/app.asar.unpacked/node_modules/koffi`). **Don't start** the
+   `version: <v>`; for a native runtime dependency its `.node` file is unpacked — koffi 3.x keeps it
+   in a per-platform package: `release/win-unpacked/resources/app.asar.unpacked/node_modules/@koromix/koffi-win32-x64/win32_x64/koffi.node`
+   (koffi's own JS stays in `app.asar`; list it with `require('@electron/asar').listPackage(…)`). **Don't start** the
    packaged app: it shares userData and the single-instance lock with the owner's installed copy
    (CLAUDE.md → Gotchas). dmg / AppImage / deb are only built by CI.
 4. Everything the release ships is documented: every new feature in the README and on the site
